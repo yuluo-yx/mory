@@ -1,0 +1,21 @@
+[data-doc-theme="github"] .editor-scroll { background: #fff; }
+[data-doc-theme="github"] .write {
+  color: #24292f;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+  font-size: 16px;
+  line-height: 1.65;
+}
+[data-doc-theme="github"] .write h1,
+[data-doc-theme="github"] .write h2,
+[data-doc-theme="github"] .write h3,
+[data-doc-theme="github"] .write h4 { font-family: inherit; color: #1f2328; }
+[data-doc-theme="github"] .write h1,
+[data-doc-theme="github"] .write h2 { border-color: #d8dee4; }
+[data-doc-theme="github"] .write a { color: #0969da; }
+[data-doc-theme="github"] .write code,
+[data-doc-theme="github"] .write pre { background: #f6f8fa; }
+[data-doc-theme="github"] .write blockquote { border-color: #d0d7de; color: #59636e; }
+[data-doc-theme="github"] .write th { background: #f6f8fa; }
+[data-doc-theme="github"] .write th,
+[data-doc-theme="github"] .write td { border-color: #d0d7de; }
+

@@ -1,0 +1,21 @@
+[data-doc-theme="newsprint"] .editor-scroll { background: #f7f4ed; }
+[data-doc-theme="newsprint"] .write {
+  color: #2d2b27;
+  font-family: "Iowan Old Style", "Songti SC", Georgia, serif;
+  font-size: 18px;
+  line-height: 1.78;
+}
+[data-doc-theme="newsprint"] .write h1,
+[data-doc-theme="newsprint"] .write h2,
+[data-doc-theme="newsprint"] .write h3 { border: 0; color: #191816; font-family: Georgia, "Songti SC", serif; font-weight: 700; }
+[data-doc-theme="newsprint"] .write h1 { text-align: center; font-size: 2.4em; }
+[data-doc-theme="newsprint"] .write h1::after { content: ""; display: block; width: 54px; margin: .5em auto 0; border-bottom: 3px double #8d877b; }
+[data-doc-theme="newsprint"] .write h2 { font-size: 1.55em; }
+[data-doc-theme="newsprint"] .write a { color: #7c4935; border-color: #bba295; }
+[data-doc-theme="newsprint"] .write code,
+[data-doc-theme="newsprint"] .write pre,
+[data-doc-theme="newsprint"] .write th { background: #ebe6dc; }
+[data-doc-theme="newsprint"] .write blockquote { border-color: #9d9587; color: #6d685f; font-style: italic; }
+[data-doc-theme="newsprint"] .write th,
+[data-doc-theme="newsprint"] .write td { border-color: #c9c1b3; }
+

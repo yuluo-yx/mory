@@ -1,0 +1,18 @@
+[data-doc-theme="pixyll"] .editor-scroll { background: #fffdf9; }
+[data-doc-theme="pixyll"] .write {
+  color: #444;
+  font-family: "Iowan Old Style", Georgia, "Songti SC", serif;
+  font-size: 17px;
+  line-height: 1.75;
+}
+[data-doc-theme="pixyll"] .write h1,
+[data-doc-theme="pixyll"] .write h2,
+[data-doc-theme="pixyll"] .write h3 { border: 0; color: #333; font-family: "Avenir Next", "PingFang SC", sans-serif; font-weight: 700; }
+[data-doc-theme="pixyll"] .write h1 { color: #cf4944; font-size: 2.25em; }
+[data-doc-theme="pixyll"] .write h2 { color: #c14e4a; font-size: 1.55em; }
+[data-doc-theme="pixyll"] .write a { color: #d04f4a; border-color: #e8aaa7; }
+[data-doc-theme="pixyll"] .write code,
+[data-doc-theme="pixyll"] .write pre,
+[data-doc-theme="pixyll"] .write th { background: #f8eeea; }
+[data-doc-theme="pixyll"] .write blockquote { border-color: #e5aaa6; color: #796c67; }
+

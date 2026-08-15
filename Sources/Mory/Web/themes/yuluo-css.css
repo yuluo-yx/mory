@@ -1,0 +1,104 @@
+/*
+ * Mory 的 Yuluo CSS 文档主题。
+ * 依据用户现有 Typora yuluo-css.css 的正文配色与排版迁移，已移除
+ * Typora 专属选择器、远程字体和未明确授权的字体文件，保证离线跨平台使用。
+ */
+[data-doc-theme="yuluo-css"] .editor-scroll { background: #fff; }
+
+[data-doc-theme="yuluo-css"] .write {
+  color: #333;
+  font-family: "Hannotate SC", "Segoe Print", "Microsoft YaHei UI", "PingFang SC", "Open Sans", "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+[data-doc-theme="yuluo-css"] .write h1,
+[data-doc-theme="yuluo-css"] .write h2,
+[data-doc-theme="yuluo-css"] .write h3,
+[data-doc-theme="yuluo-css"] .write h4,
+[data-doc-theme="yuluo-css"] .write h5,
+[data-doc-theme="yuluo-css"] .write h6 {
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+  font-family: inherit;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+[data-doc-theme="yuluo-css"] .write h1 {
+  color: #0077bb;
+  font-size: 2.25em;
+  line-height: 1.2;
+  border-color: #eee;
+}
+
+[data-doc-theme="yuluo-css"] .write h2 {
+  color: #6a5acd;
+  font-size: 1.75em;
+  line-height: 1.225;
+  border-color: #eee;
+}
+
+[data-doc-theme="yuluo-css"] .write h3 { color: rgb(26, 143, 55); font-size: 1.5em; line-height: 1.43; }
+[data-doc-theme="yuluo-css"] .write h4,
+[data-doc-theme="yuluo-css"] .write h5 { color: #87cefa; }
+[data-doc-theme="yuluo-css"] .write h4 { font-size: 1.25em; }
+[data-doc-theme="yuluo-css"] .write h5 { font-size: 1em; }
+[data-doc-theme="yuluo-css"] .write h6 { color: #777; font-size: 1em; }
+[data-doc-theme="yuluo-css"] .write strong { color: #40e0d0; }
+[data-doc-theme="yuluo-css"] .write a { color: #4183c4; }
+[data-doc-theme="yuluo-css"] .write ::selection { background: #d1ff79; }
+[data-doc-theme="yuluo-css"] .write mark { padding: 0; background: #fff; color: #db3f1e; font-weight: 700; }
+
+[data-doc-theme="yuluo-css"] .write code,
+[data-doc-theme="yuluo-css"] .write pre {
+  border-color: #e7eaed;
+  border-radius: 3px;
+  background: #f8f8f8;
+}
+
+[data-doc-theme="yuluo-css"] .write code { background: #f3f4f4; }
+[data-doc-theme="yuluo-css"] .write pre code { background: transparent; }
+[data-doc-theme="yuluo-css"] .write blockquote { border-color: #dfe2e5; color: #777; }
+[data-doc-theme="yuluo-css"] .write hr { border-color: #e7e7e7; }
+
+[data-doc-theme="yuluo-css"] .write table { table-layout: fixed; word-break: break-word; }
+[data-doc-theme="yuluo-css"] .write thead { white-space: nowrap; background: #f8f8f8; }
+[data-doc-theme="yuluo-css"] .write th,
+[data-doc-theme="yuluo-css"] .write td { border-color: #dfe2e5; }
+[data-doc-theme="yuluo-css"] .write tbody tr:nth-child(even) { background: #effaff; }
+[data-doc-theme="yuluo-css"] .write tbody tr:nth-child(odd) { background: #fff1f6; }
+[data-doc-theme="yuluo-css"] .write tbody tr:nth-child(1) { background: #8ae1fc; }
+[data-doc-theme="yuluo-css"] .write tbody tr:nth-child(2) { background: #efa7a7; }
+[data-doc-theme="yuluo-css"] .write tbody tr:nth-child(3) { background: #ffd972; }
+[data-doc-theme="yuluo-css"] .write tbody tr:nth-child(4) { background: #fcf5fc; }
+[data-doc-theme="yuluo-css"] .write tbody tr:nth-child(5) { background: #f3f1ec; }
+[data-doc-theme="yuluo-css"] .write tbody tr:nth-child(6) { background: #ccecd6; }
+[data-doc-theme="yuluo-css"] .write tbody tr:nth-child(7) { background: #c2dda6; }
+[data-doc-theme="yuluo-css"] .write tbody tr:nth-child(8) { background: #c9af98; }
+[data-doc-theme="yuluo-css"] .write tbody tr:nth-child(9) { background: #f5e5fc; }
+[data-doc-theme="yuluo-css"] .write tbody tr:nth-child(10) { background: #ed8a63; }
+[data-doc-theme="yuluo-css"] .write input[type="checkbox"] { transform: scale(1.18); }
+
+[data-doc-theme="yuluo-css"] .write .hljs-comment,
+[data-doc-theme="yuluo-css"] .write .hljs-quote { color: #6a737d; font-style: italic; }
+[data-doc-theme="yuluo-css"] .write .hljs-keyword,
+[data-doc-theme="yuluo-css"] .write .hljs-selector-tag,
+[data-doc-theme="yuluo-css"] .write .hljs-type { color: #6a5acd; font-weight: 600; }
+[data-doc-theme="yuluo-css"] .write .hljs-title,
+[data-doc-theme="yuluo-css"] .write .hljs-section,
+[data-doc-theme="yuluo-css"] .write .hljs-function { color: #0077bb; }
+[data-doc-theme="yuluo-css"] .write .hljs-string,
+[data-doc-theme="yuluo-css"] .write .hljs-attr,
+[data-doc-theme="yuluo-css"] .write .hljs-symbol { color: #1a8f37; }
+[data-doc-theme="yuluo-css"] .write .hljs-number,
+[data-doc-theme="yuluo-css"] .write .hljs-literal,
+[data-doc-theme="yuluo-css"] .write .hljs-built_in { color: #b4654d; }
+[data-doc-theme="yuluo-css"] .write .hljs-variable,
+[data-doc-theme="yuluo-css"] .write .hljs-params { color: #333; }
+
+@media print {
+  [data-doc-theme="yuluo-css"] .write { font-size: 13px; }
+  [data-doc-theme="yuluo-css"] .write table,
+  [data-doc-theme="yuluo-css"] .write pre { break-inside: avoid; }
+}

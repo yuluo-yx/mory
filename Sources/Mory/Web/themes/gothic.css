@@ -1,0 +1,20 @@
+[data-doc-theme="gothic"] .editor-scroll { background: #efeee9; }
+[data-doc-theme="gothic"] .write {
+  color: #20201f;
+  font-family: "Baskerville", "Songti SC", Georgia, serif;
+  font-size: 18px;
+  line-height: 1.72;
+}
+[data-doc-theme="gothic"] .write h1,
+[data-doc-theme="gothic"] .write h2,
+[data-doc-theme="gothic"] .write h3 { border-color: #2b2b29; color: #111; font-family: "Avenir Next Condensed", "PingFang SC", sans-serif; font-weight: 800; letter-spacing: .045em; text-transform: uppercase; }
+[data-doc-theme="gothic"] .write h1 { border: 3px solid #222; padding: .35em .5em; text-align: center; }
+[data-doc-theme="gothic"] .write h2 { border-bottom: 2px solid #222; }
+[data-doc-theme="gothic"] .write a { color: #222; border-bottom: 2px solid #777; }
+[data-doc-theme="gothic"] .write code,
+[data-doc-theme="gothic"] .write pre,
+[data-doc-theme="gothic"] .write th { background: #deddd7; }
+[data-doc-theme="gothic"] .write blockquote { border-color: #222; color: #555; }
+[data-doc-theme="gothic"] .write th,
+[data-doc-theme="gothic"] .write td { border-color: #555; }
+

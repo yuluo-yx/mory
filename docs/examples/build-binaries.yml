@@ -1,0 +1,78 @@
+name: 构建桌面端制品
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mory-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    name: macOS ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v6
+      - name: 设置 Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - name: 安装依赖
+        run: make install
+      - name: 验证并打包
+        run: make ci-macos
+      - name: 归档应用包
+        run: tar -czf "dist/Mory-macos-${{ matrix.arch }}.tar.gz" -C dist/macos Mory.app
+      - name: 上传 macOS 制品
+        uses: actions/upload-artifact@v7
+        with:
+          name: Mory-macos-${{ matrix.arch }}
+          path: dist/Mory-macos-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+  windows:
+    name: Windows x64 与 ARM64
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v6
+      - name: 设置 Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - name: 安装 GNU Make
+        shell: powershell
+        run: choco install make --yes --no-progress
+      - name: 安装依赖
+        run: make install
+      - name: 验证并打包
+        run: make ci-windows
+      - name: 上传 Windows 制品
+        uses: actions/upload-artifact@v7
+        with:
+          name: Mory-windows-x64-arm64
+          path: dist/windows/*.exe
+          if-no-files-found: error
+          retention-days: 14
+

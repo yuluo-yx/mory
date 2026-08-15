@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-CN" data-doc-theme="yuluo-css">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' data:; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file: https: http:; connect-src 'self' file:">
+  <title>Mory</title>
+  <link rel="stylesheet" href="styles.css">
+  <link id="document-theme" rel="stylesheet" href="themes/yuluo-css.css">
+</head>
+<body>
+  <svg class="icon-sprite" aria-hidden="true">
+    <symbol id="i-files" viewBox="0 0 24 24"><path d="M4 6.5h6l2 2h8v10H4z"/><path d="M4 6.5v-2h6l2 2h7v2"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 4v16M4 12h16"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="m8.5 6-6 6 6 6M15.5 6l6 6-6 6M13.5 3l-3 18"/></symbol>
+    <symbol id="i-export" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 17v3h14v-3"/></symbol>
+    <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.2 13.5a7.8 7.8 0 0 0 0-3l2-1.5-2-3.4-2.4 1A8.5 8.5 0 0 0 14.2 5L14 2.5h-4L9.8 5a8.5 8.5 0 0 0-2.6 1.5l-2.4-1-2 3.4 2 1.5a7.8 7.8 0 0 0 0 3l-2 1.5 2 3.4 2.4-1A8.5 8.5 0 0 0 9.8 19l.2 2.5h4l.2-2.5a8.5 8.5 0 0 0 2.6-1.5l2.4 1 2-3.4z"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m8 10 4 4 4-4"/></symbol>
+  </svg>
+
+  <main id="app" class="app-shell">
+    <aside id="sidebar" class="sidebar" aria-label="侧边栏">
+      <div class="traffic-space"></div>
+      <nav class="sidebar-tabs" aria-label="侧边栏视图">
+        <button class="tab is-active" data-panel="files"><svg><use href="#i-files"/></svg><span>文件</span></button>
+        <button class="tab" data-panel="outline"><svg><use href="#i-list"/></svg><span>大纲</span></button>
+      </nav>
+
+      <section id="files-panel" class="side-panel is-active" aria-label="文件">
+        <div class="panel-head">
+          <span id="folder-name">工作区</span>
+          <button class="icon-button" id="quick-open-button" title="快速打开（⌘P）"><svg><use href="#i-search"/></svg></button>
+        </div>
+        <div id="file-list" class="file-list">
+          <button class="file-item is-active" data-path="">
+            <span class="file-symbol">M↓</span>
+            <span class="file-name">未命名.md</span>
+          </button>
+        </div>
+      </section>
+
+      <section id="outline-panel" class="side-panel" aria-label="大纲">
+        <div class="panel-head"><span>大纲</span><small id="outline-count">0 项</small></div>
+        <nav id="outline-list" class="outline-list"></nav>
+        <p id="outline-empty" class="empty-state">文档还没有标题</p>
+      </section>
+
+      <footer class="sidebar-footer">
+        <button class="icon-button" id="new-file-button" title="新建文档（⌘N）"><svg><use href="#i-plus"/></svg></button>
+        <span class="workspace-status">本地工作区</span>
+        <button class="icon-button" id="settings-button" title="偏好设置"><svg><use href="#i-settings"/></svg></button>
+      </footer>
+    </aside>
+
+    <section class="workspace">
+      <header class="titlebar">
+        <button class="icon-button sidebar-toggle" id="sidebar-toggle" title="显示／隐藏侧边栏"><svg><use href="#i-panel"/></svg></button>
+        <div class="document-title-wrap">
+          <input id="document-title" class="document-title" value="未命名" aria-label="文档标题">
+          <span id="save-state" class="save-state">已保存</span>
+        </div>
+        <div class="view-actions" aria-hidden="true"></div>
+      </header>
+
+      <div id="find-panel" class="find-panel" aria-hidden="true">
+        <input id="find-input" placeholder="查找" autocomplete="off">
+        <span id="find-count">0 / 0</span>
+        <button id="find-prev" title="上一个">↑</button>
+        <button id="find-next" title="下一个">↓</button>
+        <button id="replace-toggle">替换</button>
+        <button id="find-close" title="关闭"><svg><use href="#i-close"/></svg></button>
+        <div id="replace-row" class="replace-row">
+          <input id="replace-input" placeholder="替换为" autocomplete="off">
+          <button id="replace-one">替换</button>
+          <button id="replace-all">全部替换</button>
+        </div>
+      </div>
+
+      <div id="toolbar" class="format-bar" aria-label="格式工具栏">
+        <button data-command="bold" data-tooltip="加粗（⌘B）" aria-label="加粗（⌘B）"><b aria-hidden="true">B</b></button>
+        <button data-command="italic" data-tooltip="斜体（⌘I）" aria-label="斜体（⌘I）"><i aria-hidden="true">I</i></button>
+        <button data-command="strike" data-tooltip="删除线" aria-label="删除线"><s aria-hidden="true">S</s></button>
+        <button data-command="code" data-tooltip="行内代码" aria-label="行内代码"><span aria-hidden="true">&lt;/&gt;</span></button>
+        <span class="bar-separator"></span>
+        <button data-command="quote" data-tooltip="引用" aria-label="引用"><span aria-hidden="true">❝</span></button>
+        <button data-command="ul" data-tooltip="无序列表" aria-label="无序列表"><span aria-hidden="true">☷</span></button>
+        <button data-command="ol" data-tooltip="有序列表" aria-label="有序列表"><span aria-hidden="true">1.</span></button>
+        <button data-command="task" data-tooltip="任务列表" aria-label="任务列表"><span aria-hidden="true">☑</span></button>
+        <button data-command="link" data-tooltip="链接（⌘K）" aria-label="链接（⌘K）"><span aria-hidden="true">↗</span></button>
+        <button data-command="table" data-tooltip="表格" aria-label="表格"><span aria-hidden="true">▦</span></button>
+        <button data-command="hr" data-tooltip="分隔线" aria-label="分隔线"><span aria-hidden="true">—</span></button>
+        <span class="bar-separator"></span>
+        <button id="source-toggle" class="mode-button" data-tooltip="源代码模式（⌘/）" aria-label="源代码模式（⌘/）"><svg aria-hidden="true"><use href="#i-code"/></svg></button>
+        <button id="export-button" class="mode-button export-action" data-tooltip="导出文档" aria-label="导出文档"><svg aria-hidden="true"><use href="#i-export"/></svg></button>
+      </div>
+      <div id="toolbar-tooltip" class="toolbar-tooltip" role="tooltip" aria-hidden="true"></div>
+
+      <div id="editor-scroll" class="editor-scroll">
+        <article id="write" class="write" contenteditable="true" spellcheck="true" aria-label="Markdown 编辑器"></article>
+        <textarea id="source-editor" class="source-editor" spellcheck="false" aria-label="Markdown 源代码"></textarea>
+      </div>
+
+      <footer id="statusbar" class="statusbar">
+        <button id="focus-button">专注模式</button>
+        <button id="typewriter-button">打字机模式</button>
+        <span class="status-spacer"></span>
+        <span id="line-count">0 行</span>
+        <button id="word-count">0 字</button>
+      </footer>
+    </section>
+  </main>
+
+  <div id="quick-open" class="modal-backdrop" aria-hidden="true">
+    <section class="quick-open-card" role="dialog" aria-modal="true" aria-label="快速打开">
+      <div class="quick-open-input"><svg><use href="#i-search"/></svg><input id="quick-open-input" placeholder="按文件名搜索" autocomplete="off"><kbd>esc</kbd></div>
+      <div class="quick-open-label">文件结果</div>
+      <div id="quick-open-results" class="quick-open-results"></div>
+    </section>
+  </div>
+
+  <div id="preferences" class="modal-backdrop" aria-hidden="true">
+    <section class="preferences-card" role="dialog" aria-modal="true" aria-label="偏好设置">
+      <header><div><small>MORY</small><h2>偏好设置</h2></div><button id="preferences-close"><svg><use href="#i-close"/></svg></button></header>
+      <div class="setting-row"><div><strong>外观</strong><p>选择编辑器使用的颜色主题</p></div><select id="theme-select"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></div>
+      <div class="setting-row"><div><strong>文档主题</strong><p>独立 CSS 控制正文渲染和导出样式</p></div><select id="document-theme-select"><option value="yuluo-css">Yuluo CSS</option><option value="github">GitHub</option><option value="whitey">Whitey</option><option value="newsprint">Newsprint</option><option value="pixyll">Pixyll</option><option value="gothic">Gothic</option><option value="night">Night</option></select></div>
+      <div class="setting-row"><div><strong>编辑器宽度</strong><p>控制正文最大行宽</p></div><select id="width-select"><option value="700">窄</option><option value="820" selected>标准</option><option value="980">宽</option></select></div>
+      <div class="setting-row"><div><strong>显示状态栏</strong><p>展示行数、字数与模式开关</p></div><label class="switch"><input id="status-toggle" type="checkbox" checked><span></span></label></div>
+      <div class="setting-row"><div><strong>拼写检查</strong><p>使用系统拼写检查能力</p></div><label class="switch"><input id="spell-toggle" type="checkbox" checked><span></span></label></div>
+    </section>
+  </div>
+
+  <div id="export-dialog" class="modal-backdrop" aria-hidden="true">
+    <section class="export-card" role="dialog" aria-modal="true" aria-label="导出文档">
+      <header><div><small>EXPORT</small><h2>导出文档</h2></div><button id="export-close"><svg><use href="#i-close"/></svg></button></header>
+      <div class="export-form">
+        <label><span>格式</span><select id="export-format"><option value="pdf">PDF 文档</option><option value="html">HTML 网页</option><option value="png">PNG 长图</option><option value="jpeg">JPEG 图片</option></select></label>
+        <label><span>导出主题</span><select id="export-theme"><option value="current">使用当前主题</option><option value="yuluo-css">Yuluo CSS</option><option value="github">GitHub</option><option value="whitey">Whitey</option><option value="newsprint">Newsprint</option><option value="pixyll">Pixyll</option><option value="gothic">Gothic</option><option value="night">Night</option></select></label>
+        <label id="paper-setting"><span>纸张</span><select id="export-paper"><option value="A4">A4</option><option value="Letter">US Letter</option><option value="Legal">US Legal</option></select></label>
+        <label id="image-width-setting" hidden><span>图片宽度</span><select id="export-width"><option value="640">640 px</option><option value="900" selected>900 px</option><option value="1200">1200 px</option><option value="1600">1600 px</option></select></label>
+        <label class="check-setting"><span><strong>保留主题背景</strong><small>PDF 与图片包含当前主题的纸张颜色</small></span><input id="export-background" type="checkbox" checked></label>
+      </div>
+      <footer><span id="export-hint">HTML、PDF 不需要 Pandoc</span><button id="export-confirm">选择位置并导出</button></footer>
+    </section>
+  </div>
+
+  <div id="toast" class="toast" role="status"></div>
+  <script src="vendor/mermaid.min.js"></script>
+  <script src="vendor/highlight.min.js"></script>
+  <script src="app.bundle.js"></script>
+</body>
+</html>

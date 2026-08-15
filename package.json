@@ -1,0 +1,92 @@
+{
+  "name": "mory-markdown-editor",
+  "version": "0.1.0",
+  "author": "Mory Contributors",
+  "private": true,
+  "description": "原生宿主与 Web 编辑器结合的跨平台 Markdown 编辑器",
+  "main": "Electron/main.cjs",
+  "type": "module",
+  "scripts": {
+    "build:web": "node scripts/build-web.mjs",
+    "predev": "npm run build:web",
+    "dev": "electron .",
+    "test": "node --test --experimental-test-coverage",
+    "pretest:mac-web": "npm run build:web",
+    "test:mac-web": "bash scripts/test-macos-web.sh",
+    "pretest:mac-typing": "npm run build:web",
+    "test:mac-typing": "bash scripts/test-macos-typing.sh",
+    "test:mac-ime": "bash scripts/test-macos-ime.sh",
+    "test:mac-drag": "bash scripts/test-macos-drag.sh",
+    "pretest:e2e": "npm run build:web",
+    "test:e2e": "electron Tests/electron-export.cjs && electron Tests/button-interactions.cjs",
+    "precheck": "npm run build:web",
+    "check": "node scripts/build-web.mjs --check && node --check Electron/main.cjs && node --check Electron/preload.cjs && node --check Sources/Mory/Web/app.js && node --check Sources/Mory/Web/markdown.js && node --check Sources/Mory/Web/app.bundle.js && node --check Tests/electron-export.cjs && node --check Tests/button-interactions.cjs",
+    "prebuild:mac": "npm run build:web",
+    "build:mac": "bash scripts/build-macos.sh",
+    "prepack:mac:electron": "npm run build:web",
+    "pack:mac:electron": "electron-builder --mac dmg",
+    "prepack:win": "npm run build:web",
+    "pack:win": "electron-builder --win nsis portable --x64",
+    "prepack:win:portable": "npm run build:web",
+    "pack:win:portable": "electron-builder --win portable --x64",
+    "prepack:win:arm64": "npm run build:web",
+    "pack:win:arm64": "electron-builder --win nsis portable --arm64"
+  },
+  "devDependencies": {
+    "@highlightjs/cdn-assets": "11.11.1",
+    "electron": "43.4.0",
+    "electron-builder": "^26.0.12",
+    "mermaid": "11.16.1"
+  },
+  "build": {
+    "appId": "io.mory.editor",
+    "productName": "Mory",
+    "asar": true,
+    "files": [
+      "Electron/**/*",
+      "Sources/Mory/Web/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist/windows"
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "artifactName": "Mory-${version}-${arch}.${ext}"
+    },
+    "mac": {
+      "icon": "build/icon.png",
+      "target": "dmg",
+      "category": "public.app-category.productivity",
+      "artifactName": "Mory-Electron-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "artifactName": "Mory-Setup-${version}-${arch}.${ext}",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Mory"
+    },
+    "portable": {
+      "artifactName": "Mory-Portable-${version}-${arch}.${ext}"
+    },
+    "fileAssociations": [
+      {
+        "ext": [
+          "md",
+          "markdown",
+          "mmd",
+          "mdown",
+          "mkd"
+        ],
+        "name": "Markdown 文档",
+        "role": "Editor"
+      }
+    ]
+  }
+}
