@@ -2,7 +2,7 @@
 
 ## 目标
 
-项目使用 Makefile 封装本地验证和打包命令。仓库默认不启用远端 CI/CD，只在 `docs/examples/build-binaries.yml` 保留可选模板。
+项目使用同一组 Makefile 目标封装本地命令和 GitHub Actions 命令。工作流负责构建、测试和上传 Actions 制品，不创建 GitHub Release，也不提交代码。
 
 ## 本地命令
 
@@ -29,9 +29,9 @@ make package-windows
 
 `package-macos` 生成当前 macOS 构建机架构的 `Mory.app`。`package-windows` 同时生成 x64 和 ARM64 的安装版与便携版。
 
-## 可选的 GitHub Actions 模板
+## GitHub Actions
 
-模板文件为 `docs/examples/build-binaries.yml`，不会被 GitHub 自动识别或执行。未来得到明确授权后，可将模板复制到 `.github/workflows/build-binaries.yml`。模板支持手动触发、`main` 分支推送和拉取请求，并执行以下任务：
+工作流文件为 `.github/workflows/build-binaries.yml`。工作流支持手动触发、`main` 分支推送和拉取请求，并执行以下任务：
 
 - `macos-15` 生成 ARM64 应用包。
 - `macos-15-intel` 生成 x64 应用包。
@@ -68,10 +68,10 @@ make package-windows
 
 当前会话没有提供 Sequential Thinking、Context7、Fetch 和 Playwright MCP。实施过程改用本地 `rg`、`apply_patch`、GNU Make、Electron 端到端测试、WKWebView 冒烟测试，以及 GitHub 官方公开资料检索。降级只影响调研和浏览器自动化工具入口，不影响生成的应用代码、工作流或制品。
 
-本地 macOS 环境已验证 ARM64 应用和 Windows 双架构交叉打包。GitHub Actions 模板没有放入启用目录，因此不会产生远端运行记录。Windows 安装、文件关联和卸载仍需在真实 Windows 机器上核验。
+本地 macOS 环境已验证 ARM64 应用和 Windows 双架构交叉打包。工作流推送后由 GitHub Actions 执行首次远端验证。Windows 安装、文件关联和卸载仍需在真实 Windows 机器上核验。
 
 ## 迁移与回滚
 
 本次变更不替换现有 npm 脚本。原命令仍然可用，Makefile 只提供统一入口，因此无需迁移。
 
-如需启用远端构建，把 `docs/examples/build-binaries.yml` 复制到 `.github/workflows/build-binaries.yml`。如需移除模板，只删除示例文件即可；本地 Makefile 和已生成制品不受影响。
+如需停用远端构建，删除 `.github/workflows/build-binaries.yml`，继续直接运行 Makefile 或 `package.json` 中的 npm 脚本。删除工作流不会影响本地命令和已经生成的制品。

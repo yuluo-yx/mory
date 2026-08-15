@@ -171,11 +171,11 @@ npm run test:mac-drag
 
 第一项测试使用与原生应用相同的 WKWebView 加载方式，验证脚本初始化和核心按钮；第二项通过原生 `NSEvent` 实际输入连续中文标题和多行代码，并验证双回车退出；第三项先放置 `#`，再通过系统简体拼音和物理键码输入空格、`nihao`、候选确认与 Enter，检查标题和正文光标位置，未启用简体拼音时自动跳过；第四项需要先构建 macOS 应用，用于验证标题栏指针坐标可以实际移动原生窗口。构建流程会先生成 `app.bundle.js`。该经典脚本解决 WKWebView 在 `file://` 页面中不执行 ES module 的兼容问题。
 
-## 可选的 GitHub Actions 模板
+## GitHub Actions
 
-`docs/examples/build-binaries.yml` 保留了一份未启用的 GitHub Actions 模板。当前仓库按工程治理要求禁用远端 CI/CD，验证和打包均通过本地 Makefile 目标执行。若未来明确启用，可把模板复制到 `.github/workflows/`；启用后会生成 macOS ARM64、macOS x64、Windows x64 和 Windows ARM64 制品。
+`.github/workflows/build-binaries.yml` 使用 Makefile 目标完成验证和打包。推送到 `main`、提交拉取请求或手动触发工作流时，会生成 macOS ARM64、macOS x64、Windows x64 和 Windows ARM64 制品。制品保留 14 天，工作流不会自动发布 GitHub Release。
 
-完整命令、模板内容和启用方式见 [docs/ci-packaging.md](docs/ci-packaging.md)。
+完整命令、运行器选择依据和回滚方式见 [docs/ci-packaging.md](docs/ci-packaging.md)。
 
 最后验证日期：2026-08-15。
 
@@ -183,6 +183,7 @@ npm run test:mac-drag
 
 ```text
 Electron/                 Windows 和跨平台 Electron 宿主
+.github/workflows/        GitHub Actions 多平台打包工作流
 Sources/Mory/             macOS Swift 宿主
 Sources/Mory/Web/         共享编辑器内核
 Sources/Mory/Web/themes/  独立文档主题
