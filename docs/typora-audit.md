@@ -51,6 +51,7 @@ Markdown 文本
 - Mory 不接入 Sparkle、Sentry、AWS SDK、MathJax 和 Pandoc；Mermaid 使用锁定版本的官方运行时并离线打包。
 - 双回车退出和可选代码名称是按用户需求独立实现的交互扩展，不声称来自 Typora 的内部代码。
 - Mory 允许不兼容替换，无旧数据迁移要求。Markdown 文件仍是直接读写的 UTF-8 文本。
+- Mory 的主题 CSS 在构建时内嵌到离线运行包。该实现避免 WKWebView 从 `file://` 页面读取跨源样式表时抛出 JavaScript `SecurityError`，并保持“主题化 HTML 交给宿主导出”的职责边界。
 
 ## 验证证据
 

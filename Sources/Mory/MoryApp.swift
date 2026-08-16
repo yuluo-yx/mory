@@ -114,8 +114,9 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     private var currentFileURL: URL?
     private var currentMarkdown = ""
     private var currentDocumentName = "未命名.md"
+    private var workspaceManager: WorkspaceManager!
     private var editorReady = false
-    private var pendingDocument: [String: String]?
+    private var pendingDocument: [String: Any]?
     private var exportRenderers: [ExportRenderer] = []
     private var dragStartPointer: NSPoint?
     private var dragStartWindowOrigin: NSPoint?
@@ -135,6 +136,13 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         }
         configureMenu()
         configureWindow()
+        do {
+            workspaceManager = try WorkspaceManager()
+        } catch {
+            presentError("无法初始化工作区：\(error.localizedDescription)")
+            NSApp.terminate(nil)
+            return
+        }
         loadEditor()
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -349,8 +357,8 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         let panel = NSSavePanel()
         panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText]
         panel.nameFieldStringValue = currentFileURL?.lastPathComponent ?? currentDocumentName
+        if currentFileURL == nil { panel.directoryURL = workspaceManager.activeRoot }
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        currentFileURL = url
         writeDocument(to: url)
     }
 
@@ -358,14 +366,21 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         fetchMarkdown { [weak self] markdown in
             guard let self else { return }
             do {
-                try markdown.write(to: url, atomically: true, encoding: .utf8)
-                currentMarkdown = markdown
+                let updatedMarkdown = try workspaceManager.relocateAssets(markdown: markdown, oldURL: currentFileURL, oldName: currentDocumentName, newURL: url)
+                try updatedMarkdown.write(to: url, atomically: true, encoding: .utf8)
+                currentMarkdown = updatedMarkdown
                 currentFileURL = url
                 currentDocumentName = url.lastPathComponent
                 window.representedURL = url
                 window.title = url.lastPathComponent
                 window.isDocumentEdited = false
-                sendJSON(function: "window.Mory.didSave", value: ["path": url.path, "name": url.lastPathComponent])
+                sendJSON(function: "window.Mory.didSave", value: [
+                    "path": url.path,
+                    "name": url.lastPathComponent,
+                    "markdown": updatedMarkdown,
+                    "assets": workspaceManager.assets(for: url, markdown: updatedMarkdown)
+                ])
+                refreshWorkspace()
             } catch {
                 presentError("无法保存文件：\(error.localizedDescription)")
             }
@@ -378,13 +393,12 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         panel.canChooseDirectories = true
         guard panel.runModal() == .OK, let folder = panel.url else { return }
 
-        let keys: [URLResourceKey] = [.isRegularFileKey, .contentModificationDateKey]
-        let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys)) ?? []
-        let markdownFiles = files.filter { ["md", "markdown", "txt", "mmd"].contains($0.pathExtension.lowercased()) }
-        let payload = markdownFiles.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }.map { url -> [String: String] in
-            ["name": url.lastPathComponent, "path": url.path]
+        do {
+            _ = try workspaceManager.save(["name": folder.lastPathComponent, "provider": "local", "localPath": folder.path])
+            refreshWorkspace()
+        } catch {
+            presentError("无法设置工作区：\(error.localizedDescription)")
         }
-        sendJSON(function: "window.Mory.setFiles", value: payload)
     }
 
     @objc private func showExportDialog() {
@@ -446,7 +460,12 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     }
 
     private func sendDocument(markdown: String, url: URL) {
-        let document = ["markdown": markdown, "path": url.path, "name": url.lastPathComponent]
+        let document: [String: Any] = [
+            "markdown": markdown,
+            "path": url.path,
+            "name": url.lastPathComponent,
+            "assets": workspaceManager.assets(for: url, markdown: markdown)
+        ]
         guard editorReady else {
             pendingDocument = document
             return
@@ -472,11 +491,81 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         webView.evaluateJavaScript(source, completionHandler: nil)
     }
 
+    private func refreshWorkspace() {
+        do {
+            sendJSON(function: "window.Mory.setFiles", value: try workspaceManager.documents())
+            sendJSON(function: "window.Mory.setWorkspaceState", value: workspaceManager.state())
+        } catch {
+            presentError("无法读取工作区：\(error.localizedDescription)")
+        }
+    }
+
+    private func answerHostRequest(id: String, result: Any? = nil, error: Error? = nil) {
+        var payload: [String: Any] = ["requestId": id]
+        if let error { payload["error"] = error.localizedDescription }
+        else { payload["result"] = result ?? NSNull() }
+        sendJSON(function: "window.Mory.resolveHostRequest", value: payload)
+    }
+
+    private func handleHostRequest(id: String, method: String, arguments: [String: Any]) {
+        do {
+            switch method {
+            case "workspaceState":
+                answerHostRequest(id: id, result: workspaceManager.state())
+            case "chooseLocalWorkspace":
+                let panel = NSOpenPanel()
+                panel.canChooseFiles = false
+                panel.canChooseDirectories = true
+                panel.canCreateDirectories = true
+                guard panel.runModal() == .OK, let folder = panel.url else {
+                    answerHostRequest(id: id, result: ["canceled": true])
+                    return
+                }
+                var value: [String: Any] = [
+                    "name": arguments["name"] as? String ?? folder.lastPathComponent,
+                    "provider": "local",
+                    "localPath": folder.path
+                ]
+                if let workspaceId = arguments["id"] as? String { value["id"] = workspaceId }
+                answerHostRequest(id: id, result: try workspaceManager.save(value))
+                refreshWorkspace()
+            case "saveWorkspace":
+                guard let workspace = arguments["workspace"] as? [String: Any] else { throw workspaceError("工作区配置无效。") }
+                answerHostRequest(id: id, result: try workspaceManager.save(workspace))
+                refreshWorkspace()
+            case "activateWorkspace":
+                answerHostRequest(id: id, result: try workspaceManager.activate(arguments["id"] as? String ?? ""))
+                refreshWorkspace()
+            case "removeWorkspace":
+                answerHostRequest(id: id, result: try workspaceManager.remove(arguments["id"] as? String ?? ""))
+                refreshWorkspace()
+            case "importImage":
+                answerHostRequest(id: id, result: try workspaceManager.importImage(arguments: arguments))
+            case "syncWorkspace":
+                let action = arguments["action"] as? String == "push" ? "push" : "pull"
+                let manager = workspaceManager!
+                DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                    do {
+                        let summary = try manager.sync(action: action)
+                        DispatchQueue.main.async { self?.answerHostRequest(id: id, result: summary); self?.refreshWorkspace() }
+                    } catch {
+                        DispatchQueue.main.async { self?.answerHostRequest(id: id, error: error) }
+                    }
+                }
+            default:
+                throw workspaceError("未知宿主请求：\(method)")
+            }
+        } catch {
+            answerHostRequest(id: id, error: error)
+        }
+    }
+
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let payload = message.body as? [String: Any], let type = payload["type"] as? String else { return }
         switch type {
         case "ready":
             editorReady = true
+            refreshWorkspace()
             if let pendingDocument {
                 sendJSON(function: "window.Mory.openDocument", value: pendingDocument)
                 self.pendingDocument = nil
@@ -505,6 +594,11 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
             }
         case "export":
             if let options = payload["options"] as? [String: Any] { exportDocument(options: options) }
+        case "hostRequest":
+            if let requestId = payload["requestId"] as? String,
+               let method = payload["method"] as? String {
+                handleHostRequest(id: requestId, method: method, arguments: payload["args"] as? [String: Any] ?? [:])
+            }
         case "windowDragStart":
             if let x = (payload["screenX"] as? NSNumber)?.doubleValue,
                let y = (payload["screenY"] as? NSNumber)?.doubleValue {

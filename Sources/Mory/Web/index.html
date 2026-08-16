@@ -22,6 +22,7 @@
     <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.2 13.5a7.8 7.8 0 0 0 0-3l2-1.5-2-3.4-2.4 1A8.5 8.5 0 0 0 14.2 5L14 2.5h-4L9.8 5a8.5 8.5 0 0 0-2.6 1.5l-2.4-1-2 3.4 2 1.5a7.8 7.8 0 0 0 0 3l-2 1.5 2 3.4 2.4-1A8.5 8.5 0 0 0 9.8 19l.2 2.5h4l.2-2.5a8.5 8.5 0 0 0 2.6-1.5l2.4 1 2-3.4z"/></symbol>
     <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
     <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m8 10 4 4 4-4"/></symbol>
+    <symbol id="i-sync" viewBox="0 0 24 24"><path d="M20 7h-6V1"/><path d="M20 7a9 9 0 0 0-15.5-2M4 17h6v6"/><path d="M4 17a9 9 0 0 0 15.5 2"/></symbol>
   </svg>
 
   <main id="app" class="app-shell">
@@ -35,7 +36,6 @@
       <section id="files-panel" class="side-panel is-active" aria-label="文件">
         <div class="panel-head">
           <span id="folder-name">工作区</span>
-          <button class="icon-button" id="quick-open-button" title="快速打开（⌘P）"><svg><use href="#i-search"/></svg></button>
         </div>
         <div id="file-list" class="file-list">
           <button class="file-item is-active" data-path="">
@@ -53,7 +53,7 @@
 
       <footer class="sidebar-footer">
         <button class="icon-button" id="new-file-button" title="新建文档（⌘N）"><svg><use href="#i-plus"/></svg></button>
-        <span class="workspace-status">本地工作区</span>
+        <button class="workspace-status" id="workspace-button" title="切换或配置工作区">本地工作区</button>
         <button class="icon-button" id="settings-button" title="偏好设置"><svg><use href="#i-settings"/></svg></button>
       </footer>
     </aside>
@@ -127,11 +127,32 @@
   <div id="preferences" class="modal-backdrop" aria-hidden="true">
     <section class="preferences-card" role="dialog" aria-modal="true" aria-label="偏好设置">
       <header><div><small>MORY</small><h2>偏好设置</h2></div><button id="preferences-close"><svg><use href="#i-close"/></svg></button></header>
-      <div class="setting-row"><div><strong>外观</strong><p>选择编辑器使用的颜色主题</p></div><select id="theme-select"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></div>
-      <div class="setting-row"><div><strong>文档主题</strong><p>独立 CSS 控制正文渲染和导出样式</p></div><select id="document-theme-select"><option value="yuluo-css">Yuluo CSS</option><option value="github">GitHub</option><option value="whitey">Whitey</option><option value="newsprint">Newsprint</option><option value="pixyll">Pixyll</option><option value="gothic">Gothic</option><option value="night">Night</option></select></div>
-      <div class="setting-row"><div><strong>编辑器宽度</strong><p>控制正文最大行宽</p></div><select id="width-select"><option value="700">窄</option><option value="820" selected>标准</option><option value="980">宽</option></select></div>
-      <div class="setting-row"><div><strong>显示状态栏</strong><p>展示行数、字数与模式开关</p></div><label class="switch"><input id="status-toggle" type="checkbox" checked><span></span></label></div>
-      <div class="setting-row"><div><strong>拼写检查</strong><p>使用系统拼写检查能力</p></div><label class="switch"><input id="spell-toggle" type="checkbox" checked><span></span></label></div>
+      <div class="preferences-scroll">
+        <section class="workspace-settings" aria-label="工作区与存储插件">
+          <div class="settings-section-head"><div><strong>工作区与存储</strong><p>文稿在本地目录编辑，远端插件负责同步</p></div><button id="workspace-add" class="quiet-button">新增</button></div>
+          <div class="setting-row compact"><div><strong>当前工作区</strong><p id="workspace-path">尚未连接宿主</p></div><select id="workspace-select"></select></div>
+          <div class="workspace-actions">
+            <button id="workspace-open-local" class="quiet-button">选择本地目录</button>
+            <button id="workspace-pull" class="quiet-button"><svg><use href="#i-sync"/></svg>拉取</button>
+            <button id="workspace-push" class="quiet-button"><svg><use href="#i-sync"/></svg>推送</button>
+          </div>
+          <form id="workspace-form" class="workspace-form" hidden>
+            <div class="workspace-form-title"><strong id="workspace-form-heading">新增工作区</strong><button type="button" id="workspace-form-close" aria-label="关闭"><svg><use href="#i-close"/></svg></button></div>
+            <div class="workspace-grid">
+              <label><span>名称</span><input id="workspace-name" required placeholder="例如：博客仓库"></label>
+              <label><span>存储插件</span><select id="workspace-provider"><option value="local">本地目录</option><option value="github">GitHub 仓库</option><option value="s3">Amazon S3</option><option value="s4">S4 / S3 兼容</option><option value="oss">阿里云 OSS</option><option value="sftp">SFTP Server</option></select></label>
+            </div>
+            <div id="workspace-provider-fields" class="workspace-grid"></div>
+            <div class="workspace-form-footer"><button type="button" id="workspace-remove" class="danger-button">删除工作区</button><span></span><button type="submit" class="primary-button">保存并启用</button></div>
+          </form>
+        </section>
+        <div class="settings-section-label">编辑器</div>
+        <div class="setting-row"><div><strong>外观</strong><p>选择编辑器使用的颜色主题</p></div><select id="theme-select"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></div>
+        <div class="setting-row"><div><strong>文档主题</strong><p>独立 CSS 控制正文渲染和导出样式</p></div><select id="document-theme-select"><option value="yuluo-css">Yuluo CSS</option><option value="github">GitHub</option><option value="whitey">Whitey</option><option value="newsprint">Newsprint</option><option value="pixyll">Pixyll</option><option value="gothic">Gothic</option><option value="night">Night</option></select></div>
+        <div class="setting-row"><div><strong>编辑器宽度</strong><p>控制正文最大行宽</p></div><select id="width-select"><option value="700">窄</option><option value="820" selected>标准</option><option value="980">宽</option></select></div>
+        <div class="setting-row"><div><strong>显示状态栏</strong><p>展示行数、字数与模式开关</p></div><label class="switch"><input id="status-toggle" type="checkbox" checked><span></span></label></div>
+        <div class="setting-row"><div><strong>拼写检查</strong><p>使用系统拼写检查能力</p></div><label class="switch"><input id="spell-toggle" type="checkbox" checked><span></span></label></div>
+      </div>
     </section>
   </div>
 

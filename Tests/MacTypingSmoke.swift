@@ -44,14 +44,15 @@ final class MacTypingSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegat
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         focusEmptyEditor { [weak self] in
             guard let self else { return }
-            for _ in 0..<2 {
-                sendText("#")
-                sendKey(" ", keyCode: 49)
-                sendText("你好")
-                sendKey("\r", keyCode: 36)
-            }
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            var actions: [() -> Void] = []
+            for _ in 0..<2 {
+                appendText("#", to: &actions)
+                actions.append { self.sendKey(" ", keyCode: 49) }
+                appendText("你好", to: &actions)
+                actions.append { self.sendKey("\r", keyCode: 36) }
+            }
+            perform(actions) {
                 self.captureHeadingThenTestFence()
             }
         }
@@ -120,14 +121,15 @@ final class MacTypingSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegat
                 return
             }
             focusEmptyEditor {
-                self.sendText("```go")
-                self.sendKey("\r", keyCode: 36)
-                self.sendText("fmt.Println(one)")
-                self.sendKey("\r", keyCode: 36)
-                self.sendText("fmt.Println(two)")
-                self.sendKey("\r", keyCode: 36)
-                self.sendKey("\r", keyCode: 36)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                var actions: [() -> Void] = []
+                self.appendText("```go", to: &actions)
+                actions.append { self.sendKey("\r", keyCode: 36) }
+                self.appendText("fmt.Println(one)", to: &actions)
+                actions.append { self.sendKey("\r", keyCode: 36) }
+                self.appendText("fmt.Println(two)", to: &actions)
+                actions.append { self.sendKey("\r", keyCode: 36) }
+                actions.append { self.sendKey("\r", keyCode: 36) }
+                self.perform(actions) {
                     self.verify(heading: heading)
                 }
             }
@@ -167,9 +169,23 @@ final class MacTypingSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegat
         }
     }
 
-    private func sendText(_ text: String) {
+    private func appendText(_ text: String, to actions: inout [() -> Void]) {
         for character in text {
-            sendKey(String(character), keyCode: 0)
+            let value = String(character)
+            actions.append { [weak self] in self?.sendKey(value, keyCode: 0) }
+        }
+    }
+
+    private func perform(_ actions: [() -> Void], index: Int = 0, completion: @escaping () -> Void) {
+        guard index < actions.count else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                completion()
+            }
+            return
+        }
+        actions[index]()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { [weak self] in
+            self?.perform(actions, index: index + 1, completion: completion)
         }
     }
 

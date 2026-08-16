@@ -1,6 +1,8 @@
 /* 此文件由 scripts/build-web.mjs 生成，请勿直接编辑。
  * 经典脚本用于兼容 file:// 下不执行 ES module 的 macOS WKWebView。 */
 
+globalThis.__MORY_THEME_CSS__ = {"yuluo-css":"/*\n * Mory 的 Yuluo CSS 文档主题。\n * 依据用户现有 Typora yuluo-css.css 的正文配色与排版迁移，已移除\n * Typora 专属选择器、远程字体和未明确授权的字体文件，保证离线跨平台使用。\n */\n[data-doc-theme=\"yuluo-css\"] .editor-scroll { background: #fff; }\n\n[data-doc-theme=\"yuluo-css\"] .write {\n  color: #333;\n  font-family: \"Hannotate SC\", \"Segoe Print\", \"Microsoft YaHei UI\", \"PingFang SC\", \"Open Sans\", \"Helvetica Neue\", Arial, sans-serif;\n  font-size: 16px;\n  line-height: 1.6;\n}\n\n[data-doc-theme=\"yuluo-css\"] .write h1,\n[data-doc-theme=\"yuluo-css\"] .write h2,\n[data-doc-theme=\"yuluo-css\"] .write h3,\n[data-doc-theme=\"yuluo-css\"] .write h4,\n[data-doc-theme=\"yuluo-css\"] .write h5,\n[data-doc-theme=\"yuluo-css\"] .write h6 {\n  margin-top: 1rem;\n  margin-bottom: 1rem;\n  font-family: inherit;\n  font-weight: 700;\n  line-height: 1.4;\n}\n\n[data-doc-theme=\"yuluo-css\"] .write h1 {\n  color: #0077bb;\n  font-size: 2.25em;\n  line-height: 1.2;\n  border-color: #eee;\n}\n\n[data-doc-theme=\"yuluo-css\"] .write h2 {\n  color: #6a5acd;\n  font-size: 1.75em;\n  line-height: 1.225;\n  border-color: #eee;\n}\n\n[data-doc-theme=\"yuluo-css\"] .write h3 { color: rgb(26, 143, 55); font-size: 1.5em; line-height: 1.43; }\n[data-doc-theme=\"yuluo-css\"] .write h4,\n[data-doc-theme=\"yuluo-css\"] .write h5 { color: #87cefa; }\n[data-doc-theme=\"yuluo-css\"] .write h4 { font-size: 1.25em; }\n[data-doc-theme=\"yuluo-css\"] .write h5 { font-size: 1em; }\n[data-doc-theme=\"yuluo-css\"] .write h6 { color: #777; font-size: 1em; }\n[data-doc-theme=\"yuluo-css\"] .write strong { color: #40e0d0; }\n[data-doc-theme=\"yuluo-css\"] .write a { color: #4183c4; }\n[data-doc-theme=\"yuluo-css\"] .write ::selection { background: #d1ff79; }\n[data-doc-theme=\"yuluo-css\"] .write mark { padding: 0; background: #fff; color: #db3f1e; font-weight: 700; }\n\n[data-doc-theme=\"yuluo-css\"] .write code,\n[data-doc-theme=\"yuluo-css\"] .write pre {\n  border-color: #e7eaed;\n  border-radius: 3px;\n  background: #f8f8f8;\n}\n\n[data-doc-theme=\"yuluo-css\"] .write code { background: #f3f4f4; }\n[data-doc-theme=\"yuluo-css\"] .write pre code { background: transparent; }\n[data-doc-theme=\"yuluo-css\"] .write blockquote { border-color: #dfe2e5; color: #777; }\n[data-doc-theme=\"yuluo-css\"] .write hr { border-color: #e7e7e7; }\n\n[data-doc-theme=\"yuluo-css\"] .write table { table-layout: fixed; word-break: break-word; }\n[data-doc-theme=\"yuluo-css\"] .write thead { white-space: nowrap; background: #f8f8f8; }\n[data-doc-theme=\"yuluo-css\"] .write th,\n[data-doc-theme=\"yuluo-css\"] .write td { border-color: #dfe2e5; }\n[data-doc-theme=\"yuluo-css\"] .write tbody tr:nth-child(even) { background: #effaff; }\n[data-doc-theme=\"yuluo-css\"] .write tbody tr:nth-child(odd) { background: #fff1f6; }\n[data-doc-theme=\"yuluo-css\"] .write tbody tr:nth-child(1) { background: #8ae1fc; }\n[data-doc-theme=\"yuluo-css\"] .write tbody tr:nth-child(2) { background: #efa7a7; }\n[data-doc-theme=\"yuluo-css\"] .write tbody tr:nth-child(3) { background: #ffd972; }\n[data-doc-theme=\"yuluo-css\"] .write tbody tr:nth-child(4) { background: #fcf5fc; }\n[data-doc-theme=\"yuluo-css\"] .write tbody tr:nth-child(5) { background: #f3f1ec; }\n[data-doc-theme=\"yuluo-css\"] .write tbody tr:nth-child(6) { background: #ccecd6; }\n[data-doc-theme=\"yuluo-css\"] .write tbody tr:nth-child(7) { background: #c2dda6; }\n[data-doc-theme=\"yuluo-css\"] .write tbody tr:nth-child(8) { background: #c9af98; }\n[data-doc-theme=\"yuluo-css\"] .write tbody tr:nth-child(9) { background: #f5e5fc; }\n[data-doc-theme=\"yuluo-css\"] .write tbody tr:nth-child(10) { background: #ed8a63; }\n[data-doc-theme=\"yuluo-css\"] .write input[type=\"checkbox\"] { transform: scale(1.18); }\n\n[data-doc-theme=\"yuluo-css\"] .write .hljs-comment,\n[data-doc-theme=\"yuluo-css\"] .write .hljs-quote { color: #6a737d; font-style: italic; }\n[data-doc-theme=\"yuluo-css\"] .write .hljs-keyword,\n[data-doc-theme=\"yuluo-css\"] .write .hljs-selector-tag,\n[data-doc-theme=\"yuluo-css\"] .write .hljs-type { color: #6a5acd; font-weight: 600; }\n[data-doc-theme=\"yuluo-css\"] .write .hljs-title,\n[data-doc-theme=\"yuluo-css\"] .write .hljs-section,\n[data-doc-theme=\"yuluo-css\"] .write .hljs-function { color: #0077bb; }\n[data-doc-theme=\"yuluo-css\"] .write .hljs-string,\n[data-doc-theme=\"yuluo-css\"] .write .hljs-attr,\n[data-doc-theme=\"yuluo-css\"] .write .hljs-symbol { color: #1a8f37; }\n[data-doc-theme=\"yuluo-css\"] .write .hljs-number,\n[data-doc-theme=\"yuluo-css\"] .write .hljs-literal,\n[data-doc-theme=\"yuluo-css\"] .write .hljs-built_in { color: #b4654d; }\n[data-doc-theme=\"yuluo-css\"] .write .hljs-variable,\n[data-doc-theme=\"yuluo-css\"] .write .hljs-params { color: #333; }\n\n@media print {\n  [data-doc-theme=\"yuluo-css\"] .write { font-size: 13px; }\n  [data-doc-theme=\"yuluo-css\"] .write table,\n  [data-doc-theme=\"yuluo-css\"] .write pre { break-inside: avoid; }\n}\n","github":"[data-doc-theme=\"github\"] .editor-scroll { background: #fff; }\n[data-doc-theme=\"github\"] .write {\n  color: #24292f;\n  font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", sans-serif;\n  font-size: 16px;\n  line-height: 1.65;\n}\n[data-doc-theme=\"github\"] .write h1,\n[data-doc-theme=\"github\"] .write h2,\n[data-doc-theme=\"github\"] .write h3,\n[data-doc-theme=\"github\"] .write h4 { font-family: inherit; color: #1f2328; }\n[data-doc-theme=\"github\"] .write h1,\n[data-doc-theme=\"github\"] .write h2 { border-color: #d8dee4; }\n[data-doc-theme=\"github\"] .write a { color: #0969da; }\n[data-doc-theme=\"github\"] .write code,\n[data-doc-theme=\"github\"] .write pre { background: #f6f8fa; }\n[data-doc-theme=\"github\"] .write blockquote { border-color: #d0d7de; color: #59636e; }\n[data-doc-theme=\"github\"] .write th { background: #f6f8fa; }\n[data-doc-theme=\"github\"] .write th,\n[data-doc-theme=\"github\"] .write td { border-color: #d0d7de; }\n\n","whitey":"[data-doc-theme=\"whitey\"] .editor-scroll { background: #fff; }\n[data-doc-theme=\"whitey\"] .write {\n  color: #3a3a38;\n  font-family: \"Avenir Next\", Avenir, \"PingFang SC\", sans-serif;\n  font-size: 16px;\n  line-height: 1.82;\n}\n[data-doc-theme=\"whitey\"] .write h1,\n[data-doc-theme=\"whitey\"] .write h2,\n[data-doc-theme=\"whitey\"] .write h3 { border: 0; font-family: inherit; font-weight: 500; letter-spacing: .02em; }\n[data-doc-theme=\"whitey\"] .write h1 { text-align: center; font-size: 2.25em; }\n[data-doc-theme=\"whitey\"] .write h2 { margin-top: 2.2em; font-size: 1.42em; }\n[data-doc-theme=\"whitey\"] .write a { color: #4183a8; border: 0; }\n[data-doc-theme=\"whitey\"] .write code,\n[data-doc-theme=\"whitey\"] .write pre { background: #f5f5f3; }\n[data-doc-theme=\"whitey\"] .write blockquote { border-color: #d9d9d5; color: #8a8a85; }\n\n","newsprint":"[data-doc-theme=\"newsprint\"] .editor-scroll { background: #f7f4ed; }\n[data-doc-theme=\"newsprint\"] .write {\n  color: #2d2b27;\n  font-family: \"Iowan Old Style\", \"Songti SC\", Georgia, serif;\n  font-size: 18px;\n  line-height: 1.78;\n}\n[data-doc-theme=\"newsprint\"] .write h1,\n[data-doc-theme=\"newsprint\"] .write h2,\n[data-doc-theme=\"newsprint\"] .write h3 { border: 0; color: #191816; font-family: Georgia, \"Songti SC\", serif; font-weight: 700; }\n[data-doc-theme=\"newsprint\"] .write h1 { text-align: center; font-size: 2.4em; }\n[data-doc-theme=\"newsprint\"] .write h1::after { content: \"\"; display: block; width: 54px; margin: .5em auto 0; border-bottom: 3px double #8d877b; }\n[data-doc-theme=\"newsprint\"] .write h2 { font-size: 1.55em; }\n[data-doc-theme=\"newsprint\"] .write a { color: #7c4935; border-color: #bba295; }\n[data-doc-theme=\"newsprint\"] .write code,\n[data-doc-theme=\"newsprint\"] .write pre,\n[data-doc-theme=\"newsprint\"] .write th { background: #ebe6dc; }\n[data-doc-theme=\"newsprint\"] .write blockquote { border-color: #9d9587; color: #6d685f; font-style: italic; }\n[data-doc-theme=\"newsprint\"] .write th,\n[data-doc-theme=\"newsprint\"] .write td { border-color: #c9c1b3; }\n\n","pixyll":"[data-doc-theme=\"pixyll\"] .editor-scroll { background: #fffdf9; }\n[data-doc-theme=\"pixyll\"] .write {\n  color: #444;\n  font-family: \"Iowan Old Style\", Georgia, \"Songti SC\", serif;\n  font-size: 17px;\n  line-height: 1.75;\n}\n[data-doc-theme=\"pixyll\"] .write h1,\n[data-doc-theme=\"pixyll\"] .write h2,\n[data-doc-theme=\"pixyll\"] .write h3 { border: 0; color: #333; font-family: \"Avenir Next\", \"PingFang SC\", sans-serif; font-weight: 700; }\n[data-doc-theme=\"pixyll\"] .write h1 { color: #cf4944; font-size: 2.25em; }\n[data-doc-theme=\"pixyll\"] .write h2 { color: #c14e4a; font-size: 1.55em; }\n[data-doc-theme=\"pixyll\"] .write a { color: #d04f4a; border-color: #e8aaa7; }\n[data-doc-theme=\"pixyll\"] .write code,\n[data-doc-theme=\"pixyll\"] .write pre,\n[data-doc-theme=\"pixyll\"] .write th { background: #f8eeea; }\n[data-doc-theme=\"pixyll\"] .write blockquote { border-color: #e5aaa6; color: #796c67; }\n\n","gothic":"[data-doc-theme=\"gothic\"] .editor-scroll { background: #efeee9; }\n[data-doc-theme=\"gothic\"] .write {\n  color: #20201f;\n  font-family: \"Baskerville\", \"Songti SC\", Georgia, serif;\n  font-size: 18px;\n  line-height: 1.72;\n}\n[data-doc-theme=\"gothic\"] .write h1,\n[data-doc-theme=\"gothic\"] .write h2,\n[data-doc-theme=\"gothic\"] .write h3 { border-color: #2b2b29; color: #111; font-family: \"Avenir Next Condensed\", \"PingFang SC\", sans-serif; font-weight: 800; letter-spacing: .045em; text-transform: uppercase; }\n[data-doc-theme=\"gothic\"] .write h1 { border: 3px solid #222; padding: .35em .5em; text-align: center; }\n[data-doc-theme=\"gothic\"] .write h2 { border-bottom: 2px solid #222; }\n[data-doc-theme=\"gothic\"] .write a { color: #222; border-bottom: 2px solid #777; }\n[data-doc-theme=\"gothic\"] .write code,\n[data-doc-theme=\"gothic\"] .write pre,\n[data-doc-theme=\"gothic\"] .write th { background: #deddd7; }\n[data-doc-theme=\"gothic\"] .write blockquote { border-color: #222; color: #555; }\n[data-doc-theme=\"gothic\"] .write th,\n[data-doc-theme=\"gothic\"] .write td { border-color: #555; }\n\n","night":"[data-doc-theme=\"night\"] .editor-scroll { background: #1f2328; }\n[data-doc-theme=\"night\"] .write { color: #d7dce2; font-family: \"Avenir Next\", \"PingFang SC\", sans-serif; font-size: 16px; line-height: 1.75; }\n[data-doc-theme=\"night\"] .write h1,\n[data-doc-theme=\"night\"] .write h2,\n[data-doc-theme=\"night\"] .write h3,\n[data-doc-theme=\"night\"] .write h4 { color: #f0f3f6; font-family: inherit; border-color: #404750; }\n[data-doc-theme=\"night\"] .write a { color: #78b7e4; border-color: #416b89; }\n[data-doc-theme=\"night\"] .write code,\n[data-doc-theme=\"night\"] .write pre,\n[data-doc-theme=\"night\"] .write th { background: #292f36; color: #e7ebef; }\n[data-doc-theme=\"night\"] .write blockquote { border-color: #53606c; color: #9ca7b1; }\n[data-doc-theme=\"night\"] .write th,\n[data-doc-theme=\"night\"] .write td { border-color: #414851; }\n[data-doc-theme=\"night\"] .write hr { border-color: #414851; }\n[data-doc-theme=\"night\"] .write .hljs-comment,\n[data-doc-theme=\"night\"] .write .hljs-quote { color: #8b949e; }\n[data-doc-theme=\"night\"] .write .hljs-keyword,\n[data-doc-theme=\"night\"] .write .hljs-selector-tag,\n[data-doc-theme=\"night\"] .write .hljs-type { color: #ff7b72; }\n[data-doc-theme=\"night\"] .write .hljs-title,\n[data-doc-theme=\"night\"] .write .hljs-section,\n[data-doc-theme=\"night\"] .write .hljs-function { color: #d2a8ff; }\n[data-doc-theme=\"night\"] .write .hljs-string,\n[data-doc-theme=\"night\"] .write .hljs-attr,\n[data-doc-theme=\"night\"] .write .hljs-symbol { color: #a5d6ff; }\n[data-doc-theme=\"night\"] .write .hljs-number,\n[data-doc-theme=\"night\"] .write .hljs-literal,\n[data-doc-theme=\"night\"] .write .hljs-built_in { color: #79c0ff; }\n"};
+
 const blockStart = /^(#{1,6}\s|>|[-*+]\s|\d+[.)]\s|```|~~~| {0,3}([-*_])(?:\s*\2){2,}\s*$)/;
 
 function escapeHTML(value) {
@@ -308,7 +310,10 @@ const state = {
   zoom: 1,
   titleTouched: false,
   documentTheme: "yuluo-css",
-  themeCSS: new Map()
+  themeCSS: new Map(),
+  workspaces: [],
+  activeWorkspaceId: "",
+  editingWorkspaceId: ""
 };
 
 let changeTimer;
@@ -320,6 +325,8 @@ let windowDragFrame = 0;
 let pendingCodeExit = null;
 let recentCompositionCommit = null;
 let activeComposition = null;
+let hostRequestSequence = 0;
+const pendingHostRequests = new Map();
 const caretMarker = "\u200b";
 const renderCaretMarker = "\ue000";
 const doubleEnterWindow = 650;
@@ -330,6 +337,29 @@ function bridge(payload) {
   } else {
     window.moryNative?.send(payload);
   }
+}
+
+function hostRequest(method, args = {}) {
+  if (window.moryNative?.request) return window.moryNative.request(method, args);
+  if (!window.webkit?.messageHandlers?.mory) return Promise.reject(new Error("当前环境没有桌面宿主。"));
+  const requestId = `host-${++hostRequestSequence}`;
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      pendingHostRequests.delete(requestId);
+      reject(new Error("宿主请求超时。"));
+    }, 10 * 60 * 1000);
+    pendingHostRequests.set(requestId, { resolve, reject, timer });
+    bridge({ type: "hostRequest", requestId, method, args });
+  });
+}
+
+function resolveHostRequest(payload = {}) {
+  const pending = pendingHostRequests.get(payload.requestId);
+  if (!pending) return;
+  clearTimeout(pending.timer);
+  pendingHostRequests.delete(payload.requestId);
+  if (payload.error) pending.reject(new Error(String(payload.error)));
+  else pending.resolve(payload.result);
 }
 
 function toast(message) {
@@ -360,6 +390,7 @@ function renderDocument(document, announce = false) {
   state.titleTouched = false;
   sourceEditor.value = state.markdown;
   write.innerHTML = markdownToHTML(state.markdown) || "<p><br></p>";
+  applyDocumentAssets(write, document);
   highlightCodeBlocks(write);
   $("#save-state").textContent = state.dirty ? "未保存" : "已保存";
   $("#save-state").classList.toggle("is-visible", state.dirty);
@@ -396,7 +427,8 @@ function createUntitledDocument(markdown = "", { announce = true, notifyHost = t
     name: untitledName(state.untitledSequence),
     path: "",
     markdown: String(markdown ?? ""),
-    dirty: false
+    dirty: false,
+    assets: {}
   };
   state.documents.push(document);
   activateDocument(document.id, { announce, notifyHost });
@@ -419,11 +451,22 @@ function openDocument(payload = {}) {
     document.name = name;
     document.markdown = markdown;
     document.dirty = false;
+    document.assets = payload.assets && typeof payload.assets === "object" ? payload.assets : document.assets || {};
   } else {
-    document = { id: nextDocumentId(), name, path, markdown, dirty: false };
+    document = { id: nextDocumentId(), name, path, markdown, dirty: false, assets: payload.assets && typeof payload.assets === "object" ? payload.assets : {} };
     state.documents.push(document);
   }
   activateDocument(document.id, { announce: true, notifyHost: true });
+}
+
+function applyDocumentAssets(root, document = activeDocument()) {
+  const assets = document?.assets || {};
+  root.querySelectorAll("img[src]").forEach(image => {
+    let source = image.getAttribute("src") || "";
+    try { source = decodeURI(source); } catch { /* 保留无法解码的原始路径。 */ }
+    const normalized = source.replaceAll("\\", "/");
+    if (assets[normalized]) image.src = assets[normalized];
+  });
 }
 
 function syncFromWrite() {
@@ -1125,6 +1168,165 @@ function togglePreferences(force) {
   panel.setAttribute("aria-hidden", String(!open));
 }
 
+const workspacePluginFields = {
+  local: [
+    { name: "localPath", label: "工作目录", wide: true, placeholder: "使用“选择本地目录”填写", required: true }
+  ],
+  github: [
+    { name: "repository", label: "仓库", placeholder: "owner/repository", required: true },
+    { name: "branch", label: "分支", placeholder: "main" },
+    { name: "endpoint", label: "API 地址", wide: true, placeholder: "https://api.github.com" },
+    { name: "prefix", label: "仓库内目录", placeholder: "docs" },
+    { name: "token", label: "Access Token", type: "password", placeholder: "GitHub Access Token", secret: true, required: true }
+  ],
+  s3: objectStorageFields("https://s3.amazonaws.com"),
+  s4: objectStorageFields("S3 兼容服务地址"),
+  oss: objectStorageFields("https://oss-cn-hangzhou.aliyuncs.com"),
+  sftp: [
+    { name: "host", label: "服务器", placeholder: "sftp.example.com", required: true },
+    { name: "port", label: "端口", type: "number", placeholder: "22" },
+    { name: "username", label: "用户名", required: true },
+    { name: "password", label: "密码", type: "password", secret: true },
+    { name: "privateKey", label: "私钥或私钥路径", type: "password", secret: true, wide: true },
+    { name: "knownHosts", label: "known_hosts 路径", wide: true, placeholder: "默认 ~/.ssh/known_hosts" },
+    { name: "remotePath", label: "远端目录", wide: true, placeholder: "/home/user/documents", required: true }
+  ]
+};
+
+function objectStorageFields(endpointPlaceholder) {
+  return [
+    { name: "endpoint", label: "Endpoint", wide: true, placeholder: endpointPlaceholder },
+    { name: "region", label: "区域", placeholder: "cn-hangzhou / us-east-1", required: true },
+    { name: "bucket", label: "Bucket", required: true },
+    { name: "prefix", label: "路径前缀", placeholder: "mory" },
+    { name: "accessKeyId", label: "Access Key ID", required: true },
+    { name: "accessKeySecret", label: "Secret Access Key", type: "password", secret: true, required: true },
+    { name: "sessionToken", label: "Session / Security Token", type: "password", secret: true, wide: true }
+  ];
+}
+
+function activeWorkspace() {
+  return state.workspaces.find(item => item.id === state.activeWorkspaceId) || null;
+}
+
+function setWorkspaceState(payload = {}) {
+  const previousId = state.activeWorkspaceId;
+  const nextId = String(payload.activeId || payload.workspaces?.[0]?.id || "");
+  state.workspaces = Array.isArray(payload.workspaces) ? payload.workspaces : [];
+  state.activeWorkspaceId = nextId;
+  if (previousId && nextId && previousId !== nextId) resetWorkspaceSession();
+  renderWorkspaceSettings();
+}
+
+function resetWorkspaceSession() {
+  state.documents = [];
+  state.files = [];
+  state.untitledSequence = 0;
+  createUntitledDocument("", { announce: false, notifyHost: true });
+}
+
+function renderWorkspaceSettings() {
+  const select = $("#workspace-select");
+  select.innerHTML = "";
+  state.workspaces.forEach(item => {
+    const option = document.createElement("option");
+    option.value = item.id;
+    option.textContent = `${item.name} · ${item.provider === "local" ? "本地" : item.provider.toUpperCase()}`;
+    select.append(option);
+  });
+  select.value = state.activeWorkspaceId;
+  const current = activeWorkspace();
+  $("#workspace-button").textContent = current?.name || "本地工作区";
+  $("#folder-name").textContent = current?.name || "工作区";
+  $("#workspace-path").textContent = current?.localPath || "尚未连接宿主";
+  const local = !current || current.provider === "local";
+  $("#workspace-pull").hidden = local;
+  $("#workspace-push").hidden = local;
+}
+
+function renderWorkspaceFields(provider, workspaceValue = {}) {
+  const container = $("#workspace-provider-fields");
+  container.innerHTML = "";
+  (workspacePluginFields[provider] || []).forEach(field => {
+    const label = document.createElement("label");
+    if (field.wide) label.className = "workspace-wide";
+    const caption = document.createElement("span");
+    caption.textContent = field.label;
+    const input = document.createElement("input");
+    input.name = field.name;
+    input.type = field.type || "text";
+    input.placeholder = field.secret && workspaceValue[`${field.name}Configured`] ? "已配置；留空则保持不变" : (field.placeholder || "");
+    if (!field.secret) input.value = workspaceValue[field.name] ?? "";
+    input.required = Boolean(field.required && !(field.secret && workspaceValue[`${field.name}Configured`]));
+    if (field.name === "localPath") input.readOnly = true;
+    label.append(caption, input);
+    container.append(label);
+  });
+}
+
+function showWorkspaceForm(workspaceValue = null) {
+  const editing = workspaceValue || {};
+  state.editingWorkspaceId = editing.id || "";
+  $("#workspace-form").hidden = false;
+  $("#workspace-form-heading").textContent = editing.id ? "配置工作区" : "新增工作区";
+  $("#workspace-name").value = editing.name || "";
+  $("#workspace-provider").value = editing.provider || "local";
+  $("#workspace-provider").disabled = Boolean(editing.id);
+  $("#workspace-remove").hidden = !editing.id;
+  renderWorkspaceFields(editing.provider || "local", editing);
+  $("#workspace-name").focus();
+}
+
+function hideWorkspaceForm() {
+  state.editingWorkspaceId = "";
+  $("#workspace-form").hidden = true;
+}
+
+function collectWorkspaceForm() {
+  const provider = $("#workspace-provider").value;
+  const workspaceValue = {
+    id: state.editingWorkspaceId || undefined,
+    name: $("#workspace-name").value.trim(),
+    provider
+  };
+  $("#workspace-provider-fields").querySelectorAll("input[name]").forEach(input => {
+    if (input.value !== "") workspaceValue[input.name] = input.type === "number" ? Number(input.value) : input.value;
+  });
+  return workspaceValue;
+}
+
+async function switchWorkspace(id) {
+  if (id === state.activeWorkspaceId) return;
+  if (state.documents.some(document => document.dirty) && !confirm("当前有未保存文稿。切换工作区会关闭这些文稿，是否继续？")) {
+    $("#workspace-select").value = state.activeWorkspaceId;
+    return;
+  }
+  try {
+    const result = await hostRequest("activateWorkspace", { id });
+    setWorkspaceState(result);
+    toast("已切换工作区");
+  } catch (error) {
+    $("#workspace-select").value = state.activeWorkspaceId;
+    toast(error.message);
+  }
+}
+
+async function syncWorkspace(action) {
+  const button = action === "push" ? $("#workspace-push") : $("#workspace-pull");
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = action === "push" ? "正在推送…" : "正在拉取…";
+  try {
+    const result = await hostRequest("syncWorkspace", { action });
+    toast(`同步完成：${result.files || 0} 个文件`);
+  } catch (error) {
+    toast(`同步失败：${error.message}`);
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
 function mermaidTheme(theme) {
   const palettes = {
     "yuluo-css": { theme: "base", primaryColor: "#effaff", primaryTextColor: "#333333", primaryBorderColor: "#1a8f37", lineColor: "#4183c4", background: "#ffffff" },
@@ -1251,17 +1453,19 @@ const exportBaseCSS = `
 
 async function readThemeCSS(theme) {
   if (state.themeCSS.has(theme)) return state.themeCSS.get(theme);
+  const bundled = globalThis.__MORY_THEME_CSS__?.[theme];
+  if (typeof bundled === "string") {
+    state.themeCSS.set(theme, bundled);
+    return bundled;
+  }
   try {
     const response = await fetch(new URL(`themes/${theme}.css`, document.baseURI));
     if (!response.ok) throw new Error(String(response.status));
     const css = await response.text();
     state.themeCSS.set(theme, css);
     return css;
-  } catch {
-    const sheet = [...document.styleSheets].find(item => item.href?.endsWith(`/themes/${theme}.css`));
-    const css = sheet ? [...sheet.cssRules].map(rule => rule.cssText).join("\n") : "";
-    state.themeCSS.set(theme, css);
-    return css;
+  } catch (error) {
+    throw new Error(`无法读取主题 ${theme}：${error.message}`);
   }
 }
 
@@ -1284,6 +1488,7 @@ async function exportDocument(options = {}) {
   const exportRoot = document.createElement("article");
   exportRoot.className = "write";
   exportRoot.innerHTML = markdownToHTML(state.markdown);
+  applyDocumentAssets(exportRoot);
   highlightCodeBlocks(exportRoot, true);
   await renderMermaidDiagrams(exportRoot, theme);
   return `<!doctype html>\n<html lang="zh-CN" data-doc-theme="${theme}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escapeHTML(title)}</title><style>${exportBaseCSS}\n${themeCSS}\n${backgroundOverride}</style></head><body><main class="editor-scroll"><article class="write">${exportRoot.innerHTML}</article></main></body></html>`;
@@ -1527,6 +1732,44 @@ function hideToolbarTooltip() {
   tooltip.setAttribute("aria-hidden", "true");
 }
 
+function fileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error || new Error("无法读取图片。"));
+    reader.onload = () => resolve(String(reader.result || "").split(",", 2)[1] || "");
+    reader.readAsDataURL(file);
+  });
+}
+
+async function importImages(files) {
+  const activeDoc = activeDocument();
+  if (!activeDoc) return;
+  const selection = window.getSelection();
+  const savedRange = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
+  const markdown = [];
+  for (const file of files) {
+    const result = await hostRequest("importImage", {
+      documentPath: activeDoc.path || "",
+      documentName: activeDoc.name,
+      name: file.name || "图片",
+      mime: file.type,
+      data: await fileAsBase64(file)
+    });
+    activeDoc.assets ||= {};
+    activeDoc.assets[result.relative] = result.dataURL;
+    const alt = (file.name || "图片").replace(/\.[^.]+$/, "").replaceAll("]", "");
+    markdown.push(`![${alt}](${result.relative})`);
+  }
+  if (savedRange && write.contains(savedRange.commonAncestorContainer)) {
+    selection?.removeAllRanges();
+    selection?.addRange(savedRange);
+  }
+  document.execCommand("insertText", false, markdown.join("\n\n"));
+  renderMarkdownDocumentAtCaret();
+  syncFromWrite();
+  toast(`已归档 ${files.length} 张图片`);
+}
+
 $("#toolbar").addEventListener("mouseover", event => {
   const button = event.target.closest("button[data-tooltip]");
   if (button) showToolbarTooltip(button);
@@ -1559,6 +1802,12 @@ write.addEventListener("change", event => {
   if (event.target.matches('input[type="checkbox"]')) syncFromWrite();
 });
 write.addEventListener("paste", event => {
+  const images = [...event.clipboardData.files].filter(file => file.type.startsWith("image/"));
+  if (images.length) {
+    event.preventDefault();
+    void importImages(images).catch(error => toast(`图片导入失败：${error.message}`));
+    return;
+  }
   event.preventDefault();
   const text = event.clipboardData.getData("text/plain");
   const block = currentWriteBlock();
@@ -1577,6 +1826,16 @@ write.addEventListener("paste", event => {
     renderMarkdownDocumentAtCaret();
     syncFromWrite();
   });
+});
+write.addEventListener("dragover", event => {
+  if ([...event.dataTransfer.items].some(item => item.kind === "file" && item.type.startsWith("image/"))) event.preventDefault();
+});
+write.addEventListener("drop", event => {
+  const images = [...event.dataTransfer.files].filter(file => file.type.startsWith("image/"));
+  if (!images.length) return;
+  event.preventDefault();
+  write.focus();
+  void importImages(images).catch(error => toast(`图片导入失败：${error.message}`));
 });
 write.addEventListener("compositionstart", beginComposition);
 write.addEventListener("compositionend", event => {
@@ -1628,8 +1887,43 @@ document.addEventListener("pointerup", event => {
 $("#source-toggle").addEventListener("click", () => toggleSource());
 $("#sidebar-toggle").addEventListener("click", () => $("#sidebar").classList.toggle("is-hidden"));
 $("#new-file-button").addEventListener("click", () => createUntitledDocument());
-$("#quick-open-button").addEventListener("click", openQuickOpen);
 $("#settings-button").addEventListener("click", () => togglePreferences(true));
+$("#workspace-button").addEventListener("click", () => { togglePreferences(true); showWorkspaceForm(activeWorkspace()); });
+$("#workspace-add").addEventListener("click", () => showWorkspaceForm());
+$("#workspace-form-close").addEventListener("click", hideWorkspaceForm);
+$("#workspace-provider").addEventListener("change", event => renderWorkspaceFields(event.target.value));
+$("#workspace-select").addEventListener("change", event => void switchWorkspace(event.target.value));
+$("#workspace-pull").addEventListener("click", () => void syncWorkspace("pull"));
+$("#workspace-push").addEventListener("click", () => void syncWorkspace("push"));
+$("#workspace-open-local").addEventListener("click", async () => {
+  try {
+    const current = activeWorkspace();
+    const result = await hostRequest("chooseLocalWorkspace", {
+      id: current?.provider === "local" ? current.id : undefined,
+      name: current?.provider === "local" ? current.name : undefined
+    });
+    if (!result?.canceled) { setWorkspaceState(result); hideWorkspaceForm(); toast("已设置本地工作目录"); }
+  } catch (error) { toast(error.message); }
+});
+$("#workspace-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const workspaceValue = collectWorkspaceForm();
+  try {
+    const result = workspaceValue.provider === "local" && !workspaceValue.localPath
+      ? await hostRequest("chooseLocalWorkspace", { id: workspaceValue.id, name: workspaceValue.name })
+      : await hostRequest("saveWorkspace", { workspace: workspaceValue });
+    if (!result?.canceled) { setWorkspaceState(result); hideWorkspaceForm(); toast("工作区配置已保存"); }
+  } catch (error) { toast(`保存失败：${error.message}`); }
+});
+$("#workspace-remove").addEventListener("click", async () => {
+  if (!state.editingWorkspaceId || !confirm("确定删除这个工作区配置吗？本地文件不会被删除。")) return;
+  try {
+    const result = await hostRequest("removeWorkspace", { id: state.editingWorkspaceId });
+    setWorkspaceState(result);
+    hideWorkspaceForm();
+    toast("工作区配置已删除");
+  } catch (error) { toast(error.message); }
+});
 $("#export-button").addEventListener("click", () => toggleExportDialog(true));
 $("#export-close").addEventListener("click", () => toggleExportDialog(false));
 $("#export-dialog").addEventListener("mousedown", event => { if (event.target === $("#export-dialog")) toggleExportDialog(false); });
@@ -1728,11 +2022,13 @@ window.Mory = {
     if (document) {
       document.path = typeof payload?.path === "string" ? payload.path : document.path;
       document.name = String(payload?.name || document.name);
-      document.markdown = state.sourceMode ? sourceEditor.value : editorToMarkdown(write);
+      document.markdown = typeof payload?.markdown === "string" ? payload.markdown : (state.sourceMode ? sourceEditor.value : editorToMarkdown(write));
+      if (payload?.assets && typeof payload.assets === "object") document.assets = payload.assets;
       document.dirty = false;
       state.documents = state.documents.filter(item => item === document || !document.path || item.path !== document.path);
     }
     state.dirty = false;
+    if (document && typeof payload?.markdown === "string" && payload.markdown !== state.markdown) renderDocument(document);
     renderFiles();
     $("#save-state").textContent = "已保存";
     setTimeout(() => $("#save-state").classList.remove("is-visible"), 900);
@@ -1741,6 +2037,8 @@ window.Mory = {
   didExport: format => toast(`已导出 ${String(format).toUpperCase()}`),
   exportHTML: () => exportDocument({ theme: "current", background: true }),
   exportDocument,
+  resolveHostRequest,
+  setWorkspaceState,
   command: execute,
   heading: setHeading,
   toggleSidebar: () => $("#sidebar").classList.toggle("is-hidden"),

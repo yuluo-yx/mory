@@ -17,6 +17,7 @@ const highlightInputPath = path.join(projectDirectory, "node_modules", "@highlig
 const highlightOutputPath = path.join(vendorDirectory, "highlight.min.js");
 const highlightLicenseInputPath = path.join(projectDirectory, "node_modules", "@highlightjs", "cdn-assets", "LICENSE");
 const highlightLicenseOutputPath = path.join(vendorDirectory, "highlight.LICENSE");
+const themeNames = ["yuluo-css", "github", "whitey", "newsprint", "pixyll", "gothic", "night"];
 
 const markdownSource = (await readFile(markdownPath, "utf8"))
   .replace(/^export\s+/gm, "");
@@ -26,11 +27,13 @@ const appSource = (await readFile(appPath, "utf8"))
 
 const banner = `/* 此文件由 scripts/build-web.mjs 生成，请勿直接编辑。\n` +
   ` * 经典脚本用于兼容 file:// 下不执行 ES module 的 macOS WKWebView。 */\n`;
-const bundle = `${banner}\n${markdownSource}\n\n${appSource}`;
 const mermaidRuntime = await readFile(mermaidInputPath, "utf8");
 const mermaidLicense = await readFile(mermaidLicenseInputPath, "utf8");
 const highlightRuntime = await readFile(highlightInputPath, "utf8");
 const highlightLicense = await readFile(highlightLicenseInputPath, "utf8");
+const themeCSS = Object.fromEntries(await Promise.all(themeNames.map(async name => [name, await readFile(path.join(webDirectory, "themes", `${name}.css`), "utf8")])));
+const themeBootstrap = `globalThis.__MORY_THEME_CSS__ = ${JSON.stringify(themeCSS)};`;
+const bundle = `${banner}\n${themeBootstrap}\n\n${markdownSource}\n\n${appSource}`;
 
 if (process.argv.includes("--check")) {
   const current = await readFile(outputPath, "utf8").catch(() => "");

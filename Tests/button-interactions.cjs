@@ -164,12 +164,20 @@ app.whenReady().then(async () => {
     await expect(window, "关闭状态栏设置即时生效", "document.querySelector('#statusbar').hidden && getComputedStyle(document.querySelector('#statusbar')).display === 'none' && localStorage.getItem('mory.status') === 'false'");
     await click(window, ".setting-row:has(#status-toggle) .switch span");
     await expect(window, "重新开启状态栏设置即时生效", "!document.querySelector('#statusbar').hidden && getComputedStyle(document.querySelector('#statusbar')).display === 'flex' && localStorage.getItem('mory.status') === 'true'");
+    await click(window, "#workspace-add");
+    await expect(window, "工作区插件表单可打开", "!document.querySelector('#workspace-form').hidden");
+    await inspect(window, "(() => { const select = document.querySelector('#workspace-provider'); select.value = 's3'; select.dispatchEvent(new Event('change', { bubbles: true })); })()");
+    await expect(window, "S3 凭证字段完整", "['endpoint','region','bucket','prefix','accessKeyId','accessKeySecret','sessionToken'].every(name => document.querySelector(`#workspace-provider-fields [name=\"${name}\"]`))");
+    await inspect(window, "(() => { const select = document.querySelector('#workspace-provider'); select.value = 'sftp'; select.dispatchEvent(new Event('change', { bubbles: true })); })()");
+    await expect(window, "SFTP 连接字段完整", "['host','port','username','password','privateKey','knownHosts','remotePath'].every(name => document.querySelector(`#workspace-provider-fields [name=\"${name}\"]`))");
+    await click(window, "#workspace-form-close");
     await click(window, "#preferences-close");
     await expect(window, "设置窗口可关闭", "!document.querySelector('#preferences').classList.contains('is-open')");
     await expect(window, "设置入口不重复", "!document.querySelector('#more-button') && document.querySelectorAll('#settings-button').length === 1");
 
-    await click(window, "#quick-open-button");
-    await expect(window, "快速打开可点击", "document.querySelector('#quick-open').classList.contains('is-open')");
+    await inspect(window, "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'p', metaKey: true, bubbles: true }))");
+    await wait(80);
+    await expect(window, "侧栏搜索移除后快速打开快捷键仍可用", "!document.querySelector('#quick-open-button') && document.querySelector('#quick-open').classList.contains('is-open')");
     window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
     window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
     await wait(80);

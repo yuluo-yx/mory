@@ -2,7 +2,7 @@
 
 ## 目标
 
-项目使用同一组 Makefile 目标封装本地命令和 GitHub Actions 命令。工作流负责构建、测试和上传 Actions 制品，不创建 GitHub Release，也不提交代码。
+项目使用同一组 Makefile 目标封装本地命令和 GitHub Actions 命令。工作流负责构建、测试和上传 Actions 制品，不创建 GitHub Release，也不提交代码。构建环境同时安装 Node.js 22 和 Go 1.25，Go 用于生成跨平台存储插件侧车。
 
 ## 本地命令
 
@@ -16,6 +16,7 @@ make install
 
 ```bash
 make verify
+make storage
 ```
 
 按平台生成制品：
@@ -37,7 +38,9 @@ make package-windows
 - `macos-15-intel` 生成 x64 应用包。
 - `windows-2025` 生成 x64 和 ARM64 安装版、便携版。
 - 每个任务先运行检查、单元测试和 Electron 端到端测试。
+- 每个应用包包含对应架构的 `mory-storage` 侧车。
 - macOS 任务额外运行 WKWebView 与窗口拖动冒烟测试。
+- Electron Builder 显式使用 `--publish never`，防止 CI 环境误触发发布并索取个人 Token。
 - 制品保留 14 天。
 
 工作流不会自动发布制品。需要发布时，应在验证现有 Actions 制品后另行增加签名、公证和 Release 流程。
@@ -68,10 +71,16 @@ make package-windows
 
 当前会话没有提供 Sequential Thinking、Context7、Fetch 和 Playwright MCP。实施过程改用本地 `rg`、`apply_patch`、GNU Make、Electron 端到端测试、WKWebView 冒烟测试，以及 GitHub 官方公开资料检索。降级只影响调研和浏览器自动化工具入口，不影响生成的应用代码、工作流或制品。
 
-本地 macOS 环境已验证 ARM64 应用和 Windows 双架构交叉打包。工作流推送后由 GitHub Actions 执行首次远端验证。Windows 安装、文件关联和卸载仍需在真实 Windows 机器上核验。
+本地 macOS 环境已验证 ARM64 应用和 Windows 双架构交叉打包。macOS 真实键盘测试按 20 ms 间隔发送输入事件，避免托管运行器负载较高时丢失连续按键。工作流推送后由 GitHub Actions 执行远端验证。Windows 安装、文件关联和卸载仍需在真实 Windows 机器上核验。
 
 ## 迁移与回滚
 
 本次变更不替换现有 npm 脚本。原命令仍然可用，Makefile 只提供统一入口，因此无需迁移。
 
 如需停用远端构建，删除 `.github/workflows/build-binaries.yml`，继续直接运行 Makefile 或 `package.json` 中的 npm 脚本。删除工作流不会影响本地命令和已经生成的制品。
+
+## 已知风险
+
+2026-08-16 使用本机 Go 1.26.5 执行 `govulncheck ./...`。扫描确认当前调用链可触达 5 个 Go 标准库漏洞，修复版本均为 Go 1.26.6。按当前项目决策，不安装或切换 Go 1.26.6；本地构建继续使用现有工具链，发布前由维护者决定是否接受这些风险。
+
+扫描还发现依赖包与模块中各有 2 个不可达漏洞。`npm audit --omit=dev` 未发现生产依赖漏洞。

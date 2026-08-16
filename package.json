@@ -20,17 +20,17 @@
     "pretest:e2e": "npm run build:web",
     "test:e2e": "electron Tests/electron-export.cjs && electron Tests/button-interactions.cjs",
     "precheck": "npm run build:web",
-    "check": "node scripts/build-web.mjs --check && node --check Electron/main.cjs && node --check Electron/preload.cjs && node --check Sources/Mory/Web/app.js && node --check Sources/Mory/Web/markdown.js && node --check Sources/Mory/Web/app.bundle.js && node --check Tests/electron-export.cjs && node --check Tests/button-interactions.cjs",
+    "check": "node scripts/build-web.mjs --check && node --check Electron/main.cjs && node --check Electron/preload.cjs && node --check Electron/workspaces.cjs && node --check Sources/Mory/Web/app.js && node --check Sources/Mory/Web/markdown.js && node --check Sources/Mory/Web/app.bundle.js && node --check Tests/electron-export.cjs && node --check Tests/button-interactions.cjs && node --check Tests/workspaces.test.cjs",
     "prebuild:mac": "npm run build:web",
     "build:mac": "bash scripts/build-macos.sh",
     "prepack:mac:electron": "npm run build:web",
-    "pack:mac:electron": "electron-builder --mac dmg",
+    "pack:mac:electron": "electron-builder --mac dmg --publish never",
     "prepack:win": "npm run build:web",
-    "pack:win": "electron-builder --win nsis portable --x64",
+    "pack:win": "electron-builder --win nsis portable --x64 --publish never",
     "prepack:win:portable": "npm run build:web",
-    "pack:win:portable": "electron-builder --win portable --x64",
+    "pack:win:portable": "electron-builder --win portable --x64 --publish never",
     "prepack:win:arm64": "npm run build:web",
-    "pack:win:arm64": "electron-builder --win nsis portable --arm64"
+    "pack:win:arm64": "electron-builder --win nsis portable --arm64 --publish never"
   },
   "devDependencies": {
     "@highlightjs/cdn-assets": "11.11.1",
@@ -46,6 +46,13 @@
       "Electron/**/*",
       "Sources/Mory/Web/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": ".build/storage",
+        "to": "storage",
+        "filter": ["mory-storage", "mory-storage.exe"]
+      }
     ],
     "directories": {
       "output": "dist/windows"

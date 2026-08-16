@@ -1,6 +1,7 @@
 const { app, BrowserWindow, dialog, ipcMain, Menu } = require("electron");
 const fs = require("node:fs/promises");
 const path = require("node:path");
+const { createWorkspaceManager, importImage, listDocuments, loadDocumentAssets, relocateDocumentAssets } = require("./workspaces.cjs");
 
 let mainWindow;
 let currentFilePath = null;
@@ -8,6 +9,14 @@ let currentMarkdown = "";
 let currentDocumentName = "未命名.md";
 let editorReady = false;
 let pendingDocument = null;
+let workspaceManager;
+
+function storageSidecarPath() {
+  const filename = process.platform === "win32" ? "mory-storage.exe" : "mory-storage";
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "storage", filename)
+    : path.join(__dirname, "..", ".build", "storage", filename);
+}
 
 function runEditor(source) {
   if (!mainWindow || mainWindow.isDestroyed()) return Promise.resolve();
@@ -31,7 +40,8 @@ async function loadFile(filePath) {
     currentMarkdown = markdown;
     currentDocumentName = path.basename(filePath);
     setWindowTitle(path.basename(filePath));
-    const document = { markdown, path: filePath, name: path.basename(filePath) };
+    const assets = await loadDocumentAssets(filePath, markdown);
+    const document = { markdown, path: filePath, name: path.basename(filePath), assets };
     if (editorReady) await sendJSON("window.Mory.openDocument", document);
     else pendingDocument = document;
   } catch (error) {
@@ -59,15 +69,9 @@ async function openDocument() {
 async function openFolder() {
   const result = await dialog.showOpenDialog(mainWindow, { properties: ["openDirectory"] });
   if (result.canceled || !result.filePaths[0]) return;
-  const folder = result.filePaths[0];
   try {
-    const entries = await fs.readdir(folder, { withFileTypes: true });
-    const extensions = new Set([".md", ".markdown", ".mmd", ".mdown", ".mkd", ".txt", ".text"]);
-    const files = entries
-      .filter(entry => entry.isFile() && extensions.has(path.extname(entry.name).toLowerCase()))
-      .sort((a, b) => a.name.localeCompare(b.name, "zh-CN", { numeric: true }))
-      .map(entry => ({ name: entry.name, path: path.join(folder, entry.name) }));
-    await sendJSON("window.Mory.setFiles", files);
+    await workspaceManager.save({ name: path.basename(result.filePaths[0]) || "本地工作区", provider: "local", localPath: result.filePaths[0] });
+    await refreshWorkspace();
   } catch (error) {
     await dialog.showMessageBox(mainWindow, { type: "error", title: "Mory", message: "无法读取文件夹", detail: error.message });
   }
@@ -80,13 +84,18 @@ async function getMarkdown() {
 
 async function writeDocument(filePath) {
   try {
-    const markdown = await getMarkdown();
+    let markdown = await getMarkdown();
+    markdown = await relocateDocumentAssets({
+      root: workspaceManager.activeRoot(), markdown, oldPath: currentFilePath, oldName: currentDocumentName, newPath: filePath
+    });
     await fs.writeFile(filePath, markdown, "utf8");
     currentMarkdown = markdown;
     currentFilePath = filePath;
     currentDocumentName = path.basename(filePath);
     setWindowTitle(path.basename(filePath));
-    await sendJSON("window.Mory.didSave", { path: filePath, name: path.basename(filePath) });
+    const assets = await loadDocumentAssets(filePath, markdown);
+    await sendJSON("window.Mory.didSave", { path: filePath, name: path.basename(filePath), markdown, assets });
+    await refreshWorkspace();
   } catch (error) {
     await dialog.showMessageBox(mainWindow, { type: "error", title: "Mory", message: "无法保存文件", detail: error.message });
   }
@@ -94,10 +103,62 @@ async function writeDocument(filePath) {
 
 async function saveAs() {
   const result = await dialog.showSaveDialog(mainWindow, {
-    defaultPath: currentFilePath || currentDocumentName,
+    defaultPath: currentFilePath || path.join(workspaceManager.activeRoot(), currentDocumentName),
     filters: [{ name: "Markdown", extensions: ["md"] }]
   });
   if (!result.canceled && result.filePath) await writeDocument(result.filePath);
+}
+
+async function refreshWorkspace() {
+  const root = workspaceManager.activeRoot();
+  await fs.mkdir(root, { recursive: true });
+  const files = await listDocuments(root);
+  await sendJSON("window.Mory.setFiles", files);
+  await sendJSON("window.Mory.setWorkspaceState", workspaceManager.state());
+}
+
+async function handleWorkspaceRequest(method, args = {}) {
+  switch (method) {
+    case "workspaceState":
+      return workspaceManager.state();
+    case "chooseLocalWorkspace": {
+      const result = await dialog.showOpenDialog(mainWindow, { properties: ["openDirectory", "createDirectory"] });
+      if (result.canceled || !result.filePaths[0]) return { canceled: true };
+      const state = await workspaceManager.save({
+        id: args.id || undefined,
+        name: args.name || path.basename(result.filePaths[0]) || "本地工作区",
+        provider: "local",
+        localPath: result.filePaths[0]
+      });
+      await refreshWorkspace();
+      return state;
+    }
+    case "saveWorkspace": {
+      const state = await workspaceManager.save(args.workspace || {});
+      await refreshWorkspace();
+      return state;
+    }
+    case "activateWorkspace": {
+      const state = await workspaceManager.activate(String(args.id || ""));
+      await refreshWorkspace();
+      return state;
+    }
+    case "removeWorkspace": {
+      const state = await workspaceManager.remove(String(args.id || ""));
+      await refreshWorkspace();
+      return state;
+    }
+    case "syncWorkspace": {
+      const action = args.action === "push" ? "push" : "pull";
+      const summary = await workspaceManager.sync(action);
+      await refreshWorkspace();
+      return summary;
+    }
+    case "importImage":
+      return importImage({ root: workspaceManager.activeRoot(), ...args });
+    default:
+      throw new Error(`未知宿主请求：${method}`);
+  }
 }
 
 async function saveDocument() {
@@ -267,6 +328,7 @@ ipcMain.on("mory:message", async (_event, payload) => {
   if (!payload || typeof payload.type !== "string") return;
   if (payload.type === "ready") {
     editorReady = true;
+    await refreshWorkspace();
     if (pendingDocument !== null) {
       await sendJSON("window.Mory.openDocument", pendingDocument);
       pendingDocument = null;
@@ -289,7 +351,14 @@ ipcMain.on("mory:message", async (_event, payload) => {
   }
 });
 
-app.whenReady().then(() => {
+ipcMain.handle("mory:request", async (_event, payload) => {
+  if (!payload || typeof payload.method !== "string") throw new Error("宿主请求格式无效。");
+  return handleWorkspaceRequest(payload.method, payload.args);
+});
+
+app.whenReady().then(async () => {
+  workspaceManager = createWorkspaceManager({ userDataPath: app.getPath("userData"), sidecarPath: storageSidecarPath });
+  await workspaceManager.initialize();
   createWindow();
   const argument = process.argv.find(value => /\.(?:md|markdown|mmd|mdown|mkd|txt)$/i.test(value));
   if (argument) loadFile(path.resolve(argument));

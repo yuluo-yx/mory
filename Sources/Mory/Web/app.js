@@ -53,7 +53,10 @@ const state = {
   zoom: 1,
   titleTouched: false,
   documentTheme: "yuluo-css",
-  themeCSS: new Map()
+  themeCSS: new Map(),
+  workspaces: [],
+  activeWorkspaceId: "",
+  editingWorkspaceId: ""
 };
 
 let changeTimer;
@@ -65,6 +68,8 @@ let windowDragFrame = 0;
 let pendingCodeExit = null;
 let recentCompositionCommit = null;
 let activeComposition = null;
+let hostRequestSequence = 0;
+const pendingHostRequests = new Map();
 const caretMarker = "\u200b";
 const renderCaretMarker = "\ue000";
 const doubleEnterWindow = 650;
@@ -75,6 +80,29 @@ function bridge(payload) {
   } else {
     window.moryNative?.send(payload);
   }
+}
+
+function hostRequest(method, args = {}) {
+  if (window.moryNative?.request) return window.moryNative.request(method, args);
+  if (!window.webkit?.messageHandlers?.mory) return Promise.reject(new Error("当前环境没有桌面宿主。"));
+  const requestId = `host-${++hostRequestSequence}`;
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      pendingHostRequests.delete(requestId);
+      reject(new Error("宿主请求超时。"));
+    }, 10 * 60 * 1000);
+    pendingHostRequests.set(requestId, { resolve, reject, timer });
+    bridge({ type: "hostRequest", requestId, method, args });
+  });
+}
+
+function resolveHostRequest(payload = {}) {
+  const pending = pendingHostRequests.get(payload.requestId);
+  if (!pending) return;
+  clearTimeout(pending.timer);
+  pendingHostRequests.delete(payload.requestId);
+  if (payload.error) pending.reject(new Error(String(payload.error)));
+  else pending.resolve(payload.result);
 }
 
 function toast(message) {
@@ -105,6 +133,7 @@ function renderDocument(document, announce = false) {
   state.titleTouched = false;
   sourceEditor.value = state.markdown;
   write.innerHTML = markdownToHTML(state.markdown) || "<p><br></p>";
+  applyDocumentAssets(write, document);
   highlightCodeBlocks(write);
   $("#save-state").textContent = state.dirty ? "未保存" : "已保存";
   $("#save-state").classList.toggle("is-visible", state.dirty);
@@ -141,7 +170,8 @@ function createUntitledDocument(markdown = "", { announce = true, notifyHost = t
     name: untitledName(state.untitledSequence),
     path: "",
     markdown: String(markdown ?? ""),
-    dirty: false
+    dirty: false,
+    assets: {}
   };
   state.documents.push(document);
   activateDocument(document.id, { announce, notifyHost });
@@ -164,11 +194,22 @@ function openDocument(payload = {}) {
     document.name = name;
     document.markdown = markdown;
     document.dirty = false;
+    document.assets = payload.assets && typeof payload.assets === "object" ? payload.assets : document.assets || {};
   } else {
-    document = { id: nextDocumentId(), name, path, markdown, dirty: false };
+    document = { id: nextDocumentId(), name, path, markdown, dirty: false, assets: payload.assets && typeof payload.assets === "object" ? payload.assets : {} };
     state.documents.push(document);
   }
   activateDocument(document.id, { announce: true, notifyHost: true });
+}
+
+function applyDocumentAssets(root, document = activeDocument()) {
+  const assets = document?.assets || {};
+  root.querySelectorAll("img[src]").forEach(image => {
+    let source = image.getAttribute("src") || "";
+    try { source = decodeURI(source); } catch { /* 保留无法解码的原始路径。 */ }
+    const normalized = source.replaceAll("\\", "/");
+    if (assets[normalized]) image.src = assets[normalized];
+  });
 }
 
 function syncFromWrite() {
@@ -870,6 +911,165 @@ function togglePreferences(force) {
   panel.setAttribute("aria-hidden", String(!open));
 }
 
+const workspacePluginFields = {
+  local: [
+    { name: "localPath", label: "工作目录", wide: true, placeholder: "使用“选择本地目录”填写", required: true }
+  ],
+  github: [
+    { name: "repository", label: "仓库", placeholder: "owner/repository", required: true },
+    { name: "branch", label: "分支", placeholder: "main" },
+    { name: "endpoint", label: "API 地址", wide: true, placeholder: "https://api.github.com" },
+    { name: "prefix", label: "仓库内目录", placeholder: "docs" },
+    { name: "token", label: "Access Token", type: "password", placeholder: "GitHub Access Token", secret: true, required: true }
+  ],
+  s3: objectStorageFields("https://s3.amazonaws.com"),
+  s4: objectStorageFields("S3 兼容服务地址"),
+  oss: objectStorageFields("https://oss-cn-hangzhou.aliyuncs.com"),
+  sftp: [
+    { name: "host", label: "服务器", placeholder: "sftp.example.com", required: true },
+    { name: "port", label: "端口", type: "number", placeholder: "22" },
+    { name: "username", label: "用户名", required: true },
+    { name: "password", label: "密码", type: "password", secret: true },
+    { name: "privateKey", label: "私钥或私钥路径", type: "password", secret: true, wide: true },
+    { name: "knownHosts", label: "known_hosts 路径", wide: true, placeholder: "默认 ~/.ssh/known_hosts" },
+    { name: "remotePath", label: "远端目录", wide: true, placeholder: "/home/user/documents", required: true }
+  ]
+};
+
+function objectStorageFields(endpointPlaceholder) {
+  return [
+    { name: "endpoint", label: "Endpoint", wide: true, placeholder: endpointPlaceholder },
+    { name: "region", label: "区域", placeholder: "cn-hangzhou / us-east-1", required: true },
+    { name: "bucket", label: "Bucket", required: true },
+    { name: "prefix", label: "路径前缀", placeholder: "mory" },
+    { name: "accessKeyId", label: "Access Key ID", required: true },
+    { name: "accessKeySecret", label: "Secret Access Key", type: "password", secret: true, required: true },
+    { name: "sessionToken", label: "Session / Security Token", type: "password", secret: true, wide: true }
+  ];
+}
+
+function activeWorkspace() {
+  return state.workspaces.find(item => item.id === state.activeWorkspaceId) || null;
+}
+
+function setWorkspaceState(payload = {}) {
+  const previousId = state.activeWorkspaceId;
+  const nextId = String(payload.activeId || payload.workspaces?.[0]?.id || "");
+  state.workspaces = Array.isArray(payload.workspaces) ? payload.workspaces : [];
+  state.activeWorkspaceId = nextId;
+  if (previousId && nextId && previousId !== nextId) resetWorkspaceSession();
+  renderWorkspaceSettings();
+}
+
+function resetWorkspaceSession() {
+  state.documents = [];
+  state.files = [];
+  state.untitledSequence = 0;
+  createUntitledDocument("", { announce: false, notifyHost: true });
+}
+
+function renderWorkspaceSettings() {
+  const select = $("#workspace-select");
+  select.innerHTML = "";
+  state.workspaces.forEach(item => {
+    const option = document.createElement("option");
+    option.value = item.id;
+    option.textContent = `${item.name} · ${item.provider === "local" ? "本地" : item.provider.toUpperCase()}`;
+    select.append(option);
+  });
+  select.value = state.activeWorkspaceId;
+  const current = activeWorkspace();
+  $("#workspace-button").textContent = current?.name || "本地工作区";
+  $("#folder-name").textContent = current?.name || "工作区";
+  $("#workspace-path").textContent = current?.localPath || "尚未连接宿主";
+  const local = !current || current.provider === "local";
+  $("#workspace-pull").hidden = local;
+  $("#workspace-push").hidden = local;
+}
+
+function renderWorkspaceFields(provider, workspaceValue = {}) {
+  const container = $("#workspace-provider-fields");
+  container.innerHTML = "";
+  (workspacePluginFields[provider] || []).forEach(field => {
+    const label = document.createElement("label");
+    if (field.wide) label.className = "workspace-wide";
+    const caption = document.createElement("span");
+    caption.textContent = field.label;
+    const input = document.createElement("input");
+    input.name = field.name;
+    input.type = field.type || "text";
+    input.placeholder = field.secret && workspaceValue[`${field.name}Configured`] ? "已配置；留空则保持不变" : (field.placeholder || "");
+    if (!field.secret) input.value = workspaceValue[field.name] ?? "";
+    input.required = Boolean(field.required && !(field.secret && workspaceValue[`${field.name}Configured`]));
+    if (field.name === "localPath") input.readOnly = true;
+    label.append(caption, input);
+    container.append(label);
+  });
+}
+
+function showWorkspaceForm(workspaceValue = null) {
+  const editing = workspaceValue || {};
+  state.editingWorkspaceId = editing.id || "";
+  $("#workspace-form").hidden = false;
+  $("#workspace-form-heading").textContent = editing.id ? "配置工作区" : "新增工作区";
+  $("#workspace-name").value = editing.name || "";
+  $("#workspace-provider").value = editing.provider || "local";
+  $("#workspace-provider").disabled = Boolean(editing.id);
+  $("#workspace-remove").hidden = !editing.id;
+  renderWorkspaceFields(editing.provider || "local", editing);
+  $("#workspace-name").focus();
+}
+
+function hideWorkspaceForm() {
+  state.editingWorkspaceId = "";
+  $("#workspace-form").hidden = true;
+}
+
+function collectWorkspaceForm() {
+  const provider = $("#workspace-provider").value;
+  const workspaceValue = {
+    id: state.editingWorkspaceId || undefined,
+    name: $("#workspace-name").value.trim(),
+    provider
+  };
+  $("#workspace-provider-fields").querySelectorAll("input[name]").forEach(input => {
+    if (input.value !== "") workspaceValue[input.name] = input.type === "number" ? Number(input.value) : input.value;
+  });
+  return workspaceValue;
+}
+
+async function switchWorkspace(id) {
+  if (id === state.activeWorkspaceId) return;
+  if (state.documents.some(document => document.dirty) && !confirm("当前有未保存文稿。切换工作区会关闭这些文稿，是否继续？")) {
+    $("#workspace-select").value = state.activeWorkspaceId;
+    return;
+  }
+  try {
+    const result = await hostRequest("activateWorkspace", { id });
+    setWorkspaceState(result);
+    toast("已切换工作区");
+  } catch (error) {
+    $("#workspace-select").value = state.activeWorkspaceId;
+    toast(error.message);
+  }
+}
+
+async function syncWorkspace(action) {
+  const button = action === "push" ? $("#workspace-push") : $("#workspace-pull");
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = action === "push" ? "正在推送…" : "正在拉取…";
+  try {
+    const result = await hostRequest("syncWorkspace", { action });
+    toast(`同步完成：${result.files || 0} 个文件`);
+  } catch (error) {
+    toast(`同步失败：${error.message}`);
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
 function mermaidTheme(theme) {
   const palettes = {
     "yuluo-css": { theme: "base", primaryColor: "#effaff", primaryTextColor: "#333333", primaryBorderColor: "#1a8f37", lineColor: "#4183c4", background: "#ffffff" },
@@ -996,17 +1196,19 @@ const exportBaseCSS = `
 
 async function readThemeCSS(theme) {
   if (state.themeCSS.has(theme)) return state.themeCSS.get(theme);
+  const bundled = globalThis.__MORY_THEME_CSS__?.[theme];
+  if (typeof bundled === "string") {
+    state.themeCSS.set(theme, bundled);
+    return bundled;
+  }
   try {
     const response = await fetch(new URL(`themes/${theme}.css`, import.meta.url));
     if (!response.ok) throw new Error(String(response.status));
     const css = await response.text();
     state.themeCSS.set(theme, css);
     return css;
-  } catch {
-    const sheet = [...document.styleSheets].find(item => item.href?.endsWith(`/themes/${theme}.css`));
-    const css = sheet ? [...sheet.cssRules].map(rule => rule.cssText).join("\n") : "";
-    state.themeCSS.set(theme, css);
-    return css;
+  } catch (error) {
+    throw new Error(`无法读取主题 ${theme}：${error.message}`);
   }
 }
 
@@ -1029,6 +1231,7 @@ async function exportDocument(options = {}) {
   const exportRoot = document.createElement("article");
   exportRoot.className = "write";
   exportRoot.innerHTML = markdownToHTML(state.markdown);
+  applyDocumentAssets(exportRoot);
   highlightCodeBlocks(exportRoot, true);
   await renderMermaidDiagrams(exportRoot, theme);
   return `<!doctype html>\n<html lang="zh-CN" data-doc-theme="${theme}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escapeHTML(title)}</title><style>${exportBaseCSS}\n${themeCSS}\n${backgroundOverride}</style></head><body><main class="editor-scroll"><article class="write">${exportRoot.innerHTML}</article></main></body></html>`;
@@ -1272,6 +1475,44 @@ function hideToolbarTooltip() {
   tooltip.setAttribute("aria-hidden", "true");
 }
 
+function fileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error || new Error("无法读取图片。"));
+    reader.onload = () => resolve(String(reader.result || "").split(",", 2)[1] || "");
+    reader.readAsDataURL(file);
+  });
+}
+
+async function importImages(files) {
+  const activeDoc = activeDocument();
+  if (!activeDoc) return;
+  const selection = window.getSelection();
+  const savedRange = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
+  const markdown = [];
+  for (const file of files) {
+    const result = await hostRequest("importImage", {
+      documentPath: activeDoc.path || "",
+      documentName: activeDoc.name,
+      name: file.name || "图片",
+      mime: file.type,
+      data: await fileAsBase64(file)
+    });
+    activeDoc.assets ||= {};
+    activeDoc.assets[result.relative] = result.dataURL;
+    const alt = (file.name || "图片").replace(/\.[^.]+$/, "").replaceAll("]", "");
+    markdown.push(`![${alt}](${result.relative})`);
+  }
+  if (savedRange && write.contains(savedRange.commonAncestorContainer)) {
+    selection?.removeAllRanges();
+    selection?.addRange(savedRange);
+  }
+  document.execCommand("insertText", false, markdown.join("\n\n"));
+  renderMarkdownDocumentAtCaret();
+  syncFromWrite();
+  toast(`已归档 ${files.length} 张图片`);
+}
+
 $("#toolbar").addEventListener("mouseover", event => {
   const button = event.target.closest("button[data-tooltip]");
   if (button) showToolbarTooltip(button);
@@ -1304,6 +1545,12 @@ write.addEventListener("change", event => {
   if (event.target.matches('input[type="checkbox"]')) syncFromWrite();
 });
 write.addEventListener("paste", event => {
+  const images = [...event.clipboardData.files].filter(file => file.type.startsWith("image/"));
+  if (images.length) {
+    event.preventDefault();
+    void importImages(images).catch(error => toast(`图片导入失败：${error.message}`));
+    return;
+  }
   event.preventDefault();
   const text = event.clipboardData.getData("text/plain");
   const block = currentWriteBlock();
@@ -1322,6 +1569,16 @@ write.addEventListener("paste", event => {
     renderMarkdownDocumentAtCaret();
     syncFromWrite();
   });
+});
+write.addEventListener("dragover", event => {
+  if ([...event.dataTransfer.items].some(item => item.kind === "file" && item.type.startsWith("image/"))) event.preventDefault();
+});
+write.addEventListener("drop", event => {
+  const images = [...event.dataTransfer.files].filter(file => file.type.startsWith("image/"));
+  if (!images.length) return;
+  event.preventDefault();
+  write.focus();
+  void importImages(images).catch(error => toast(`图片导入失败：${error.message}`));
 });
 write.addEventListener("compositionstart", beginComposition);
 write.addEventListener("compositionend", event => {
@@ -1373,8 +1630,43 @@ document.addEventListener("pointerup", event => {
 $("#source-toggle").addEventListener("click", () => toggleSource());
 $("#sidebar-toggle").addEventListener("click", () => $("#sidebar").classList.toggle("is-hidden"));
 $("#new-file-button").addEventListener("click", () => createUntitledDocument());
-$("#quick-open-button").addEventListener("click", openQuickOpen);
 $("#settings-button").addEventListener("click", () => togglePreferences(true));
+$("#workspace-button").addEventListener("click", () => { togglePreferences(true); showWorkspaceForm(activeWorkspace()); });
+$("#workspace-add").addEventListener("click", () => showWorkspaceForm());
+$("#workspace-form-close").addEventListener("click", hideWorkspaceForm);
+$("#workspace-provider").addEventListener("change", event => renderWorkspaceFields(event.target.value));
+$("#workspace-select").addEventListener("change", event => void switchWorkspace(event.target.value));
+$("#workspace-pull").addEventListener("click", () => void syncWorkspace("pull"));
+$("#workspace-push").addEventListener("click", () => void syncWorkspace("push"));
+$("#workspace-open-local").addEventListener("click", async () => {
+  try {
+    const current = activeWorkspace();
+    const result = await hostRequest("chooseLocalWorkspace", {
+      id: current?.provider === "local" ? current.id : undefined,
+      name: current?.provider === "local" ? current.name : undefined
+    });
+    if (!result?.canceled) { setWorkspaceState(result); hideWorkspaceForm(); toast("已设置本地工作目录"); }
+  } catch (error) { toast(error.message); }
+});
+$("#workspace-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const workspaceValue = collectWorkspaceForm();
+  try {
+    const result = workspaceValue.provider === "local" && !workspaceValue.localPath
+      ? await hostRequest("chooseLocalWorkspace", { id: workspaceValue.id, name: workspaceValue.name })
+      : await hostRequest("saveWorkspace", { workspace: workspaceValue });
+    if (!result?.canceled) { setWorkspaceState(result); hideWorkspaceForm(); toast("工作区配置已保存"); }
+  } catch (error) { toast(`保存失败：${error.message}`); }
+});
+$("#workspace-remove").addEventListener("click", async () => {
+  if (!state.editingWorkspaceId || !confirm("确定删除这个工作区配置吗？本地文件不会被删除。")) return;
+  try {
+    const result = await hostRequest("removeWorkspace", { id: state.editingWorkspaceId });
+    setWorkspaceState(result);
+    hideWorkspaceForm();
+    toast("工作区配置已删除");
+  } catch (error) { toast(error.message); }
+});
 $("#export-button").addEventListener("click", () => toggleExportDialog(true));
 $("#export-close").addEventListener("click", () => toggleExportDialog(false));
 $("#export-dialog").addEventListener("mousedown", event => { if (event.target === $("#export-dialog")) toggleExportDialog(false); });
@@ -1473,11 +1765,13 @@ window.Mory = {
     if (document) {
       document.path = typeof payload?.path === "string" ? payload.path : document.path;
       document.name = String(payload?.name || document.name);
-      document.markdown = state.sourceMode ? sourceEditor.value : editorToMarkdown(write);
+      document.markdown = typeof payload?.markdown === "string" ? payload.markdown : (state.sourceMode ? sourceEditor.value : editorToMarkdown(write));
+      if (payload?.assets && typeof payload.assets === "object") document.assets = payload.assets;
       document.dirty = false;
       state.documents = state.documents.filter(item => item === document || !document.path || item.path !== document.path);
     }
     state.dirty = false;
+    if (document && typeof payload?.markdown === "string" && payload.markdown !== state.markdown) renderDocument(document);
     renderFiles();
     $("#save-state").textContent = "已保存";
     setTimeout(() => $("#save-state").classList.remove("is-visible"), 900);
@@ -1486,6 +1780,8 @@ window.Mory = {
   didExport: format => toast(`已导出 ${String(format).toUpperCase()}`),
   exportHTML: () => exportDocument({ theme: "current", background: true }),
   exportDocument,
+  resolveHostRequest,
+  setWorkspaceState,
   command: execute,
   heading: setHeading,
   toggleSidebar: () => $("#sidebar").classList.toggle("is-hidden"),

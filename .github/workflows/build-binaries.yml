@@ -35,6 +35,11 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: 设置 Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25.x"
+          cache: true
       - name: 安装依赖
         run: make install
       - name: 验证并打包
@@ -61,6 +66,11 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: 设置 Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25.x"
+          cache: true
       - name: 安装 GNU Make
         shell: powershell
         run: choco install make --yes --no-progress
@@ -75,4 +85,3 @@ jobs:
           path: dist/windows/*.exe
           if-no-files-found: error
           retention-days: 14
-

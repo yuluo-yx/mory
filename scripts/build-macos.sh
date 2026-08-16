@@ -13,6 +13,8 @@ if [[ "$SDK_PATH" == *"CommandLineTools/SDKs/MacOSX26"* ]] && [[ -d "/Library/De
 fi
 
 mkdir -p "$PROJECT_DIR/.cache/clang" "$PROJECT_DIR/.cache/swiftpm"
+mkdir -p "$PROJECT_DIR/.build/storage"
+env GOCACHE="$PROJECT_DIR/.cache/go-build" go build -trimpath -o "$PROJECT_DIR/.build/storage/mory-storage" "$PROJECT_DIR/cmd/mory-storage"
 env \
   CLANG_MODULE_CACHE_PATH="$PROJECT_DIR/.cache/clang" \
   SWIFTPM_MODULECACHE_OVERRIDE="$PROJECT_DIR/.cache/swiftpm" \
@@ -20,11 +22,12 @@ env \
   swift build -c release --scratch-path "$BUILD_DIR"
 
 BIN_DIR="$(swift build -c release --scratch-path "$BUILD_DIR" --show-bin-path)"
-mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources/Web"
+mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources/Web" "$APP_DIR/Contents/Resources/storage"
 cp "$BIN_DIR/Mory" "$APP_DIR/Contents/MacOS/Mory"
 cp "$PROJECT_DIR/macOS/Info.plist" "$APP_DIR/Contents/Info.plist"
 cp -R "$PROJECT_DIR/Sources/Mory/Web/." "$APP_DIR/Contents/Resources/Web/"
 cp "$PROJECT_DIR/build/icon.png" "$APP_DIR/Contents/Resources/icon.png"
+cp "$PROJECT_DIR/.build/storage/mory-storage" "$APP_DIR/Contents/Resources/storage/mory-storage"
 codesign --force --deep --sign - "$APP_DIR"
 
 echo "Mory macOS 应用已生成：$APP_DIR"
