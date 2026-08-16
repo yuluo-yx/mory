@@ -712,34 +712,57 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
             case "removeWorkspace":
                 answerHostRequest(id: id, result: try workspaceManager.remove(arguments["id"] as? String ?? ""))
                 refreshWorkspace()
-            case "deleteDocument":
+            case "deleteDocument", "deleteWorkspaceEntry":
                 guard let path = arguments["path"] as? String, !path.isEmpty else {
-                    throw workspaceError("文稿路径为空。")
+                    throw workspaceError("工作区条目路径为空。")
                 }
                 let name = arguments["name"] as? String ?? URL(fileURLWithPath: path).lastPathComponent
+                let targets = try workspaceManager.deletionTargets(path: path)
+                let isDirectory = (try? targets[0].resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
                 let alert = NSAlert()
                 alert.alertStyle = .warning
                 alert.messageText = interfaceLocale == "en"
                     ? "Move “\(name)” to Trash?"
                     : "要将“\(name)”移到废纸篓吗？"
                 alert.informativeText = interfaceLocale == "en"
-                    ? "The document can be restored from the system Trash."
-                    : "可以从系统废纸篓中恢复该文稿。"
+                    ? "The entry can be restored from the system Trash."
+                    : "可以从系统废纸篓中恢复该\(isDirectory ? "目录" : "文稿")。"
                 alert.addButton(withTitle: interfaceLocale == "en" ? "Move to Trash" : "移到废纸篓")
                 alert.addButton(withTitle: interfaceLocale == "en" ? "Cancel" : "取消")
                 guard alert.runModal() == .alertFirstButtonReturn else {
                     answerHostRequest(id: id, result: ["canceled": true])
                     return
                 }
-                let source = URL(fileURLWithPath: path)
-                if FileManager.default.fileExists(atPath: source.path) {
+                for source in targets where FileManager.default.fileExists(atPath: source.path) {
                     var resultingURL: NSURL?
                     try FileManager.default.trashItem(at: source, resultingItemURL: &resultingURL)
                 }
                 answerHostRequest(id: id, result: ["deleted": true])
+                refreshWorkspace()
             case "createDirectory":
                 let directory = try workspaceManager.createDirectory(relativePath: arguments["relativePath"] as? String ?? "")
                 answerHostRequest(id: id, result: directory)
+                refreshWorkspace()
+            case "createDocument":
+                let document = try workspaceManager.createDocument(
+                    directoryPath: arguments["directoryPath"] as? String ?? "",
+                    name: arguments["name"] as? String ?? "未命名.md"
+                )
+                answerHostRequest(id: id, result: document)
+                refreshWorkspace()
+            case "copyWorkspaceEntry":
+                let result = try workspaceManager.copyEntry(
+                    path: arguments["path"] as? String ?? "",
+                    destinationPath: arguments["destinationPath"] as? String ?? ""
+                )
+                answerHostRequest(id: id, result: result)
+                refreshWorkspace()
+            case "moveWorkspaceEntry":
+                let result = try workspaceManager.moveEntry(
+                    path: arguments["path"] as? String ?? "",
+                    destinationPath: arguments["destinationPath"] as? String ?? ""
+                )
+                answerHostRequest(id: id, result: result)
                 refreshWorkspace()
             case "importImage":
                 answerHostRequest(id: id, result: try workspaceManager.importImage(arguments: arguments))
@@ -753,8 +776,10 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
                 answerHostRequest(id: id, result: try workspaceManager.document(at: arguments["path"] as? String ?? ""))
             case "revealFile":
                 let path = arguments["path"] as? String ?? ""
-                _ = try workspaceManager.document(at: path)
-                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+                guard let source = try workspaceManager.deletionTargets(path: path).first else {
+                    throw workspaceError("工作区条目不存在。")
+                }
+                NSWorkspace.shared.activateFileViewerSelecting([source])
                 answerHostRequest(id: id, result: ["revealed": true])
             case "workspaceDocuments":
                 answerHostRequest(id: id, result: try workspaceManager.documentContents())

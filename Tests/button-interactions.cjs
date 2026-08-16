@@ -154,7 +154,11 @@ app.whenReady().then(async () => {
         request(method, args) {
           window.__lastHostRequest = { method, args };
           if (method === 'deleteDocument') return Promise.resolve(window.__deleteDocumentResult || { deleted: true });
+          if (method === 'deleteWorkspaceEntry') return Promise.resolve(window.__deleteWorkspaceEntryResult || { deleted: true });
           if (method === 'createDirectory') return Promise.resolve({ name: args.relativePath, path: '/virtual/' + args.relativePath, createdAt: Date.now() });
+          if (method === 'createDocument') return Promise.resolve({ name: '未命名.md', path: args.directoryPath + '/未命名.md', markdown: '', images: [] });
+          if (method === 'copyWorkspaceEntry') return Promise.resolve({ name: '副本', path: (args.destinationPath || '/opened') + '/副本', sourcePath: args.path, isDirectory: !args.path.endsWith('.md') });
+          if (method === 'moveWorkspaceEntry') return Promise.resolve({ name: '移动项', path: (args.destinationPath || '/opened') + '/移动项.md', sourcePath: args.path, isDirectory: !args.path.endsWith('.md') });
           if (method === 'documentAssets') return Promise.resolve({ '文章/late.svg': 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjwvc3ZnPg==' });
           if (method === 'documentImage') return Promise.resolve({ dataURL: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjwvc3ZnPg==' });
           if (method === 'readDocument') return Promise.resolve({ name: args.path.split('/').at(-1), path: args.path, markdown: '# 第一篇', assets: {} });
@@ -219,27 +223,48 @@ app.whenReady().then(async () => {
     await expect(window, "空工作区保留未命名占位文稿", "[...document.querySelectorAll('#file-list .file-name')].map(item => item.textContent).join('|') === '未命名.md' && document.querySelector('.file-item.is-active')");
     await inspect(window, `window.Mory.setWorkspaceSnapshot({
       state: { activeId: 'workspace-opened', workspaces: [{ id: 'workspace-opened', name: '已打开目录', provider: 'local', localPath: '/opened' }] },
-      files: [{ name: '子目录/第二篇.md', path: '/opened/子目录/第二篇.md', createdAt: 20 }, { name: '第一篇.md', path: '/opened/第一篇.md', createdAt: 10, images: [{ name: '封面.svg', path: '/opened/第一篇/封面.svg', relative: '第一篇/封面.svg' }] }]
+      files: [{ name: '子目录/第二篇.md', path: '/opened/子目录/第二篇.md', createdAt: 20 }, { name: '第一篇.md', path: '/opened/第一篇.md', createdAt: 10, images: [{ name: '封面.svg', path: '/opened/第一篇/封面.svg', relative: '第一篇/封面.svg' }] }],
+      directories: [{ name: '子目录', path: '/opened/子目录', createdAt: 5 }]
     })`);
-    await expect(window, "非空工作区移除占位文稿并请求打开排序首篇", "document.querySelector('#folder-name').textContent === '已打开目录' && [...document.querySelectorAll('#file-list .file-name')].map(item => item.textContent).join('|') === '第一篇.md|子目录/第二篇.md' && window.__autoOpenedWorkspacePath === '/opened/第一篇.md'");
+    await expect(window, "非空工作区移除占位文稿并请求打开排序首篇", "document.querySelector('#folder-name').textContent === '已打开目录' && [...document.querySelectorAll('#file-list .file-name')].map(item => item.textContent).join('|') === '第一篇.md|第二篇.md' && window.__autoOpenedWorkspacePath === '/opened/第一篇.md'");
     await inspect(window, `window.Mory.openDocument({ name: '第一篇.md', path: '/opened/第一篇.md', markdown: '# 第一篇' })`);
     await expect(window, "工作区排序首篇自动成为当前文稿", "document.querySelector('.file-item.is-active .file-name').textContent === '第一篇.md' && document.querySelector('#write h1').textContent === '第一篇'");
-    await expect(window, "工作区文稿按创建时间升序排列", "[...document.querySelectorAll('#file-list .file-name')].map(item => item.textContent).join('|') === '第一篇.md|子目录/第二篇.md'");
+    await expect(window, "目录树展开时文稿保留创建时间顺序", "[...document.querySelectorAll('#file-list .file-name')].map(item => item.textContent).join('|') === '第一篇.md|第二篇.md'");
+    await expect(window, "目录显示可展开图标并默认展开已有内容", "document.querySelector('.folder-toggle[aria-expanded=\"true\"]') && document.querySelector('.folder-item[data-path=\"/opened/子目录\"]') && document.querySelector('.file-item[data-path=\"/opened/子目录/第二篇.md\"]')");
+    await click(window, ".folder-toggle");
+    await expect(window, "目录可折叠并隐藏子文稿", "document.querySelector('.folder-toggle').getAttribute('aria-expanded') === 'false' && !document.querySelector('.file-item[data-path=\"/opened/子目录/第二篇.md\"]')");
+    await click(window, ".folder-toggle");
+    await click(window, ".folder-item[data-path='/opened/子目录']");
+    await expect(window, "目录可被选中", "document.querySelector('.folder-item[data-path=\"/opened/子目录\"]').classList.contains('is-selected')");
+    await click(window, "#new-file-button");
+    await expectEventually(window, "选中目录后加号在该目录创建文稿", "window.__lastHostRequest.method === 'createDocument' && window.__lastHostRequest.args.directoryPath === '/opened/子目录' && document.querySelector('.file-item.is-active').dataset.path === '/opened/子目录/未命名.md'");
+    await inspect(window, `document.querySelector(".folder-item[data-path='/opened/子目录']").dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 150, clientY: 160 }))`);
+    await expect(window, "目录右键菜单提供新建、定位、复制、移动和删除", "document.querySelector('#file-context-menu').classList.contains('is-open') && document.querySelectorAll('#file-context-menu [data-entry-action]:not([hidden])').length === 6 && document.querySelector('#file-context-menu [data-entry-action=\"delete\"]').textContent === '删除目录'");
+    await click(window, "#file-context-menu [data-entry-action='copy']");
+    await expect(window, "复制目录前可选择目标目录", "document.querySelector('#entry-operation-dialog').classList.contains('is-open') && document.querySelector('#entry-operation-destination option').textContent === '工作区根目录'");
+    await click(window, "#entry-operation-confirm");
+    await expectEventually(window, "目录复制请求使用统一工作区契约", "window.__lastHostRequest.method === 'copyWorkspaceEntry' && window.__lastHostRequest.args.path === '/opened/子目录' && window.__lastHostRequest.args.destinationPath === ''");
+    await inspect(window, `window.Mory.setWorkspaceSnapshot({
+      state: { activeId: 'workspace-opened', workspaces: [{ id: 'workspace-opened', name: '已打开目录', provider: 'local', localPath: '/opened' }] },
+      files: [{ name: '第一篇.md', path: '/opened/第一篇.md', createdAt: 10, images: [{ name: '封面.svg', path: '/opened/第一篇/封面.svg', relative: '第一篇/封面.svg' }] }, { name: '子目录/第二篇.md', path: '/opened/子目录/第二篇.md', createdAt: 20 }, { name: '子目录/未命名.md', path: '/opened/子目录/未命名.md', createdAt: 30 }],
+      directories: [{ name: '子目录', path: '/opened/子目录', createdAt: 5 }]
+    })`);
+    await click(window, ".file-item[data-path='/opened/第一篇.md']");
     await click(window, ".file-row:has(.file-item[data-path='/opened/第一篇.md']) .file-expander");
     await expect(window, "文稿行可展开所属图片", "document.querySelector('.file-assets .file-asset span')?.textContent === '封面.svg'");
     await click(window, ".file-assets .file-asset");
     await expectEventually(window, "点击所属图片立即载入预览", "document.querySelector('#image-preview').classList.contains('is-open') && document.querySelector('#image-preview-content').src.startsWith('data:image/svg+xml;base64,')");
     await click(window, "#image-preview-close");
     await inspect(window, `document.querySelector(".file-item[data-path='/opened/第一篇.md']").dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 160, clientY: 180 }))`);
-    await expect(window, "文稿右键菜单提供打开、定位、导出和删除", "document.querySelector('#file-context-menu').classList.contains('is-open') && document.querySelectorAll('#file-context-menu [data-file-action]').length === 4");
-    await click(window, "#file-context-menu [data-file-action='reveal']");
+    await expect(window, "文稿右键菜单提供打开、定位、复制、移动、导出和删除", "document.querySelector('#file-context-menu').classList.contains('is-open') && document.querySelectorAll('#file-context-menu [data-entry-action]:not([hidden])').length === 6");
+    await click(window, "#file-context-menu [data-entry-action='reveal']");
     await expectEventually(window, "右键菜单可在系统文件管理器定位文稿", "window.__lastHostRequest.method === 'revealFile' && window.__lastHostRequest.args.path === '/opened/第一篇.md'");
     await inspect(window, `document.querySelector(".file-item[data-path='/opened/第一篇.md']").dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 160, clientY: 180 }))`);
-    await click(window, "#file-context-menu [data-file-action='export']");
+    await click(window, "#file-context-menu [data-entry-action='export']");
     await expectEventually(window, "右键菜单可直接进入当前文稿导出", "document.querySelector('#export-dialog').classList.contains('is-open')");
     await click(window, "#export-close");
     await inspect(window, `window.Mory.openDocument({ name: '子目录/第二篇.md', path: '/opened/子目录/第二篇.md', markdown: '# 第二篇' })`);
-    await expect(window, "打开文稿不会改变文件列表位置", "[...document.querySelectorAll('#file-list .file-name')].map(item => item.textContent).join('|') === '第一篇.md|子目录/第二篇.md'");
+    await expect(window, "打开文稿不会改变文件列表位置", "document.querySelectorAll('#file-list .file-item').length === 3 && document.querySelector('.file-item[data-path=\"/opened/第一篇.md\"]') && document.querySelector('.file-item[data-path=\"/opened/子目录/第二篇.md\"]') && document.querySelector('.file-item[data-path=\"/opened/子目录/未命名.md\"]')");
     await inspect(window, `window.Mory.setWorkspaceSnapshot({
       state: { activeId: 'workspace-opened', workspaces: [{ id: 'workspace-opened', name: '已打开目录', provider: 'local', localPath: '/opened' }] },
       files: [{ name: '第一篇.md', path: '/opened/第一篇.md', createdAt: 10 }]

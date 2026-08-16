@@ -80,6 +80,57 @@ func TestWorkspacePathsRejectEscapes(t *testing.T) {
 	}
 }
 
+func TestWorkspaceEntryCreateCopyMoveAndCompanionAssets(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	target := filepath.Join(root, "目标")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	document, err := createWorkspaceDocument(root, target, "未命名.md")
+	if err != nil || filepath.Dir(document.Path) != target {
+		t.Fatalf("在目录中新建文稿：%#v，%v", document, err)
+	}
+	writeAt(t, filepath.Join(target, "未命名", "image.png"), "image", time.Now())
+
+	copied, err := copyWorkspaceEntry(root, document.Path, target)
+	if err != nil || filepath.Base(copied.Path) != "未命名 副本.md" {
+		t.Fatalf("复制文稿：%#v，%v", copied, err)
+	}
+	if _, err := os.Stat(filepath.Join(target, "未命名-副本", "image.png")); err != nil {
+		t.Fatalf("复制文稿图片：%v", err)
+	}
+
+	moved, err := moveWorkspaceEntry(root, copied.Path, root)
+	if err != nil || filepath.Dir(moved.Path) != root {
+		t.Fatalf("移动文稿：%#v，%v", moved, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "未命名-副本", "image.png")); err != nil {
+		t.Fatalf("移动文稿图片：%v", err)
+	}
+}
+
+func TestWorkspaceDirectoryCopyMoveGuardsDescendants(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	source := filepath.Join(root, "资料")
+	child := filepath.Join(source, "子目录")
+	writeAt(t, filepath.Join(child, "note.md"), "# note", time.Now())
+	if _, err := copyWorkspaceEntry(root, source, child); err == nil {
+		t.Fatal("目录不应复制到自身子目录")
+	}
+	if _, err := moveWorkspaceEntry(root, source, child); err == nil {
+		t.Fatal("目录不应移动到自身子目录")
+	}
+	copied, err := copyWorkspaceEntry(root, source, root)
+	if err != nil || !copied.IsDirectory || filepath.Base(copied.Path) != "资料 副本" {
+		t.Fatalf("复制目录：%#v，%v", copied, err)
+	}
+	if _, err := os.Stat(filepath.Join(copied.Path, "子目录", "note.md")); err != nil {
+		t.Fatalf("目录内容未复制：%v", err)
+	}
+}
+
 func TestReadImageAndCopyDirectory(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()

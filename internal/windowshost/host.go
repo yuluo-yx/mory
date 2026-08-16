@@ -221,12 +221,32 @@ func (host *Host) Request(method string, args map[string]any) (any, error) {
 		return state, err
 	case "deleteDocument":
 		return host.deleteDocument(stringValue(args, "path"), stringValue(args, "name"))
+	case "deleteWorkspaceEntry":
+		return host.deleteWorkspaceEntry(stringValue(args, "path"), stringValue(args, "name"))
 	case "createDirectory":
 		directory, err := createWorkspaceDirectory(host.workspaces.activeRoot(), stringValue(args, "relativePath"))
 		if err == nil {
 			err = host.refreshWorkspace()
 		}
 		return directory, err
+	case "createDocument":
+		document, err := createWorkspaceDocument(host.workspaces.activeRoot(), stringValue(args, "directoryPath"), stringValue(args, "name"))
+		if err == nil {
+			err = host.refreshWorkspace()
+		}
+		return document, err
+	case "copyWorkspaceEntry":
+		result, err := copyWorkspaceEntry(host.workspaces.activeRoot(), stringValue(args, "path"), stringValue(args, "destinationPath"))
+		if err == nil {
+			err = host.refreshWorkspace()
+		}
+		return result, err
+	case "moveWorkspaceEntry":
+		result, err := moveWorkspaceEntry(host.workspaces.activeRoot(), stringValue(args, "path"), stringValue(args, "destinationPath"))
+		if err == nil {
+			err = host.refreshWorkspace()
+		}
+		return result, err
 	case "syncWorkspace":
 		action := "pull"
 		if stringValue(args, "action") == "push" {
@@ -418,7 +438,15 @@ func (host *Host) writeDocument(path, markdown string) error {
 }
 
 func (host *Host) deleteDocument(path, name string) (any, error) {
+	return host.deleteWorkspaceEntry(path, name)
+}
+
+func (host *Host) deleteWorkspaceEntry(path, name string) (any, error) {
 	resolved, err := safeExistingPath(host.workspaces.activeRoot(), path)
+	if err != nil {
+		return nil, err
+	}
+	info, err := os.Stat(resolved)
 	if err != nil {
 		return nil, err
 	}
@@ -428,9 +456,13 @@ func (host *Host) deleteDocument(path, name string) (any, error) {
 	host.mu.RLock()
 	english := host.locale == "en"
 	host.mu.RUnlock()
-	title, message, detail := "删除文稿", "要将“"+name+"”移到回收站吗？", "可以从系统回收站中恢复该文稿。"
+	kind := "文稿"
+	if info.IsDir() {
+		kind = "目录"
+	}
+	title, message, detail := "删除"+kind, "要将“"+name+"”移到回收站吗？", "可以从系统回收站中恢复该"+kind+"。"
 	if english {
-		title, message, detail = "Delete document", "Move “"+name+"” to the Recycle Bin?", "The document can be restored from the system Recycle Bin."
+		title, message, detail = "Delete entry", "Move “"+name+"” to the Recycle Bin?", "The entry can be restored from the system Recycle Bin."
 	}
 	confirmed, err := host.platform.Confirm(title, message, detail)
 	if err != nil || !confirmed {
@@ -438,6 +470,14 @@ func (host *Host) deleteDocument(path, name string) (any, error) {
 	}
 	if err := host.platform.Trash(resolved); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
+	}
+	if !info.IsDir() {
+		assets := companionAssets(resolved)
+		if assetInfo, statErr := os.Stat(assets); statErr == nil && assetInfo.IsDir() {
+			if trashErr := host.platform.Trash(assets); trashErr != nil && !errors.Is(trashErr, os.ErrNotExist) {
+				return nil, trashErr
+			}
+		}
 	}
 	return map[string]bool{"deleted": true}, host.refreshWorkspace()
 }

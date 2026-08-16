@@ -157,11 +157,26 @@
   </main>
 
   <div id="file-context-menu" class="context-menu" role="menu" aria-hidden="true">
-    <button type="button" data-file-action="open" role="menuitem">打开文稿</button>
-    <button type="button" data-file-action="reveal" role="menuitem">在文件管理器中显示</button>
-    <button type="button" data-file-action="export" role="menuitem">导出…</button>
+    <button type="button" data-entry-action="open" data-entry-kind="file" role="menuitem">打开文稿</button>
+    <button type="button" data-entry-action="new-document" data-entry-kind="directory" role="menuitem">在此新建文稿</button>
+    <button type="button" data-entry-action="new-folder" data-entry-kind="directory" role="menuitem">在此新建目录</button>
+    <button type="button" data-entry-action="reveal" role="menuitem">在文件管理器中显示</button>
+    <button type="button" data-entry-action="copy" role="menuitem">复制到…</button>
+    <button type="button" data-entry-action="move" role="menuitem">移动到…</button>
+    <button type="button" data-entry-action="export" data-entry-kind="file" role="menuitem">导出…</button>
     <span></span>
-    <button type="button" data-file-action="delete" class="is-danger" role="menuitem">删除文稿</button>
+    <button type="button" data-entry-action="delete" class="is-danger" role="menuitem">删除文稿</button>
+  </div>
+
+  <div id="entry-operation-dialog" class="modal-backdrop" aria-hidden="true">
+    <section class="entry-operation-card" role="dialog" aria-modal="true" aria-labelledby="entry-operation-title">
+      <header><div><small>WORKSPACE</small><h2 id="entry-operation-title">选择目标目录</h2></div><button id="entry-operation-close" aria-label="关闭"><svg><use href="#i-close"/></svg></button></header>
+      <div class="entry-operation-body">
+        <p id="entry-operation-source"></p>
+        <label><span>选择目标目录</span><select id="entry-operation-destination"></select></label>
+      </div>
+      <footer><button id="entry-operation-cancel" class="quiet-button">取消</button><button id="entry-operation-confirm" class="primary-button">移动条目</button></footer>
+    </section>
   </div>
 
   <div id="image-preview" class="modal-backdrop image-preview" aria-hidden="true">

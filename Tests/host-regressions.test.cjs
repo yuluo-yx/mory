@@ -85,6 +85,22 @@ test("文稿右键操作、图片预览与主题目录选择由两个桌面宿�
   assert.match(web, /firstLevelHeading/);
 });
 
+test("目录树与文稿在三个宿主共享创建、复制、移动和删除契约", () => {
+  const electron = fs.readFileSync(path.join(root, "Electron", "main.cjs"), "utf8");
+  const macOS = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
+  const windows = fs.readFileSync(path.join(root, "internal", "windowshost", "host.go"), "utf8");
+  const web = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "app.js"), "utf8");
+  for (const method of ["createDocument", "copyWorkspaceEntry", "moveWorkspaceEntry", "deleteWorkspaceEntry"]) {
+    assert.match(electron, new RegExp(`"${method}"`));
+    assert.match(macOS, new RegExp(`"${method}"`));
+    assert.match(windows, new RegExp(`"${method}"`));
+    assert.match(web, new RegExp(method));
+  }
+  assert.match(web, /expandedDirectoryPaths/);
+  assert.match(web, /folder-toggle/);
+  assert.match(web, /selectedWorkspaceEntry/);
+});
+
 test("macOS PDF 导出使用 WebKit 异步生成并在后台分页", () => {
   const source = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
   const paginator = fs.readFileSync(path.join(root, "Sources", "Mory", "PDFPaginator.swift"), "utf8");

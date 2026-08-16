@@ -8,7 +8,8 @@ SDK_PATH="${MORY_SDKROOT:-$(xcrun --sdk macosx --show-sdk-path)}"
 
 # 某些仅安装 Command Line Tools 的机器会出现默认 SDK 与 swiftc 补丁版本不匹配。
 # 如果同时存在兼容的 15.4 SDK，则优先使用它；完整 Xcode 环境仍使用默认 SDK。
-if [[ "$SDK_PATH" == *"CommandLineTools/SDKs/MacOSX26"* ]] && [[ -d "/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk" ]]; then
+SDK_LINK_TARGET="$(readlink "$SDK_PATH" 2>/dev/null || true)"
+if { [[ "$SDK_PATH" == *"CommandLineTools/SDKs/MacOSX26"* ]] || [[ "$SDK_LINK_TARGET" == MacOSX26* ]]; } && [[ -d "/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk" ]]; then
   SDK_PATH="/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk"
 fi
 
@@ -21,7 +22,7 @@ env \
   SDKROOT="$SDK_PATH" \
   swift build -c release --scratch-path "$BUILD_DIR"
 
-BIN_DIR="$(swift build -c release --scratch-path "$BUILD_DIR" --show-bin-path)"
+BIN_DIR="$(env CLANG_MODULE_CACHE_PATH="$PROJECT_DIR/.cache/clang" SWIFTPM_MODULECACHE_OVERRIDE="$PROJECT_DIR/.cache/swiftpm" SDKROOT="$SDK_PATH" swift build -c release --scratch-path "$BUILD_DIR" --show-bin-path)"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources/Web" "$APP_DIR/Contents/Resources/storage"
 cp "$BIN_DIR/Mory" "$APP_DIR/Contents/MacOS/Mory"
 cp "$PROJECT_DIR/macOS/Info.plist" "$APP_DIR/Contents/Info.plist"

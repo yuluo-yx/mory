@@ -38,7 +38,7 @@ func (platform *fakePlatform) ChooseSavePath(string, []string) (string, error) {
 func (platform *fakePlatform) Confirm(string, string, string) (bool, error) {
 	return platform.confirmed, nil
 }
-func (platform *fakePlatform) Trash(path string) error { return os.Remove(path) }
+func (platform *fakePlatform) Trash(path string) error { return os.RemoveAll(path) }
 func (platform *fakePlatform) Reveal(path string) error {
 	platform.revealed = append(platform.revealed, path)
 	return nil
@@ -151,6 +151,7 @@ func TestHostDeleteDocumentUsesConfirmation(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "delete.md")
 	writeAt(t, path, "delete", time.Now())
+	writeAt(t, filepath.Join(root, "delete", "image.png"), "image", time.Now())
 	platform := &fakePlatform{confirmed: true}
 	host := New(platform, t.TempDir(), root)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -168,6 +169,19 @@ func TestHostDeleteDocumentUsesConfirmation(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("文稿仍存在：%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "delete")); !os.IsNotExist(err) {
+		t.Fatalf("文稿图片目录仍存在：%v", err)
+	}
+
+	directory := filepath.Join(root, "directory")
+	writeAt(t, filepath.Join(directory, "nested.md"), "nested", time.Now())
+	result, err = host.Request("deleteWorkspaceEntry", map[string]any{"path": directory, "name": "directory"})
+	if err != nil || result.(map[string]bool)["deleted"] != true {
+		t.Fatalf("删除目录：%#v，%v", result, err)
+	}
+	if _, err := os.Stat(directory); !os.IsNotExist(err) {
+		t.Fatalf("目录仍存在：%v", err)
 	}
 }
 
@@ -196,6 +210,24 @@ func TestHostWorkspaceRequestMatrixAndMenuActions(t *testing.T) {
 	if _, err := host.Request("createDirectory", map[string]any{"relativePath": "nested/folder"}); err != nil {
 		t.Fatal(err)
 	}
+	created, err := host.Request("createDocument", map[string]any{
+		"directoryPath": filepath.Join(root, "nested", "folder"), "name": "created.md",
+	})
+	if err != nil || filepath.Dir(created.(Document).Path) != filepath.Join(root, "nested", "folder") {
+		t.Fatalf("在所选目录创建文稿：%#v，%v", created, err)
+	}
+	copied, err := host.Request("copyWorkspaceEntry", map[string]any{
+		"path": created.(Document).Path, "destinationPath": root,
+	})
+	if err != nil || copied.(WorkspaceMutation).Path == "" {
+		t.Fatalf("复制文稿：%#v，%v", copied, err)
+	}
+	moved, err := host.Request("moveWorkspaceEntry", map[string]any{
+		"path": copied.(WorkspaceMutation).Path, "destinationPath": filepath.Join(root, "nested"),
+	})
+	if err != nil || filepath.Dir(moved.(WorkspaceMutation).Path) != filepath.Join(root, "nested") {
+		t.Fatalf("移动文稿：%#v，%v", moved, err)
+	}
 	if _, err := host.Request("syncWorkspace", map[string]any{"action": "pull"}); err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +246,7 @@ func TestHostWorkspaceRequestMatrixAndMenuActions(t *testing.T) {
 	if _, err := host.Request("readDocument", map[string]any{"path": documentPath}); err != nil {
 		t.Fatal(err)
 	}
-	if documents, err := host.Request("workspaceDocuments", nil); err != nil || len(documents.([]Document)) != 1 {
+	if documents, err := host.Request("workspaceDocuments", nil); err != nil || len(documents.([]Document)) != 3 {
 		t.Fatalf("工作区文稿：%#v，%v", documents, err)
 	}
 	if _, err := host.Request("listThemes", nil); err != nil {

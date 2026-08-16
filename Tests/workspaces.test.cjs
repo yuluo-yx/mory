@@ -7,13 +7,16 @@ const { createThemeManager, themeID } = require("../Electron/themes.cjs");
 
 const {
   compareDocumentsByCreation,
+  copyWorkspaceEntry,
   createWorkspaceDirectory,
+  createWorkspaceDocument,
   createWorkspaceManager,
   importImage,
   listDirectories,
   listDocuments,
   loadDocumentAssets,
   markdownImagePaths,
+  moveWorkspaceEntry,
   readWorkspaceDocuments,
   readDocumentImage,
   relocateDocumentAssets,
@@ -130,6 +133,39 @@ test("工作区支持创建嵌套目录并阻止路径越界", async t => {
   assert.deepEqual((await listDirectories(root)).map(item => item.name), ["资料", path.join("资料", "项目 A")]);
   assert.throws(() => resolveWorkspaceDirectory(root, "../外部"), /不能包含|必须位于/);
   assert.throws(() => resolveWorkspaceDirectory(root, path.resolve(root, "绝对路径")), /相对目录/);
+});
+
+test("工作区条目支持在所选目录创建、复制和移动并携带文稿图片", async t => {
+  const root = await fixture(t);
+  const sourceDirectory = path.join(root, "资料");
+  const targetDirectory = path.join(root, "归档");
+  await fs.mkdir(sourceDirectory, { recursive: true });
+  await fs.mkdir(targetDirectory, { recursive: true });
+  const document = await createWorkspaceDocument(root, sourceDirectory, "文章.md");
+  await fs.mkdir(path.join(sourceDirectory, "文章"));
+  await fs.writeFile(path.join(sourceDirectory, "文章", "封面.png"), "image");
+
+  const copied = await copyWorkspaceEntry(root, document.path, sourceDirectory);
+  assert.equal(path.basename(copied.path), "文章 副本.md");
+  assert.equal(await fs.readFile(path.join(sourceDirectory, "文章-副本", "封面.png"), "utf8"), "image");
+
+  const moved = await moveWorkspaceEntry(root, copied.path, targetDirectory);
+  assert.equal(path.dirname(moved.path), targetDirectory);
+  assert.equal(await fs.readFile(path.join(targetDirectory, "文章-副本", "封面.png"), "utf8"), "image");
+  await assert.rejects(() => moveWorkspaceEntry(root, moved.path, targetDirectory), /已经位于/);
+});
+
+test("目录复制保留子树并拒绝复制或移动到自身后代", async t => {
+  const root = await fixture(t);
+  const source = path.join(root, "资料");
+  const child = path.join(source, "项目");
+  await fs.mkdir(child, { recursive: true });
+  await fs.writeFile(path.join(child, "说明.md"), "# 说明");
+  await assert.rejects(() => copyWorkspaceEntry(root, source, child), /自身或子目录/);
+  await assert.rejects(() => moveWorkspaceEntry(root, source, child), /自身或子目录/);
+  const copied = await copyWorkspaceEntry(root, source, root);
+  assert.equal(copied.isDirectory, true);
+  assert.equal(await fs.readFile(path.join(root, "资料 副本", "项目", "说明.md"), "utf8"), "# 说明");
 });
 
 test("文稿按创建时间升序排列并以名称稳定消除并列", () => {

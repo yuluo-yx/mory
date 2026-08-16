@@ -46,7 +46,9 @@ const state = {
   documents: [],
   files: [],
   directories: [],
+  expandedDirectoryPaths: new Set(),
   expandedImagePaths: new Set(),
+  selectedWorkspaceEntry: null,
   workspaceDocuments: [],
   activeDocumentId: null,
   documentSerial: 0,
@@ -86,7 +88,8 @@ let workspaceKnowledgeRequest = 0;
 let markdownNormalizationFrame = 0;
 let documentAssetTimer = 0;
 let documentAssetRequest = 0;
-let contextFile = null;
+let contextEntry = null;
+let pendingEntryOperation = null;
 const pendingHostRequests = new Map();
 const caretMarker = "\u200b";
 const renderCaretMarker = "\ue000";
@@ -118,8 +121,8 @@ const englishText = {
   "显示状态栏": "Show status bar", "展示行数、字数与模式开关": "Show counts and mode controls", "拼写检查": "Spell check", "使用系统拼写检查能力": "Use the system spell checker",
   "格式": "Format", "导出主题": "Export theme", "使用当前主题": "Use current theme", "纸张": "Paper", "图片宽度": "Image width", "保留主题背景": "Keep theme background",
   "PDF 与图片包含当前主题的纸张颜色": "Include theme paper color in PDF and images", "HTML、PDF 不需要 Pandoc": "HTML and PDF do not require Pandoc", "选择位置并导出": "Choose location and export",
-  "开始写作…": "Start writing…", "新建文档（⌘N）": "New document (⌘N)", "新建目录": "New folder", "目录名称或路径": "Folder name or path", "创建目录": "Create folder", "目录已创建": "Folder created", "创建目录失败": "Failed to create folder", "取消": "Cancel", "打开文稿": "Open document", "在文件管理器中显示": "Show in file manager", "导出…": "Export…", "图片预览": "Image preview", "图片加载失败": "Failed to load image", "展开图片": "Expand images", "收起图片": "Collapse images", "切换或配置工作区": "Switch or configure workspace", "显示／隐藏侧边栏": "Show/hide sidebar",
-  "已切换文档": "Document switched", "关闭文档": "Close document", "删除文档": "Delete document", "移除草稿": "Remove draft", "文档已关闭": "Document closed", "文档已移到废纸篓": "Document moved to Trash", "删除文档失败": "Failed to delete document", "草稿已移除": "Draft removed", "当前草稿": "Current draft",
+  "开始写作…": "Start writing…", "新建文档（⌘N）": "New document (⌘N)", "新建目录": "New folder", "目录名称或路径": "Folder name or path", "创建目录": "Create folder", "目录已创建": "Folder created", "创建目录失败": "Failed to create folder", "取消": "Cancel", "打开文稿": "Open document", "在此新建文稿": "New document here", "在此新建目录": "New folder here", "在文件管理器中显示": "Show in file manager", "复制到…": "Copy to…", "移动到…": "Move to…", "导出…": "Export…", "删除目录": "Delete folder", "选择目标目录": "Choose destination", "工作区根目录": "Workspace root", "复制条目": "Copy entry", "移动条目": "Move entry", "复制完成": "Copied", "移动完成": "Moved", "新文稿已创建": "Document created", "操作失败": "Operation failed", "图片预览": "Image preview", "图片加载失败": "Failed to load image", "展开图片": "Expand images", "收起图片": "Collapse images", "展开目录": "Expand folder", "收起目录": "Collapse folder", "切换或配置工作区": "Switch or configure workspace", "显示／隐藏侧边栏": "Show/hide sidebar",
+  "已切换文档": "Document switched", "关闭文档": "Close document", "删除文档": "Delete document", "移除草稿": "Remove draft", "文档已关闭": "Document closed", "文档已移到废纸篓": "Document moved to Trash", "目录已移到废纸篓": "Folder moved to Trash", "删除文档失败": "Failed to delete entry", "草稿已移除": "Draft removed", "当前草稿": "Current draft",
   "磁盘文件已删除": "deleted from disk", "文件已从磁盘删除，未保存内容已保留为草稿": "The file was deleted from disk; unsaved content was kept as a draft",
   "本地": "Local", "工作目录": "Working folder", "使用“选择本地目录”填写": "Use “Choose local folder”", "仓库": "Repository", "分支": "Branch",
   "API 地址": "API endpoint", "仓库内目录": "Repository path", "S3 兼容服务地址": "S3-compatible endpoint", "服务器": "Server", "端口": "Port",
@@ -944,6 +947,11 @@ async function createWorkspaceFolder(relativePath) {
     const directory = await hostRequest("createDirectory", { relativePath });
     if (!directory?.path) return;
     state.directories = [...state.directories.filter(item => item.path !== directory.path), directory].sort(compareWorkspaceDirectories);
+    const parts = String(directory.name || "").replaceAll("\\", "/").split("/").filter(Boolean);
+    const normalizedPath = String(directory.path).replaceAll("\\", "/");
+    const suffix = parts.join("/");
+    const prefix = normalizedPath.endsWith(suffix) ? normalizedPath.slice(0, -suffix.length) : "";
+    parts.forEach((_, index) => state.expandedDirectoryPaths.add(`${prefix}${parts.slice(0, index + 1).join("/")}`));
     renderFiles();
     toggleNewFolderForm(false);
     toast(localized("目录已创建"));
@@ -954,18 +962,29 @@ async function createWorkspaceFolder(relativePath) {
 }
 
 function closeFileContextMenu() {
-  contextFile = null;
+  contextEntry = null;
   const menu = $("#file-context-menu");
   menu.classList.remove("is-open");
   menu.setAttribute("aria-hidden", "true");
 }
 
-function showFileContextMenu(file, event) {
-  if (!file.path) return;
+function selectWorkspaceEntry(entry) {
+  state.selectedWorkspaceEntry = entry?.path ? { kind: entry.kind, path: entry.path, name: entry.name } : null;
+  renderFiles();
+}
+
+function showFileContextMenu(entry, event) {
+  if (!entry.path) return;
   event.preventDefault();
   event.stopPropagation();
-  contextFile = file;
+  state.selectedWorkspaceEntry = { kind: entry.kind, path: entry.path, name: entry.name };
+  contextEntry = entry;
   const menu = $("#file-context-menu");
+  menu.querySelectorAll("[data-entry-kind]").forEach(button => {
+    button.hidden = button.dataset.entryKind !== entry.kind;
+  });
+  const deleteButton = menu.querySelector("[data-entry-action='delete']");
+  deleteButton.textContent = localized(entry.kind === "directory" ? "删除目录" : "删除文档");
   menu.classList.add("is-open");
   menu.setAttribute("aria-hidden", "false");
   const bounds = menu.getBoundingClientRect();
@@ -984,18 +1003,115 @@ async function openWorkspaceFile(file) {
   return activeDocument();
 }
 
-async function handleFileContextAction(action) {
-  const file = contextFile;
-  closeFileContextMenu();
-  if (!file) return;
+function selectedDirectory() {
+  if (state.selectedWorkspaceEntry?.kind !== "directory") return null;
+  return state.directories.find(directory => directory.path === state.selectedWorkspaceEntry.path) || null;
+}
+
+function pathIsWithin(parent, candidate) {
+  const normalizedParent = String(parent || "").replaceAll("\\", "/").replace(/\/$/, "");
+  const normalizedCandidate = String(candidate || "").replaceAll("\\", "/");
+  return normalizedCandidate === normalizedParent || normalizedCandidate.startsWith(`${normalizedParent}/`);
+}
+
+async function createDocumentInSelectedDirectory(directory = selectedDirectory()) {
+  if (!directory) {
+    createUntitledDocument();
+    return;
+  }
   try {
-    if (action === "open") await openWorkspaceFile(file);
-    if (action === "reveal") await hostRequest("revealFile", { path: file.path });
+    const document = await hostRequest("createDocument", { directoryPath: directory.path, name: localized("未命名.md") });
+    if (!document?.path) return;
+    state.expandedDirectoryPaths.add(directory.path);
+    openDocument(document);
+    toast(localized("新文稿已创建"));
+  } catch (error) {
+    toast(`${localized("操作失败")}：${error.message}`, 3200);
+  }
+}
+
+function toggleEntryOperation(force, operation = pendingEntryOperation) {
+  const dialog = $("#entry-operation-dialog");
+  const open = typeof force === "boolean" ? force : !dialog.classList.contains("is-open");
+  if (!open || !operation) {
+    pendingEntryOperation = null;
+    dialog.classList.remove("is-open");
+    dialog.setAttribute("aria-hidden", "true");
+    return;
+  }
+  pendingEntryOperation = operation;
+  const isCopy = operation.action === "copy";
+  $("#entry-operation-title").textContent = localized(isCopy ? "复制条目" : "移动条目");
+  $("#entry-operation-confirm").textContent = localized(isCopy ? "复制条目" : "移动条目");
+  $("#entry-operation-source").textContent = operation.entry.name;
+  const select = $("#entry-operation-destination");
+  select.innerHTML = "";
+  const sourceParent = String(operation.entry.path).replaceAll("\\", "/").split("/").slice(0, -1).join("/");
+  const workspaceRoot = String(activeWorkspace()?.localPath || "").replaceAll("\\", "/").replace(/\/$/, "");
+  const choices = [{ name: localized("工作区根目录"), path: "" }, ...state.directories]
+    .filter(directory => operation.entry.kind !== "directory" || !directory.path || !pathIsWithin(operation.entry.path, directory.path))
+    .filter(directory => operation.action !== "move" || String(directory.path || workspaceRoot).replaceAll("\\", "/").replace(/\/$/, "") !== sourceParent);
+  choices.forEach(directory => {
+    const option = document.createElement("option");
+    option.value = directory.path || "";
+    option.textContent = directory.name || localized("工作区根目录");
+    select.append(option);
+  });
+  dialog.classList.add("is-open");
+  dialog.setAttribute("aria-hidden", "false");
+  select.focus({ preventScroll: true });
+}
+
+async function confirmEntryOperation() {
+  const operation = pendingEntryOperation;
+  if (!operation) return;
+  const destinationPath = $("#entry-operation-destination").value;
+  toggleEntryOperation(false);
+  try {
+    const method = operation.action === "copy" ? "copyWorkspaceEntry" : "moveWorkspaceEntry";
+    const result = await hostRequest(method, { path: operation.entry.path, destinationPath });
+    if (result?.path && !result.isDirectory && operation.action === "move") {
+      const payload = await hostRequest("readDocument", { path: result.path });
+      openDocument(payload);
+    }
+    toast(localized(operation.action === "copy" ? "复制完成" : "移动完成"));
+  } catch (error) {
+    toast(`${localized("操作失败")}：${error.message}`, 3200);
+  }
+}
+
+async function deleteWorkspaceEntry(entry) {
+  try {
+    const result = await hostRequest("deleteWorkspaceEntry", { path: entry.path, name: entry.name });
+    if (!result?.deleted) return;
+    if (entry.kind === "directory") {
+      state.directories = state.directories.filter(directory => !pathIsWithin(entry.path, directory.path));
+      setWorkspaceFiles(state.files.filter(file => !pathIsWithin(entry.path, file.path)));
+    } else {
+      removeDeletedDocument(entry);
+    }
+    state.selectedWorkspaceEntry = null;
+    toast(localized(entry.kind === "directory" ? "目录已移到废纸篓" : "文档已移到废纸篓"));
+  } catch (error) {
+    toast(`${localized("删除文档失败")}：${error.message}`, 3200);
+  }
+}
+
+async function handleFileContextAction(action) {
+  const entry = contextEntry;
+  closeFileContextMenu();
+  if (!entry) return;
+  try {
+    if (action === "open") await openWorkspaceFile(entry);
+    if (action === "new-document") await createDocumentInSelectedDirectory(entry);
+    if (action === "new-folder") toggleNewFolderForm(true);
+    if (action === "reveal") await hostRequest("revealFile", { path: entry.path });
+    if (action === "copy" || action === "move") toggleEntryOperation(true, { action, entry });
     if (action === "export") {
-      await openWorkspaceFile(file);
+      await openWorkspaceFile(entry);
       toggleExportDialog(true);
     }
-    if (action === "delete") await deleteDocument(file);
+    if (action === "delete") await deleteWorkspaceEntry(entry);
   } catch (error) {
     toast(error.message, 3200);
   }
@@ -1023,23 +1139,42 @@ async function previewDocumentImage(image) {
   }
 }
 
-function renderFiles() {
-  const list = $("#file-list");
-  list.innerHTML = "";
+function buildWorkspaceTree(entries) {
+  const root = { directories: new Map(), files: [] };
+  const ensureDirectory = (parts, paths = []) => {
+    let node = root;
+    const walked = [];
+    parts.forEach((part, index) => {
+      walked.push(part);
+      if (!node.directories.has(part)) node.directories.set(part, { name: walked.join("/"), path: "", directories: new Map(), files: [] });
+      node = node.directories.get(part);
+      if (!node.path && paths[index]) node.path = paths[index];
+    });
+    return node;
+  };
   state.directories.forEach(directory => {
-    const row = document.createElement("div");
-    row.className = "folder-item";
     const parts = String(directory.name || "").replaceAll("\\", "/").split("/").filter(Boolean);
-    row.style.setProperty("--folder-depth", String(Math.max(0, parts.length - 1)));
-    row.title = String(directory.name || "");
-    row.innerHTML = '<svg aria-hidden="true"><use href="#i-files"/></svg><span class="folder-name"></span>';
-    row.querySelector(".folder-name").textContent = parts.at(-1) || directory.name;
-    list.append(row);
+    if (!parts.length) return;
+    const normalizedPath = String(directory.path || "").replaceAll("\\", "/");
+    const suffix = parts.join("/");
+    const prefix = normalizedPath.endsWith(suffix) ? normalizedPath.slice(0, -suffix.length) : "";
+    const paths = parts.map((_, index) => prefix ? `${prefix}${parts.slice(0, index + 1).join("/")}` : "");
+    const node = ensureDirectory(parts, paths);
+    Object.assign(node, directory, { directories: node.directories, files: node.files });
   });
-  const entries = visibleFileEntries();
   entries.forEach(file => {
+    const parts = file.path && state.files.some(item => item.path === file.path)
+      ? String(file.name || "").replaceAll("\\", "/").split("/").filter(Boolean)
+      : [documentDisplayName(file)];
+    ensureDirectory(parts.slice(0, -1)).files.push(file);
+  });
+  return root;
+}
+
+function renderFileEntry(list, file, depth) {
     const row = document.createElement("div");
     row.className = "file-row";
+    row.style.setProperty("--tree-depth", String(depth));
     const images = Array.isArray(file.images) ? file.images : [];
     const imagesExpanded = Boolean(file.path && state.expandedImagePaths.has(file.path));
     if (images.length) {
@@ -1059,18 +1194,20 @@ function renderFiles() {
       row.append(expander);
     }
     const button = document.createElement("button");
-    button.className = `file-item${file.documentId === state.activeDocumentId ? " is-active" : ""}`;
+    const selected = state.selectedWorkspaceEntry?.kind === "file" && state.selectedWorkspaceEntry.path === file.path;
+    button.className = `file-item${file.documentId === state.activeDocumentId ? " is-active" : ""}${selected ? " is-selected" : ""}`;
     button.dataset.path = file.path;
     if (file.documentId) button.dataset.documentId = file.documentId;
     button.innerHTML = `<span class="file-symbol">${file.path ? "M" : "M↓"}</span><span class="file-name"></span><span class="file-dirty"></span>`;
-    button.querySelector(".file-name").textContent = documentDisplayName(file);
+    button.querySelector(".file-name").textContent = String(documentDisplayName(file)).replaceAll("\\", "/").split("/").at(-1);
     button.querySelector(".file-dirty").setAttribute("aria-label", localized("未保存"));
     button.querySelector(".file-dirty").hidden = !file.dirty;
     button.addEventListener("click", () => {
+      if (file.path) state.selectedWorkspaceEntry = { kind: "file", path: file.path, name: file.name };
       if (file.documentId) activateDocument(file.documentId, { announce: true, notifyHost: true });
       else if (file.path) bridge({ type: "openFile", path: file.path });
     });
-    button.addEventListener("contextmenu", event => showFileContextMenu(file, event));
+    button.addEventListener("contextmenu", event => showFileContextMenu({ ...file, kind: "file" }, event));
     row.append(button);
     if (file.documentId || file.path) {
       const close = document.createElement("button");
@@ -1103,7 +1240,52 @@ function renderFiles() {
       });
       list.append(assets);
     }
+}
+
+function renderDirectoryNode(list, directory, depth) {
+  const expanded = state.expandedDirectoryPaths.has(directory.path);
+  const row = document.createElement("div");
+  row.className = "folder-row";
+  row.style.setProperty("--tree-depth", String(depth));
+  const toggle = document.createElement("button");
+  toggle.className = "folder-toggle";
+  toggle.setAttribute("aria-expanded", String(expanded));
+  toggle.setAttribute("aria-label", localized(expanded ? "收起目录" : "展开目录"));
+  toggle.innerHTML = '<svg aria-hidden="true"><use href="#i-chevron"/></svg>';
+  toggle.addEventListener("click", event => {
+    event.stopPropagation();
+    if (expanded) state.expandedDirectoryPaths.delete(directory.path);
+    else state.expandedDirectoryPaths.add(directory.path);
+    renderFiles();
   });
+  const button = document.createElement("button");
+  const selected = state.selectedWorkspaceEntry?.kind === "directory" && state.selectedWorkspaceEntry.path === directory.path;
+  button.className = `folder-item${selected ? " is-selected" : ""}`;
+  button.title = directory.name;
+  button.dataset.path = directory.path;
+  button.innerHTML = '<svg aria-hidden="true"><use href="#i-files"/></svg><span class="folder-name"></span>';
+  button.querySelector(".folder-name").textContent = String(directory.name).replaceAll("\\", "/").split("/").at(-1);
+  button.addEventListener("click", () => selectWorkspaceEntry({ ...directory, kind: "directory" }));
+  button.addEventListener("dblclick", () => {
+    if (expanded) state.expandedDirectoryPaths.delete(directory.path);
+    else state.expandedDirectoryPaths.add(directory.path);
+    renderFiles();
+  });
+  button.addEventListener("contextmenu", event => showFileContextMenu({ ...directory, kind: "directory" }, event));
+  row.append(toggle, button);
+  list.append(row);
+  if (!expanded) return;
+  [...directory.directories.values()].sort(compareWorkspaceDirectories).forEach(child => renderDirectoryNode(list, child, depth + 1));
+  directory.files.forEach(file => renderFileEntry(list, file, depth + 1));
+}
+
+function renderFiles() {
+  const list = $("#file-list");
+  list.innerHTML = "";
+  const entries = visibleFileEntries();
+  const tree = buildWorkspaceTree(entries);
+  tree.files.forEach(file => renderFileEntry(list, file, 0));
+  [...tree.directories.values()].sort(compareWorkspaceDirectories).forEach(directory => renderDirectoryNode(list, directory, 0));
   renderQuickResults(entries);
 }
 
@@ -1427,6 +1609,15 @@ function compareWorkspaceFiles(left, right) {
 function setWorkspaceSnapshot(payload = {}) {
   setWorkspaceState(payload.state || {});
   state.directories = Array.isArray(payload.directories) ? [...payload.directories].sort(compareWorkspaceDirectories) : [];
+  const existingDirectories = new Set(state.directories.map(directory => directory.path));
+  state.expandedDirectoryPaths = new Set([
+    ...state.expandedDirectoryPaths,
+    ...state.directories.map(directory => directory.path)
+  ].filter(path => existingDirectories.has(path)));
+  if (state.selectedWorkspaceEntry && !(
+    state.directories.some(directory => directory.path === state.selectedWorkspaceEntry.path)
+    || (payload.files || []).some(file => file.path === state.selectedWorkspaceEntry.path)
+  )) state.selectedWorkspaceEntry = null;
   // 非空工作区直接打开排序后的首篇文稿；空工作区仍保留系统创建的占位草稿。
   setWorkspaceFiles(payload.files || [], { openFirst: true });
 }
@@ -1435,7 +1626,9 @@ function resetWorkspaceSession() {
   state.documents = [];
   state.files = [];
   state.directories = [];
+  state.expandedDirectoryPaths.clear();
   state.expandedImagePaths.clear();
+  state.selectedWorkspaceEntry = null;
   state.workspaceDocuments = [];
   state.graph = { nodes: [], edges: [] };
   workspaceKnowledgeRequest += 1;
@@ -2488,22 +2681,35 @@ $("#graph-relations-close").addEventListener("click", clearKnowledgeSelection);
 $("#graph-refresh").addEventListener("click", () => void refreshKnowledgeGraph());
 $("#graph-search").addEventListener("input", event => filterKnowledgeGraph(event.target.value));
 $("#sidebar-toggle").addEventListener("click", () => $("#sidebar").classList.toggle("is-hidden"));
-$("#new-file-button").addEventListener("click", () => createUntitledDocument());
+$("#new-file-button").addEventListener("click", () => void createDocumentInSelectedDirectory());
 $("#new-folder-button").addEventListener("click", () => toggleNewFolderForm());
 $("#new-folder-cancel").addEventListener("click", () => toggleNewFolderForm(false));
 $("#new-folder-form").addEventListener("submit", event => {
   event.preventDefault();
-  const relativePath = $("#new-folder-input").value.trim();
+  const value = $("#new-folder-input").value.trim();
+  const parent = selectedDirectory()?.name || "";
+  const relativePath = parent && value && !value.replaceAll("\\", "/").startsWith(`${parent}/`) ? `${parent}/${value}` : value;
   if (relativePath) void createWorkspaceFolder(relativePath);
 });
 $("#new-folder-input").addEventListener("keydown", event => {
   if (event.key === "Escape") { event.preventDefault(); toggleNewFolderForm(false); }
 });
 $("#file-context-menu").addEventListener("click", event => {
-  const action = event.target.closest("button[data-file-action]")?.dataset.fileAction;
+  const action = event.target.closest("button[data-entry-action]")?.dataset.entryAction;
   if (action) void handleFileContextAction(action);
 });
+$("#entry-operation-close").addEventListener("click", () => toggleEntryOperation(false));
+$("#entry-operation-cancel").addEventListener("click", () => toggleEntryOperation(false));
+$("#entry-operation-confirm").addEventListener("click", () => void confirmEntryOperation());
+$("#entry-operation-dialog").addEventListener("mousedown", event => {
+  if (event.target === $("#entry-operation-dialog")) toggleEntryOperation(false);
+});
 $("#file-list").addEventListener("scroll", closeFileContextMenu);
+$("#files-panel").addEventListener("click", event => {
+  if (event.target !== $("#files-panel") && event.target !== $("#file-list")) return;
+  state.selectedWorkspaceEntry = null;
+  renderFiles();
+});
 $("#image-preview-close").addEventListener("click", closeImagePreview);
 $("#image-preview").addEventListener("mousedown", event => {
   if (event.target === $("#image-preview")) closeImagePreview();
@@ -2636,7 +2842,7 @@ document.addEventListener("keydown", event => {
   const command = event.metaKey || event.ctrlKey;
   if (command && event.key.toLowerCase() === "p") { event.preventDefault(); openQuickOpen(); }
   if (command && event.key.toLowerCase() === "f") { event.preventDefault(); showFind(); }
-  if (event.key === "Escape") { closeFileContextMenu(); closeImagePreview(); closeQuickOpen(); closeFind(); togglePreferences(false); toggleExportDialog(false); toggleKnowledgeGraph(false); }
+  if (event.key === "Escape") { closeFileContextMenu(); toggleEntryOperation(false); closeImagePreview(); closeQuickOpen(); closeFind(); togglePreferences(false); toggleExportDialog(false); toggleKnowledgeGraph(false); }
 });
 document.addEventListener("pointerdown", event => {
   if (!event.target.closest("#file-context-menu")) closeFileContextMenu();

@@ -234,6 +234,109 @@ async function createWorkspaceDirectory(root, relativePath) {
   return { name: relative, path: resolved, createdAt };
 }
 
+function workspaceEntryPath(root, value, kind = "条目") {
+  const resolvedRoot = path.resolve(root);
+  const resolved = path.resolve(String(value || ""));
+  const local = path.relative(resolvedRoot, resolved);
+  if (!local || local === ".." || local.startsWith(`..${path.sep}`) || path.isAbsolute(local)) {
+    throw new Error(`${kind}必须位于当前工作区内。`);
+  }
+  return resolved;
+}
+
+async function workspaceDirectory(root, value) {
+  const resolvedRoot = path.resolve(root);
+  if (!String(value || "").trim()) return resolvedRoot;
+  if (path.resolve(String(value)) === resolvedRoot) return resolvedRoot;
+  const resolved = workspaceEntryPath(root, value, "目标目录");
+  const stat = await fs.stat(resolved);
+  if (!stat.isDirectory()) throw new Error("目标必须是当前工作区中的目录。");
+  return resolved;
+}
+
+function companionAssets(documentPath) {
+  return path.join(path.dirname(documentPath), sanitizeSegment(path.basename(documentPath, path.extname(documentPath))));
+}
+
+async function entryExists(target) {
+  try { await fs.stat(target); return true; }
+  catch (error) { if (error.code === "ENOENT") return false; throw error; }
+}
+
+async function availableEntryPath(directory, name, isDirectory) {
+  const extension = isDirectory ? "" : path.extname(name);
+  const base = extension ? name.slice(0, -extension.length) : name;
+  for (let serial = 1; ; serial += 1) {
+    const suffix = serial === 1 ? "" : serial === 2 ? " 副本" : ` 副本 ${serial - 1}`;
+    const candidate = path.join(directory, `${base}${suffix}${extension}`);
+    if (!await entryExists(candidate) && (isDirectory || !await entryExists(companionAssets(candidate)))) return candidate;
+  }
+}
+
+function isSameOrDescendant(parent, candidate) {
+  const local = path.relative(parent, candidate);
+  return !local || (!local.startsWith(`..${path.sep}`) && local !== ".." && !path.isAbsolute(local));
+}
+
+async function createWorkspaceDocument(root, directoryPath, name) {
+  const directory = await workspaceDirectory(root, directoryPath);
+  const filename = `${sanitizeSegment(path.basename(String(name || "未命名.md"), path.extname(String(name || "未命名.md"))))}.md`;
+  const target = await availableEntryPath(directory, filename, false);
+  await fs.writeFile(target, "", { flag: "wx" });
+  const stat = await fs.stat(target);
+  return { name: path.basename(target), path: target, markdown: "", createdAt: Number(stat.birthtimeMs || stat.ctimeMs), images: [] };
+}
+
+async function copyWorkspaceEntry(root, sourcePath, destinationPath) {
+  const source = workspaceEntryPath(root, sourcePath);
+  const destination = await workspaceDirectory(root, destinationPath);
+  const stat = await fs.stat(source);
+  if (stat.isDirectory() && isSameOrDescendant(source, destination)) throw new Error("不能把目录复制到自身或子目录。");
+  const target = await availableEntryPath(destination, path.basename(source), stat.isDirectory());
+  if (stat.isDirectory()) {
+    await fs.cp(source, target, { recursive: true, errorOnExist: true, force: false });
+  } else {
+    await fs.copyFile(source, target);
+    const assets = companionAssets(source);
+    if (await entryExists(assets)) await fs.cp(assets, companionAssets(target), { recursive: true, errorOnExist: true, force: false });
+  }
+  return { name: path.relative(root, target).replaceAll("\\", "/"), path: target, sourcePath: source, isDirectory: stat.isDirectory() };
+}
+
+async function moveWorkspaceEntry(root, sourcePath, destinationPath) {
+  const source = workspaceEntryPath(root, sourcePath);
+  const destination = await workspaceDirectory(root, destinationPath);
+  const stat = await fs.stat(source);
+  if (path.dirname(source) === destination) throw new Error("条目已经位于所选目录。");
+  if (stat.isDirectory() && isSameOrDescendant(source, destination)) throw new Error("不能把目录移动到自身或子目录。");
+  const target = await availableEntryPath(destination, path.basename(source), stat.isDirectory());
+  try {
+    await fs.rename(source, target);
+  } catch (error) {
+    if (error.code !== "EXDEV") throw error;
+    if (stat.isDirectory()) {
+      await fs.cp(source, target, { recursive: true, errorOnExist: true, force: false });
+      await fs.rm(source, { recursive: true });
+    } else {
+      await fs.copyFile(source, target);
+      await fs.unlink(source);
+    }
+  }
+  if (!stat.isDirectory()) {
+    const sourceAssets = companionAssets(source);
+    const targetAssets = companionAssets(target);
+    if (await entryExists(sourceAssets)) {
+      try { await fs.rename(sourceAssets, targetAssets); }
+      catch (error) {
+        if (error.code !== "EXDEV") throw error;
+        await fs.cp(sourceAssets, targetAssets, { recursive: true, errorOnExist: true, force: false });
+        await fs.rm(sourceAssets, { recursive: true });
+      }
+    }
+  }
+  return { name: path.relative(root, target).replaceAll("\\", "/"), path: target, sourcePath: source, isDirectory: stat.isDirectory() };
+}
+
 function compareDocumentsByCreation(left, right) {
   const leftTime = Number.isFinite(Number(left.createdAt)) ? Number(left.createdAt) : Number.MAX_SAFE_INTEGER;
   const rightTime = Number.isFinite(Number(right.createdAt)) ? Number(right.createdAt) : Number.MAX_SAFE_INTEGER;
@@ -357,4 +460,4 @@ function runSidecar(executable, payload) {
   });
 }
 
-module.exports = { compareDocumentsByCreation, createWorkspaceDirectory, createWorkspaceManager, importImage, listDirectories, listDocumentImages, listDocuments, loadDocumentAssets, markdownImagePaths, readDocumentImage, readWorkspaceDocuments, relocateDocumentAssets, resolveWorkspaceDirectory, sanitizeSegment, validateWorkspace };
+module.exports = { compareDocumentsByCreation, copyWorkspaceEntry, createWorkspaceDirectory, createWorkspaceDocument, createWorkspaceManager, importImage, listDirectories, listDocumentImages, listDocuments, loadDocumentAssets, markdownImagePaths, moveWorkspaceEntry, readDocumentImage, readWorkspaceDocuments, relocateDocumentAssets, resolveWorkspaceDirectory, sanitizeSegment, validateWorkspace, workspaceEntryPath };

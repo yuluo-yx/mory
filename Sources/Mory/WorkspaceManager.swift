@@ -231,6 +231,112 @@ final class WorkspaceManager: @unchecked Sendable {
         return ["name": segments.joined(separator: "/"), "path": destination.path, "createdAt": createdAt]
     }
 
+    func createDocument(directoryPath: String, name: String) throws -> [String: Any] {
+        let directory = try workspaceDirectory(path: directoryPath)
+        let requested = name.isEmpty ? "未命名.md" : name
+        let base = sanitize(URL(fileURLWithPath: requested).deletingPathExtension().lastPathComponent)
+        let destination = availableEntryURL(in: directory, name: "\(base).md", isDirectory: false)
+        guard fileManager.createFile(atPath: destination.path, contents: Data()) else {
+            throw workspaceError("无法在所选目录创建文稿。")
+        }
+        let values = try destination.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
+        let createdAt = (values.creationDate ?? values.contentModificationDate ?? Date()).timeIntervalSince1970 * 1_000
+        return ["name": destination.lastPathComponent, "path": destination.path, "markdown": "", "createdAt": createdAt, "images": []]
+    }
+
+    func copyEntry(path: String, destinationPath: String) throws -> [String: Any] {
+        let source = try workspaceFileURL(path: path, kind: "条目")
+        let destination = try workspaceDirectory(path: destinationPath)
+        let values = try source.resourceValues(forKeys: [.isDirectoryKey])
+        let isDirectory = values.isDirectory == true
+        if isDirectory, isSameOrDescendant(parent: source, candidate: destination) {
+            throw workspaceError("不能把目录复制到自身或子目录。")
+        }
+        let target = availableEntryURL(in: destination, name: source.lastPathComponent, isDirectory: isDirectory)
+        try fileManager.copyItem(at: source, to: target)
+        if !isDirectory {
+            let sourceAssets = companionAssetsURL(for: source)
+            if fileManager.fileExists(atPath: sourceAssets.path) {
+                try fileManager.copyItem(at: sourceAssets, to: companionAssetsURL(for: target))
+            }
+        }
+        return mutationResult(source: source, target: target, isDirectory: isDirectory)
+    }
+
+    func moveEntry(path: String, destinationPath: String) throws -> [String: Any] {
+        let source = try workspaceFileURL(path: path, kind: "条目")
+        let destination = try workspaceDirectory(path: destinationPath)
+        guard source.deletingLastPathComponent().standardizedFileURL != destination.standardizedFileURL else {
+            throw workspaceError("条目已经位于所选目录。")
+        }
+        let values = try source.resourceValues(forKeys: [.isDirectoryKey])
+        let isDirectory = values.isDirectory == true
+        if isDirectory, isSameOrDescendant(parent: source, candidate: destination) {
+            throw workspaceError("不能把目录移动到自身或子目录。")
+        }
+        let target = availableEntryURL(in: destination, name: source.lastPathComponent, isDirectory: isDirectory)
+        try fileManager.moveItem(at: source, to: target)
+        if !isDirectory {
+            let sourceAssets = companionAssetsURL(for: source)
+            if fileManager.fileExists(atPath: sourceAssets.path) {
+                try fileManager.moveItem(at: sourceAssets, to: companionAssetsURL(for: target))
+            }
+        }
+        return mutationResult(source: source, target: target, isDirectory: isDirectory)
+    }
+
+    func deletionTargets(path: String) throws -> [URL] {
+        let source = try workspaceFileURL(path: path, kind: "条目")
+        let values = try source.resourceValues(forKeys: [.isDirectoryKey])
+        guard values.isDirectory != true else { return [source] }
+        let assets = companionAssetsURL(for: source)
+        return fileManager.fileExists(atPath: assets.path) ? [source, assets] : [source]
+    }
+
+    private func workspaceDirectory(path: String) throws -> URL {
+        if path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return activeRoot.standardizedFileURL }
+        if URL(fileURLWithPath: path).standardizedFileURL == activeRoot.standardizedFileURL { return activeRoot.standardizedFileURL }
+        let url = try workspaceFileURL(path: path, kind: "目标目录")
+        let values = try url.resourceValues(forKeys: [.isDirectoryKey])
+        guard values.isDirectory == true else { throw workspaceError("目标必须是当前工作区中的目录。") }
+        return url
+    }
+
+    private func availableEntryURL(in directory: URL, name: String, isDirectory: Bool) -> URL {
+        let source = URL(fileURLWithPath: name)
+        let fileExtension = isDirectory ? "" : source.pathExtension
+        let base = fileExtension.isEmpty ? name : source.deletingPathExtension().lastPathComponent
+        var serial = 1
+        while true {
+            let suffix = serial == 1 ? "" : (serial == 2 ? " 副本" : " 副本 \(serial - 1)")
+            let filename = fileExtension.isEmpty ? "\(base)\(suffix)" : "\(base)\(suffix).\(fileExtension)"
+            let candidate = directory.appendingPathComponent(filename, isDirectory: isDirectory)
+            let assetsExist = !isDirectory && fileManager.fileExists(atPath: companionAssetsURL(for: candidate).path)
+            if !fileManager.fileExists(atPath: candidate.path), !assetsExist { return candidate }
+            serial += 1
+        }
+    }
+
+    private func companionAssetsURL(for document: URL) -> URL {
+        document.deletingLastPathComponent().appendingPathComponent(sanitize(document.deletingPathExtension().lastPathComponent), isDirectory: true)
+    }
+
+    private func isSameOrDescendant(parent: URL, candidate: URL) -> Bool {
+        let parentPath = parent.standardizedFileURL.path
+        let candidatePath = candidate.standardizedFileURL.path
+        return candidatePath == parentPath || candidatePath.hasPrefix(parentPath + "/")
+    }
+
+    private func mutationResult(source: URL, target: URL, isDirectory: Bool) -> [String: Any] {
+        let rootPrefix = activeRoot.standardizedFileURL.path + "/"
+        return [
+            "name": target.path.replacingOccurrences(of: rootPrefix, with: ""),
+            "path": target.path,
+            "sourcePath": source.path,
+            "isDirectory": isDirectory
+        ]
+    }
+
     func documentContents() throws -> [[String: Any]] {
         try documents().compactMap { document in
             guard let path = document["path"] as? String, let attributes = try? fileManager.attributesOfItem(atPath: path),

@@ -50,6 +50,14 @@ type Directory struct {
 	CreatedAt int64  `json:"createdAt"`
 }
 
+// WorkspaceMutation 描述创建、复制或移动后的工作区条目。
+type WorkspaceMutation struct {
+	Name        string `json:"name"`
+	Path        string `json:"path"`
+	SourcePath  string `json:"sourcePath,omitempty"`
+	IsDirectory bool   `json:"isDirectory"`
+}
+
 func listDocuments(root string, includeMarkdown bool) ([]Document, error) {
 	documents := make([]Document, 0)
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
@@ -347,6 +355,178 @@ func createWorkspaceDirectory(root, relative string) (Directory, error) {
 	}
 	name, _ := filepath.Rel(root, resolved)
 	return Directory{Name: filepath.ToSlash(name), Path: resolved, CreatedAt: fileCreatedAt(info).UnixMilli()}, nil
+}
+
+func createWorkspaceDocument(root, directory, name string) (Document, error) {
+	destination, err := workspaceDirectory(root, directory)
+	if err != nil {
+		return Document{}, err
+	}
+	name = sanitizeSegment(strings.TrimSuffix(filepath.Base(name), filepath.Ext(name))) + ".md"
+	path := availableEntryPath(destination, name, false)
+	if err := os.WriteFile(path, nil, 0o644); err != nil {
+		return Document{}, fmt.Errorf("创建文稿：%w", err)
+	}
+	return loadDocument(path)
+}
+
+func copyWorkspaceEntry(root, source, destination string) (WorkspaceMutation, error) {
+	resolved, info, targetDirectory, err := workspaceEntryPaths(root, source, destination)
+	if err != nil {
+		return WorkspaceMutation{}, err
+	}
+	if info.IsDir() && isSameOrDescendant(resolved, targetDirectory) {
+		return WorkspaceMutation{}, errors.New("不能把目录复制到自身或子目录")
+	}
+	target := availableEntryPath(targetDirectory, filepath.Base(resolved), info.IsDir())
+	if info.IsDir() {
+		err = copyDirectory(resolved, target)
+	} else {
+		err = copyFile(resolved, target)
+		if err == nil {
+			err = copyCompanionAssets(resolved, target)
+		}
+	}
+	if err != nil {
+		return WorkspaceMutation{}, fmt.Errorf("复制工作区条目：%w", err)
+	}
+	name, _ := filepath.Rel(root, target)
+	return WorkspaceMutation{Name: filepath.ToSlash(name), Path: target, SourcePath: resolved, IsDirectory: info.IsDir()}, nil
+}
+
+func moveWorkspaceEntry(root, source, destination string) (WorkspaceMutation, error) {
+	resolved, info, targetDirectory, err := workspaceEntryPaths(root, source, destination)
+	if err != nil {
+		return WorkspaceMutation{}, err
+	}
+	if filepath.Clean(filepath.Dir(resolved)) == filepath.Clean(targetDirectory) {
+		return WorkspaceMutation{}, errors.New("条目已经位于所选目录")
+	}
+	if info.IsDir() && isSameOrDescendant(resolved, targetDirectory) {
+		return WorkspaceMutation{}, errors.New("不能把目录移动到自身或子目录")
+	}
+	target := availableEntryPath(targetDirectory, filepath.Base(resolved), info.IsDir())
+	if err := movePath(resolved, target, info.IsDir()); err != nil {
+		return WorkspaceMutation{}, fmt.Errorf("移动工作区条目：%w", err)
+	}
+	if !info.IsDir() {
+		if err := moveCompanionAssets(resolved, target); err != nil {
+			return WorkspaceMutation{}, err
+		}
+	}
+	name, _ := filepath.Rel(root, target)
+	return WorkspaceMutation{Name: filepath.ToSlash(name), Path: target, SourcePath: resolved, IsDirectory: info.IsDir()}, nil
+}
+
+func workspaceEntryPaths(root, source, destination string) (string, fs.FileInfo, string, error) {
+	resolved, err := safeExistingPath(root, source)
+	if err != nil {
+		return "", nil, "", err
+	}
+	info, err := os.Stat(resolved)
+	if err != nil {
+		return "", nil, "", fmt.Errorf("读取工作区条目：%w", err)
+	}
+	targetDirectory, err := workspaceDirectory(root, destination)
+	return resolved, info, targetDirectory, err
+}
+
+func workspaceDirectory(root, value string) (string, error) {
+	if strings.TrimSpace(value) == "" {
+		return filepath.Abs(root)
+	}
+	resolved, err := safeExistingPath(root, value)
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(resolved)
+	if err != nil || !info.IsDir() {
+		return "", errors.New("目标必须是当前工作区中的目录")
+	}
+	return resolved, nil
+}
+
+func availableEntryPath(directory, name string, isDirectory bool) string {
+	extension := ""
+	base := name
+	if !isDirectory {
+		extension = filepath.Ext(name)
+		base = strings.TrimSuffix(name, extension)
+	}
+	for serial := 1; ; serial++ {
+		candidateName := name
+		if serial > 1 {
+			suffix := " 副本"
+			if serial > 2 {
+				suffix = fmt.Sprintf(" 副本 %d", serial-1)
+			}
+			candidateName = base + suffix + extension
+		}
+		candidate := filepath.Join(directory, candidateName)
+		_, entryErr := os.Stat(candidate)
+		_, assetsErr := os.Stat(companionAssets(candidate))
+		if errors.Is(entryErr, os.ErrNotExist) && (isDirectory || errors.Is(assetsErr, os.ErrNotExist)) {
+			return candidate
+		}
+	}
+}
+
+func copyFile(source, destination string) error {
+	data, err := os.ReadFile(source)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(destination, data, 0o644)
+}
+
+func movePath(source, destination string, isDirectory bool) error {
+	if err := os.Rename(source, destination); err == nil {
+		return nil
+	}
+	if isDirectory {
+		if err := copyDirectory(source, destination); err != nil {
+			return err
+		}
+		return os.RemoveAll(source)
+	}
+	if err := copyFile(source, destination); err != nil {
+		return err
+	}
+	return os.Remove(source)
+}
+
+func companionAssets(path string) string {
+	return filepath.Join(filepath.Dir(path), sanitizeSegment(strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))))
+}
+
+func copyCompanionAssets(source, destination string) error {
+	assets := companionAssets(source)
+	if info, err := os.Stat(assets); errors.Is(err, os.ErrNotExist) || err == nil && !info.IsDir() {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	return copyDirectory(assets, companionAssets(destination))
+}
+
+func moveCompanionAssets(source, destination string) error {
+	assets := companionAssets(source)
+	info, err := os.Stat(assets)
+	if errors.Is(err, os.ErrNotExist) || err == nil && !info.IsDir() {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err := movePath(assets, companionAssets(destination), true); err != nil {
+		return fmt.Errorf("移动文稿图片：%w", err)
+	}
+	return nil
+}
+
+func isSameOrDescendant(parent, value string) bool {
+	relative, err := filepath.Rel(parent, value)
+	return err == nil && (relative == "." || relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)))
 }
 
 func safeExistingPath(root, value string) (string, error) {

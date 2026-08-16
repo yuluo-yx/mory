@@ -1,7 +1,7 @@
 const { app, BrowserWindow, dialog, ipcMain, Menu, shell } = require("electron");
 const fs = require("node:fs/promises");
 const path = require("node:path");
-const { createWorkspaceDirectory, createWorkspaceManager, importImage, listDirectories, listDocuments, loadDocumentAssets, readDocumentImage, readWorkspaceDocuments, relocateDocumentAssets, sanitizeSegment } = require("./workspaces.cjs");
+const { copyWorkspaceEntry, createWorkspaceDirectory, createWorkspaceDocument, createWorkspaceManager, importImage, listDirectories, listDocuments, loadDocumentAssets, moveWorkspaceEntry, readDocumentImage, readWorkspaceDocuments, relocateDocumentAssets, sanitizeSegment, workspaceEntryPath } = require("./workspaces.cjs");
 const { createThemeManager } = require("./themes.cjs");
 const { createWorkspaceWatcher } = require("./workspace-watcher.cjs");
 
@@ -189,16 +189,20 @@ async function handleWorkspaceRequest(method, args = {}) {
       await refreshWorkspace();
       return state;
     }
-    case "deleteDocument": {
-      const filePath = String(args.path || "");
-      if (!filePath) throw new Error("文稿路径为空。");
+    case "deleteDocument":
+    case "deleteWorkspaceEntry": {
+      const requestedPath = String(args.path || "");
+      if (!requestedPath) throw new Error("工作区条目路径为空。");
+      const filePath = workspaceEntryPath(workspaceManager.activeRoot(), requestedPath);
       const name = String(args.name || path.basename(filePath));
+      const stat = await fs.stat(filePath);
+      const isDirectory = stat.isDirectory();
       const english = interfaceLocale === "en";
       const confirmation = await dialog.showMessageBox(mainWindow, {
         type: "warning",
-        title: english ? "Delete document" : "删除文稿",
+        title: english ? "Delete entry" : `删除${isDirectory ? "目录" : "文稿"}`,
         message: english ? `Move “${name}” to the Recycle Bin?` : `要将“${name}”移到废纸篓吗？`,
-        detail: english ? "The document can be restored from the system Recycle Bin." : "可以从系统废纸篓中恢复该文稿。",
+        detail: english ? "The entry can be restored from the system Recycle Bin." : `可以从系统废纸篓中恢复该${isDirectory ? "目录" : "文稿"}。`,
         buttons: english ? ["Move to Recycle Bin", "Cancel"] : ["移到废纸篓", "取消"],
         defaultId: 1,
         cancelId: 1,
@@ -210,12 +214,33 @@ async function handleWorkspaceRequest(method, args = {}) {
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
       }
+      if (!isDirectory) {
+        const assets = path.join(path.dirname(filePath), sanitizeSegment(path.basename(filePath, path.extname(filePath))));
+        try { await shell.trashItem(assets); }
+        catch (error) { if (error.code !== "ENOENT") throw error; }
+      }
+      await refreshWorkspace();
       return { deleted: true };
     }
     case "createDirectory": {
       const directory = await createWorkspaceDirectory(workspaceManager.activeRoot(), args.relativePath);
       await refreshWorkspace();
       return directory;
+    }
+    case "createDocument": {
+      const document = await createWorkspaceDocument(workspaceManager.activeRoot(), args.directoryPath, args.name);
+      await refreshWorkspace();
+      return document;
+    }
+    case "copyWorkspaceEntry": {
+      const result = await copyWorkspaceEntry(workspaceManager.activeRoot(), args.path, args.destinationPath);
+      await refreshWorkspace();
+      return result;
+    }
+    case "moveWorkspaceEntry": {
+      const result = await moveWorkspaceEntry(workspaceManager.activeRoot(), args.path, args.destinationPath);
+      await refreshWorkspace();
+      return result;
     }
     case "syncWorkspace": {
       const action = args.action === "push" ? "push" : "pull";
