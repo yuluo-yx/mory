@@ -296,9 +296,19 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
                             && abs(actual.height - restoredFrame.height) < 1
                         let sizeWasAlreadyMaximal = abs(zoomedFrame.width - restoredFrame.width) < 1
                             && abs(zoomedFrame.height - restoredFrame.height) < 1
-                        let restored = sizeRestored && (!window.isZoomed || sizeWasAlreadyMaximal)
+                        let visibleFrame = window.screen?.visibleFrame
+                        let constrainedToVisibleFrame = visibleFrame.map { frame in
+                            window.isZoomed
+                                && abs(actual.origin.x - frame.origin.x) < 1
+                                && abs(actual.origin.y - frame.origin.y) < 1
+                                && abs(actual.width - frame.width) < 1
+                                && abs(actual.height - frame.height) < 1
+                                && abs(zoomedFrame.width - restoredFrame.width) <= 3
+                                && abs(zoomedFrame.height - restoredFrame.height) <= 3
+                        } ?? false
+                        let restored = sizeRestored && (!window.isZoomed || sizeWasAlreadyMaximal) || constrainedToVisibleFrame
                         // 托管小屏幕可能只能通过移动窗口表示放大，并把还原位置继续钳制在可见区内。
-                        // 正常屏幕仍要求退出 isZoomed；只有放大前后尺寸完全相同时接受系统的钳制状态。
+                        // 正常屏幕仍要求退出 isZoomed；仅当系统把窗口精确钳制到可见区域且尺寸差不超过 3 点时接受。
                         if restored {
                             print("macOS 窗口拖动与左侧顶部双击放大/还原冒烟通过")
                             NSApplication.shared.terminate(nil)

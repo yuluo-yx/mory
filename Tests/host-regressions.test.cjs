@@ -121,7 +121,8 @@ test("macOS 左侧顶部与正文标题栏共用原生窗口放大与还原交�
   assert.match(web, /windowTitlebarDoubleClick/);
   assert.match(host, /case "windowTitlebarDoubleClick"/);
   assert.match(host, /window\.performZoom\(nil\)/);
-  assert.match(host, /let restored = sizeRestored && \(!window\.isZoomed \|\| sizeWasAlreadyMaximal\)/);
+  assert.match(host, /let constrainedToVisibleFrame = visibleFrame\.map/);
+  assert.match(host, /let restored = sizeRestored && \(!window\.isZoomed \|\| sizeWasAlreadyMaximal\) \|\| constrainedToVisibleFrame/);
   assert.match(host, /document\.querySelector\('\.traffic-space'\)/);
   assert.match(host, /new MouseEvent\('dblclick'/);
   assert.match(typingSmoke, /code: document\.querySelector\('#write > pre code'\)\?\.innerText/);

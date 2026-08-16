@@ -77,7 +77,19 @@ jobs:
           cache: true
       - name: Install GNU Make and NSIS
         shell: powershell
-        run: choco install make nsis --yes --no-progress
+        run: |
+          choco install make nsis --yes --no-progress
+          $candidates = @(
+            "${env:ProgramFiles(x86)}\NSIS",
+            "$env:ProgramFiles\NSIS",
+            "$env:ChocolateyInstall\lib"
+          ) | Where-Object { Test-Path $_ }
+          $makensis = $candidates |
+            ForEach-Object { Get-ChildItem $_ -Filter makensis.exe -Recurse -ErrorAction SilentlyContinue } |
+            Select-Object -First 1
+          if (-not $makensis) { throw "makensis.exe was not found after installing NSIS." }
+          $makensis.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & $makensis.FullName /VERSION
       - name: Install dependencies
         run: make install
       - name: Validate and package
