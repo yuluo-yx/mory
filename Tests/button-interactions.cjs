@@ -67,6 +67,9 @@ async function hover(window, selector) {
     const rect = element.getBoundingClientRect();
     return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
   })()`);
+  // 托管 runner 缩放离屏窗口后可能保留旧指针坐标；先移出目标，确保产生新的 mouseover。
+  window.webContents.sendInputEvent({ type: "mouseMove", x: 1, y: 1 });
+  await wait(50);
   window.webContents.sendInputEvent({ type: "mouseMove", x: point.x, y: point.y });
   await wait(100);
 }
@@ -125,7 +128,7 @@ app.whenReady().then(async () => {
     window.setSize(1180, 790);
     await wait(140);
     await hover(window, "#toolbar button[data-command='ul']");
-    await expect(window, "工具栏悬停显示文字提示", "document.querySelector('#toolbar-tooltip').classList.contains('is-visible') && document.querySelector('#toolbar-tooltip').textContent === '无序列表'");
+    await expectEventually(window, "工具栏悬停显示文字提示", "document.querySelector('#toolbar-tooltip').classList.contains('is-visible') && document.querySelector('#toolbar-tooltip').textContent === '无序列表'");
     await expect(window, "左侧搜索标签已移除", "!document.querySelector('.tab[data-panel=\"search\"]') && !document.querySelector('#search-panel-side') && !document.querySelector('#side-search-input')");
     const screenshotPath = path.join(os.tmpdir(), "mory-ui-e2e.png");
     const codeMetaScreenshotPath = path.join(os.tmpdir(), "mory-code-meta-e2e.png");

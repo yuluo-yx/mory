@@ -278,7 +278,12 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
                 guard let self else { return }
                 let zoomedFrame = window.frame
-                guard window.isZoomed, zoomedFrame.width > restoredFrame.width || zoomedFrame.height > restoredFrame.height else {
+                let frameChanged = abs(zoomedFrame.origin.x - restoredFrame.origin.x) >= 1
+                    || abs(zoomedFrame.origin.y - restoredFrame.origin.y) >= 1
+                    || abs(zoomedFrame.width - restoredFrame.width) >= 1
+                    || abs(zoomedFrame.height - restoredFrame.height) >= 1
+                // 小尺寸托管屏幕可能已容纳窗口的全部宽高，系统放大只会调整窗口位置。
+                guard window.isZoomed, frameChanged else {
                     fputs("macOS 左侧顶部双击放大冒烟失败：before=\(restoredFrame), after=\(zoomedFrame)\n", stderr)
                     Darwin.exit(1)
                 }

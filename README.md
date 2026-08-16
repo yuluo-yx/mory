@@ -121,6 +121,16 @@ dist\windows
 npm run pack:win:arm64
 ```
 
+## 通过 GitHub Actions 发布版本
+
+GitHub Actions 可以统一构建 macOS ARM64、macOS x64、Windows x64 和 Windows ARM64 制品，并创建 GitHub Release。发布标签必须与 `package.json` 中的版本一致：
+
+```bash
+gh workflow run build-binaries.yml -f release_tag=v0.1.0
+```
+
+普通分支推送和拉取请求只执行构建与测试，不创建 Release。发布任务使用仓库临时 `GITHUB_TOKEN`，不需要个人 Access Token。完整流程和回滚方式见 [docs/ci-packaging.md](docs/ci-packaging.md)。
+
 ## 使用主题
 
 打开“偏好设置”，在“文档主题”中选择主题。主题会同时影响编辑区和导出结果。默认的 Yuluo CSS 主题迁移自本机已有 `yuluo-css.css` 的正文排版与配色；实现移除了 Typora 专属选择器、远程字体请求和来源不明的字体文件，因此 macOS 和 Windows 均可离线使用。
