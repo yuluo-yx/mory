@@ -8,6 +8,7 @@
   <title>Mory</title>
   <link rel="stylesheet" href="styles.css">
   <link id="document-theme" rel="stylesheet" href="themes/yuluo-css.css">
+  <style id="user-document-theme"></style>
 </head>
 <body>
   <svg class="icon-sprite" aria-hidden="true">
@@ -23,6 +24,7 @@
     <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
     <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m8 10 4 4 4-4"/></symbol>
     <symbol id="i-sync" viewBox="0 0 24 24"><path d="M20 7h-6V1"/><path d="M20 7a9 9 0 0 0-15.5-2M4 17h6v6"/><path d="M4 17a9 9 0 0 0 15.5 2"/></symbol>
+    <symbol id="i-graph" viewBox="0 0 24 24"><circle cx="6" cy="7" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="15" cy="18" r="2.4"/><circle cx="5" cy="17" r="2.4"/><path d="m8.3 6.8 7.3-.6M7.2 9l6.6 7.1M16.9 8.2l-1.3 7.4M7.4 17.2l5.2.5"/></symbol>
   </svg>
 
   <main id="app" class="app-shell">
@@ -96,6 +98,7 @@
         <button data-command="table" data-tooltip="表格" aria-label="表格"><span aria-hidden="true">▦</span></button>
         <button data-command="hr" data-tooltip="分隔线" aria-label="分隔线"><span aria-hidden="true">—</span></button>
         <span class="bar-separator"></span>
+        <button id="graph-button" class="mode-button" data-tooltip="知识图谱" aria-label="知识图谱"><svg aria-hidden="true"><use href="#i-graph"/></svg></button>
         <button id="source-toggle" class="mode-button" data-tooltip="源代码模式（⌘/）" aria-label="源代码模式（⌘/）"><svg aria-hidden="true"><use href="#i-code"/></svg></button>
         <button id="export-button" class="mode-button export-action" data-tooltip="导出文档" aria-label="导出文档"><svg aria-hidden="true"><use href="#i-export"/></svg></button>
       </div>
@@ -104,15 +107,43 @@
       <div id="editor-scroll" class="editor-scroll">
         <article id="write" class="write" contenteditable="true" spellcheck="true" aria-label="Markdown 编辑器"></article>
         <textarea id="source-editor" class="source-editor" spellcheck="false" aria-label="Markdown 源代码"></textarea>
+        <section id="document-backlinks" class="document-backlinks" hidden aria-label="当前文稿的反向链接">
+          <header><div><small>BACKLINKS</small><h2 id="document-backlinks-title">反向链接</h2></div><span id="document-backlinks-summary">0 篇文稿引用当前文稿</span></header>
+          <div id="document-backlinks-list" class="document-backlinks-list"></div>
+        </section>
       </div>
 
       <footer id="statusbar" class="statusbar">
         <button id="focus-button">专注模式</button>
         <button id="typewriter-button">打字机模式</button>
         <span class="status-spacer"></span>
+        <button id="backlink-count">反向链接 0</button>
         <span id="line-count">0 行</span>
         <button id="word-count">0 字</button>
       </footer>
+
+      <aside id="knowledge-graph" class="graph-panel" aria-hidden="true" aria-label="工作区知识图谱">
+        <header class="graph-head">
+          <div><small>WORKSPACE MAP</small><h2 id="graph-title">知识图谱</h2><p id="graph-stats">正在读取工作区…</p></div>
+          <button id="graph-close" aria-label="关闭"><svg><use href="#i-close"/></svg></button>
+        </header>
+        <div class="graph-controls">
+          <label><svg><use href="#i-search"/></svg><input id="graph-search" placeholder="筛选文稿" autocomplete="off"></label>
+          <button id="graph-refresh" class="quiet-button">刷新</button>
+        </div>
+        <div id="graph-canvas" class="graph-canvas">
+          <svg id="graph-svg" role="img" aria-label="文稿链接关系图"></svg>
+          <p id="graph-empty" class="graph-empty" hidden>当前工作区还没有可显示的文稿</p>
+        </div>
+        <section id="graph-relations" class="graph-relations" hidden>
+          <header><div><small>CONNECTIONS</small><strong id="graph-relation-title">选择文稿</strong></div><button id="graph-relations-close" aria-label="收起关系"><svg><use href="#i-close"/></svg></button></header>
+          <div class="graph-relation-columns">
+            <div><h3 id="graph-forward-heading">链接到</h3><div id="graph-forward-list" class="graph-relation-list"></div></div>
+            <div><h3 id="graph-backlink-heading">被链接</h3><div id="graph-backlink-list" class="graph-relation-list"></div></div>
+          </div>
+        </section>
+        <footer><span><i class="graph-dot is-current"></i>当前文稿</span><span><i class="graph-arrow is-forward">→</i>正向</span><span><i class="graph-arrow is-backlink">→</i>反向</span><span>单击查看关系 · 双击打开</span></footer>
+      </aside>
     </section>
   </main>
 
@@ -147,8 +178,10 @@
           </form>
         </section>
         <div class="settings-section-label">编辑器</div>
+        <div class="setting-row"><div><strong>界面语言</strong><p>切换 Mory 的菜单与操作文字</p></div><select id="language-select"><option value="zh-CN">简体中文</option><option value="en">English</option></select></div>
         <div class="setting-row"><div><strong>外观</strong><p>选择编辑器使用的颜色主题</p></div><select id="theme-select"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></div>
         <div class="setting-row"><div><strong>文档主题</strong><p>独立 CSS 控制正文渲染和导出样式</p></div><select id="document-theme-select"><option value="yuluo-css">Yuluo CSS</option><option value="github">GitHub</option><option value="whitey">Whitey</option><option value="newsprint">Newsprint</option><option value="pixyll">Pixyll</option><option value="gothic">Gothic</option><option value="night">Night</option></select></div>
+        <div class="setting-row theme-manager-row"><div><strong>用户主题</strong><p id="custom-theme-summary">导入 CSS，或把主题与资源放入主题目录</p></div><div class="theme-actions"><button id="theme-import" class="quiet-button">导入 CSS</button><button id="theme-folder" class="quiet-button">主题目录</button><button id="theme-refresh" class="quiet-button">刷新</button></div></div>
         <div class="setting-row"><div><strong>编辑器宽度</strong><p>控制正文最大行宽</p></div><select id="width-select"><option value="700">窄</option><option value="820" selected>标准</option><option value="980">宽</option></select></div>
         <div class="setting-row"><div><strong>显示状态栏</strong><p>展示行数、字数与模式开关</p></div><label class="switch"><input id="status-toggle" type="checkbox" checked><span></span></label></div>
         <div class="setting-row"><div><strong>拼写检查</strong><p>使用系统拼写检查能力</p></div><label class="switch"><input id="spell-toggle" type="checkbox" checked><span></span></label></div>
@@ -173,6 +206,7 @@
   <div id="toast" class="toast" role="status"></div>
   <script src="vendor/mermaid.min.js"></script>
   <script src="vendor/highlight.min.js"></script>
+  <script src="vendor/d3.min.js"></script>
   <script src="app.bundle.js"></script>
 </body>
 </html>

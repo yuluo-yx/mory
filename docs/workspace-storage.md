@@ -6,6 +6,23 @@ Mory 把工作目录作为工作区的核心。文稿、图片和其他附件都
 
 本地工作区直接读写用户选择的目录。远端工作区使用本地镜像目录编辑，再通过存储插件执行“拉取”或“推送”。编辑器只调用统一的工作区接口，不感知 GitHub、对象存储或 SFTP 的网络细节。
 
+存储插件不是 WebAssembly。Go 代码会编译成独立的 `mory-storage` 侧车程序。Windows 使用 `mory-storage.exe`。Web 编辑器通过宿主桥发出请求，Electron 或 Swift 宿主再启动侧车程序。宿主通过标准输入写入 JSON，并从标准输出读取 JSON 结果。该结构避免把 Go 代码和存储凭证放入 JavaScript 页面。
+
+```text
+Web 编辑器
+    │ 宿主请求
+    ▼
+Electron / Swift 宿主
+    │ JSON：stdin / stdout
+    ▼
+mory-storage / mory-storage.exe
+    │ 官方 SDK 或主流客户端库
+    ├── GitHub
+    ├── S3 / S4
+    ├── OSS
+    └── SFTP
+```
+
 ```text
 共享编辑器
     ↓

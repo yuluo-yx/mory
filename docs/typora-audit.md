@@ -13,8 +13,8 @@
 | 1 | `/Applications/Typora.app/Contents/Info.plist` | 版本为 0.11.18，构建号为 5941；注册 Markdown 与纯文本类型 | macOS `Info.plist` 和 Windows `fileAssociations` 注册 Markdown 文件 |
 | 2 | `/Applications/Typora.app/Contents/MacOS/Typora` | Mach-O 通用二进制依赖 Cocoa、WebKit、Sparkle 和 Sentry | macOS 使用 AppKit 与 WKWebView；更新和遥测不在本次范围内 |
 | 3 | `/Applications/Typora.app/Contents/Resources/TypeMark/index.html` | 主界面包含侧边栏、文件、大纲、搜索、源码区和 `#write` 编辑区 | 共享 Web 内核保留相同信息分区 |
-| 4 | `/Applications/Typora.app/Contents/Resources/TypeMark/style/themes/` | 每套主题对应一个 CSS 文件 | 六套主题分别存放在 `Sources/Mory/Web/themes/` |
-| 5 | `/Applications/Typora.app/Contents/Resources/TypeMark/Docs/Custom Themes.md` | 主题目录支持基础主题、`base.user.css` 和主题专属覆盖文件 | 当前版本实现独立主题 CSS；用户覆盖层列入后续扩展接口 |
+| 4 | `/Applications/Typora.app/Contents/Resources/TypeMark/style/themes/` | 每套主题对应一个 CSS 文件 | 七套内置主题分别存放在 `Sources/Mory/Web/themes/` |
+| 5 | `/Applications/Typora.app/Contents/Resources/TypeMark/Docs/Custom Themes.md` | 主题目录支持基础主题、`base.user.css` 和主题专属覆盖文件 | Mory 支持用户主题目录、CSS 导入、刷新和相对资源内联；编辑与导出共用同一份用户 CSS |
 | 6 | `/Applications/Typora.app/Contents/Resources/TypeMark/appsrc/main.js` | `theme_css` 动态切换主题；导出时收集基础 CSS、主题 CSS 和用户 CSS | Mory 动态切换 `document-theme`，导出时读取并内联主题 CSS |
 | 7 | 同上，`exportPDF` 和 `printToPDF` 调用附近 | PDF 先生成主题化 HTML，再交给宿主打印后端 | Electron 使用 `printToPDF`；WKWebView 使用无界面打印操作 |
 | 8 | 同上，`exportToImage` 调用附近 | 图片导出创建独立页面，测量总高度，再截图并组合 | Mory 创建离屏页面、按宽度重排、测量高度并输出 PNG 或 JPEG |

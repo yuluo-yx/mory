@@ -1,4 +1,5 @@
 import { documentStats, editorToMarkdown, escapeHTML, markdownToHTML } from "./markdown.js";
+import { buildKnowledgeGraph } from "./knowledge.js";
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -43,6 +44,7 @@ const state = {
   markdown: "",
   documents: [],
   files: [],
+  workspaceDocuments: [],
   activeDocumentId: null,
   documentSerial: 0,
   untitledSequence: 0,
@@ -54,6 +56,11 @@ const state = {
   titleTouched: false,
   documentTheme: "yuluo-css",
   themeCSS: new Map(),
+  customThemes: [],
+  locale: "zh-CN",
+  graph: { nodes: [], edges: [] },
+  graphSimulation: null,
+  selectedGraphNodeId: "",
   workspaces: [],
   activeWorkspaceId: "",
   editingWorkspaceId: ""
@@ -69,10 +76,80 @@ let pendingCodeExit = null;
 let recentCompositionCommit = null;
 let activeComposition = null;
 let hostRequestSequence = 0;
+let workspaceKnowledgeRequest = 0;
 const pendingHostRequests = new Map();
 const caretMarker = "\u200b";
 const renderCaretMarker = "\ue000";
 const doubleEnterWindow = 650;
+const builtInThemes = ["yuluo-css", "github", "whitey", "newsprint", "pixyll", "gothic", "night"];
+const englishText = {
+  "文件": "Files", "大纲": "Outline", "工作区": "Workspace", "文档还没有标题": "No headings yet",
+  "本地工作区": "Local workspace", "未命名": "Untitled", "未命名.md": "Untitled.md", "已保存": "Saved", "未保存": "Unsaved",
+  "查找": "Find", "替换为": "Replace with", "替换": "Replace", "全部替换": "Replace all", "上一个": "Previous", "下一个": "Next", "关闭": "Close",
+  "加粗（⌘B）": "Bold (⌘B)", "斜体（⌘I）": "Italic (⌘I)", "删除线": "Strikethrough", "行内代码": "Inline code",
+  "引用": "Quote", "无序列表": "Bulleted list", "有序列表": "Numbered list", "任务列表": "Task list", "链接（⌘K）": "Link (⌘K)", "表格": "Table", "分隔线": "Horizontal rule",
+  "知识图谱": "Knowledge graph", "源代码模式（⌘/）": "Source mode (⌘/)", "导出文档": "Export document",
+  "专注模式": "Focus mode", "打字机模式": "Typewriter mode", "正在读取工作区…": "Reading workspace…", "筛选文稿": "Filter notes", "刷新": "Refresh",
+  "当前工作区还没有可显示的文稿": "There are no notes to display in this workspace", "当前文稿": "Current note", "工作区文稿": "Workspace note", "文稿链接关系图": "Note connection graph",
+  "正向": "Outgoing", "反向": "Backlink", "单击查看关系 · 双击打开": "Click for connections · Double-click to open", "选择文稿": "Select a note", "收起关系": "Hide connections",
+  "链接到": "Links to", "被链接": "Linked from", "没有正向链接": "No outgoing links", "没有反向链接": "No backlinks", "反向链接": "Backlinks",
+  "当前文稿的反向链接": "Backlinks for the current note", "篇文稿引用当前文稿": "notes link to this note", "没有文稿引用当前文稿": "No notes link to this note",
+  "文件结果": "File results", "按文件名搜索": "Search by filename", "偏好设置": "Preferences", "工作区与存储": "Workspace & storage",
+  "文稿在本地目录编辑，远端插件负责同步": "Edit locally; remote plugins handle sync", "新增": "Add", "当前工作区": "Current workspace", "尚未连接宿主": "Desktop host unavailable",
+  "选择本地目录": "Choose local folder", "拉取": "Pull", "推送": "Push", "新增工作区": "Add workspace", "配置工作区": "Configure workspace",
+  "名称": "Name", "存储插件": "Storage plugin", "删除工作区": "Remove workspace", "保存并启用": "Save & activate", "编辑器": "Editor",
+  "界面语言": "Interface language", "切换 Mory 的菜单与操作文字": "Switch Mory menus and controls", "简体中文": "Simplified Chinese",
+  "外观": "Appearance", "选择编辑器使用的颜色主题": "Choose the editor color scheme", "跟随系统": "System", "浅色": "Light", "深色": "Dark",
+  "文档主题": "Document theme", "独立 CSS 控制正文渲染和导出样式": "CSS controls editor rendering and exports", "用户主题": "Custom themes",
+  "导入 CSS，或把主题与资源放入主题目录": "Import CSS, or place themes and assets in the theme folder", "导入 CSS": "Import CSS", "主题目录": "Theme folder",
+  "编辑器宽度": "Editor width", "控制正文最大行宽": "Control maximum text width", "窄": "Narrow", "标准": "Standard", "宽": "Wide",
+  "显示状态栏": "Show status bar", "展示行数、字数与模式开关": "Show counts and mode controls", "拼写检查": "Spell check", "使用系统拼写检查能力": "Use the system spell checker",
+  "格式": "Format", "导出主题": "Export theme", "使用当前主题": "Use current theme", "纸张": "Paper", "图片宽度": "Image width", "保留主题背景": "Keep theme background",
+  "PDF 与图片包含当前主题的纸张颜色": "Include theme paper color in PDF and images", "HTML、PDF 不需要 Pandoc": "HTML and PDF do not require Pandoc", "选择位置并导出": "Choose location and export",
+  "开始写作…": "Start writing…", "新建文档（⌘N）": "New document (⌘N)", "切换或配置工作区": "Switch or configure workspace", "显示／隐藏侧边栏": "Show/hide sidebar",
+  "本地": "Local", "工作目录": "Working folder", "使用“选择本地目录”填写": "Use “Choose local folder”", "仓库": "Repository", "分支": "Branch",
+  "API 地址": "API endpoint", "仓库内目录": "Repository path", "S3 兼容服务地址": "S3-compatible endpoint", "服务器": "Server", "端口": "Port",
+  "用户名": "Username", "密码": "Password", "私钥或私钥路径": "Private key or path", "默认 ~/.ssh/known_hosts": "Default: ~/.ssh/known_hosts",
+  "远端目录": "Remote path", "区域": "Region", "路径前缀": "Path prefix", "已配置；留空则保持不变": "Configured; leave blank to keep it"
+};
+const staticLocaleNodes = new WeakMap();
+const staticLocaleAttributes = new WeakMap();
+
+function locale() { return state.locale === "en" ? "en" : "zh-CN"; }
+function localized(chinese) { return locale() === "en" ? (englishText[chinese] || chinese) : chinese; }
+
+function applyLocale(next = state.locale) {
+  state.locale = next === "en" ? "en" : "zh-CN";
+  document.documentElement.lang = state.locale;
+  document.documentElement.style.setProperty("--empty-editor-label", state.locale === "en" ? '"Start writing…"' : '"开始写作…"');
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!staticLocaleNodes.has(node)) staticLocaleNodes.set(node, node.nodeValue);
+    const original = staticLocaleNodes.get(node);
+    const trimmed = original.trim();
+    if (englishText[trimmed]) node.nodeValue = original.replace(trimmed, localized(trimmed));
+  }
+  document.querySelectorAll("[title], [aria-label], [placeholder], [data-tooltip]").forEach(element => {
+    if (!staticLocaleAttributes.has(element)) {
+      staticLocaleAttributes.set(element, Object.fromEntries(["title", "aria-label", "placeholder", "data-tooltip"].map(name => [name, element.getAttribute(name)])));
+    }
+    const originals = staticLocaleAttributes.get(element);
+    for (const [name, value] of Object.entries(originals)) if (value) element.setAttribute(name, localized(value));
+  });
+  $("#language-select").value = state.locale;
+  localStorage.setItem("mory.locale", state.locale);
+  renderFiles();
+  updateDerivedState();
+  $("#save-state").textContent = localized(state.dirty ? "未保存" : "已保存");
+  const sourceLabel = state.sourceMode ? (state.locale === "en" ? "Preview mode (⌘/)" : "预览模式（⌘/）") : localized("源代码模式（⌘/）");
+  $("#source-toggle").dataset.tooltip = sourceLabel;
+  $("#source-toggle").setAttribute("aria-label", sourceLabel);
+  renderWorkspaceSettings();
+  syncThemeOptions();
+  updateDocumentBacklinks();
+  if ($("#knowledge-graph").classList.contains("is-open")) updateGraphLabels();
+  bridge({ type: "localeChanged", locale: state.locale });
+}
 
 function bridge(payload) {
   if (window.webkit?.messageHandlers?.mory) {
@@ -140,6 +217,7 @@ function renderDocument(document, announce = false) {
   updateDerivedState();
   renderFiles();
   void renderMermaidDiagrams(write, state.documentTheme);
+  updateDocumentBacklinks();
   if (announce) toast("已切换文档");
 }
 
@@ -613,6 +691,7 @@ function markChanged() {
   clearTimeout(changeTimer);
   changeTimer = setTimeout(() => {
     updateDerivedState();
+    rebuildWorkspaceKnowledge();
     localStorage.setItem("mory.draft", state.markdown);
     bridge({
       type: "changed",
@@ -626,12 +705,12 @@ function markChanged() {
 
 function updateDerivedState() {
   const stats = documentStats(state.markdown);
-  $("#word-count").textContent = `${stats.words} 字`;
-  $("#line-count").textContent = `${stats.lines} 行`;
+  $("#word-count").textContent = locale() === "en" ? `${stats.words} words` : `${stats.words} 字`;
+  $("#line-count").textContent = locale() === "en" ? `${stats.lines} lines` : `${stats.lines} 行`;
   updateOutline();
 
   if (!state.titleTouched) {
-    const title = state.markdown.match(/^#\s+(.+)$/m)?.[1]?.replace(/[*_`~]/g, "").trim() || "未命名";
+    const title = state.markdown.match(/^#\s+(.+)$/m)?.[1]?.replace(/[*_`~]/g, "").trim() || localized("未命名");
     $("#document-title").value = title;
       bridge({ type: "title", value: title, dirty: state.dirty });
   }
@@ -650,7 +729,7 @@ function updateOutline() {
     button.addEventListener("click", () => heading.scrollIntoView({ behavior: "smooth", block: "start" }));
     outline.append(button);
   });
-  $("#outline-count").textContent = `${entries.length} 项`;
+  $("#outline-count").textContent = locale() === "en" ? `${entries.length} items` : `${entries.length} 项`;
   $("#outline-empty").hidden = entries.length > 0;
 }
 
@@ -742,7 +821,7 @@ function renderQuickResults(files = visibleFileEntries(), query = "") {
     });
     container.append(button);
   });
-  if (!results.length) container.innerHTML = '<p class="empty-state">没有匹配的文件</p>';
+  if (!results.length) container.innerHTML = `<p class="empty-state">${locale() === "en" ? "No matching files" : "没有匹配的文件"}</p>`;
 }
 
 function toggleSource(force) {
@@ -757,7 +836,7 @@ function toggleSource(force) {
   state.sourceMode = next;
   workspace.classList.toggle("source-mode", next);
   const sourceButton = $("#source-toggle");
-  const label = next ? "预览模式（⌘/）" : "源代码模式（⌘/）";
+  const label = next ? (locale() === "en" ? "Preview mode (⌘/)" : "预览模式（⌘/）") : localized("源代码模式（⌘/）");
   sourceButton.classList.toggle("is-active", next);
   sourceButton.dataset.tooltip = label;
   sourceButton.setAttribute("aria-label", label);
@@ -964,6 +1043,11 @@ function setWorkspaceState(payload = {}) {
 function resetWorkspaceSession() {
   state.documents = [];
   state.files = [];
+  state.workspaceDocuments = [];
+  state.graph = { nodes: [], edges: [] };
+  workspaceKnowledgeRequest += 1;
+  updateDocumentBacklinks();
+  toggleKnowledgeGraph(false);
   state.untitledSequence = 0;
   createUntitledDocument("", { announce: false, notifyHost: true });
 }
@@ -974,14 +1058,14 @@ function renderWorkspaceSettings() {
   state.workspaces.forEach(item => {
     const option = document.createElement("option");
     option.value = item.id;
-    option.textContent = `${item.name} · ${item.provider === "local" ? "本地" : item.provider.toUpperCase()}`;
+    option.textContent = `${item.name} · ${item.provider === "local" ? localized("本地") : item.provider.toUpperCase()}`;
     select.append(option);
   });
   select.value = state.activeWorkspaceId;
   const current = activeWorkspace();
-  $("#workspace-button").textContent = current?.name || "本地工作区";
-  $("#folder-name").textContent = current?.name || "工作区";
-  $("#workspace-path").textContent = current?.localPath || "尚未连接宿主";
+  $("#workspace-button").textContent = current?.name || localized("本地工作区");
+  $("#folder-name").textContent = current?.name || localized("工作区");
+  $("#workspace-path").textContent = current?.localPath || localized("尚未连接宿主");
   const local = !current || current.provider === "local";
   $("#workspace-pull").hidden = local;
   $("#workspace-push").hidden = local;
@@ -994,11 +1078,11 @@ function renderWorkspaceFields(provider, workspaceValue = {}) {
     const label = document.createElement("label");
     if (field.wide) label.className = "workspace-wide";
     const caption = document.createElement("span");
-    caption.textContent = field.label;
+    caption.textContent = localized(field.label);
     const input = document.createElement("input");
     input.name = field.name;
     input.type = field.type || "text";
-    input.placeholder = field.secret && workspaceValue[`${field.name}Configured`] ? "已配置；留空则保持不变" : (field.placeholder || "");
+    input.placeholder = field.secret && workspaceValue[`${field.name}Configured`] ? localized("已配置；留空则保持不变") : localized(field.placeholder || "");
     if (!field.secret) input.value = workspaceValue[field.name] ?? "";
     input.required = Boolean(field.required && !(field.secret && workspaceValue[`${field.name}Configured`]));
     if (field.name === "localPath") input.readOnly = true;
@@ -1011,7 +1095,7 @@ function showWorkspaceForm(workspaceValue = null) {
   const editing = workspaceValue || {};
   state.editingWorkspaceId = editing.id || "";
   $("#workspace-form").hidden = false;
-  $("#workspace-form-heading").textContent = editing.id ? "配置工作区" : "新增工作区";
+  $("#workspace-form-heading").textContent = localized(editing.id ? "配置工作区" : "新增工作区");
   $("#workspace-name").value = editing.name || "";
   $("#workspace-provider").value = editing.provider || "local";
   $("#workspace-provider").disabled = Boolean(editing.id);
@@ -1067,6 +1151,272 @@ async function syncWorkspace(action) {
   } finally {
     button.disabled = false;
     button.textContent = original;
+  }
+}
+
+function graphDocuments(documents = state.workspaceDocuments) {
+  const byPath = new Map(documents.map(document => [document.path || document.name, { ...document }]));
+  for (const document of state.documents) {
+    if (!document.path) continue;
+    byPath.set(document.path, { name: state.files.find(file => file.path === document.path)?.name || document.name, path: document.path, markdown: document.markdown });
+  }
+  return [...byPath.values()];
+}
+
+function activeGraphNode() {
+  const document = activeDocument();
+  if (!document?.path) return null;
+  return state.graph.nodes.find(node => node.path === document.path) || null;
+}
+
+function activateGraphDocument(node) {
+  const document = state.documents.find(item => item.path && item.path === node.path);
+  if (document) activateDocument(document.id, { announce: true, notifyHost: true });
+  else if (node.path) bridge({ type: "openFile", path: node.path });
+}
+
+function updateDocumentBacklinks() {
+  const node = activeGraphNode();
+  const backlinks = node?.backlinks || [];
+  $("#backlink-count").textContent = locale() === "en" ? `Backlinks ${backlinks.length}` : `反向链接 ${backlinks.length}`;
+  const panel = $("#document-backlinks");
+  panel.hidden = !node || backlinks.length === 0;
+  $("#document-backlinks-title").textContent = localized("反向链接");
+  $("#document-backlinks-summary").textContent = backlinks.length
+    ? (locale() === "en" ? `${backlinks.length} notes link to this note` : `${backlinks.length} 篇文稿引用当前文稿`)
+    : localized("没有文稿引用当前文稿");
+  const list = $("#document-backlinks-list");
+  list.innerHTML = "";
+  for (const id of backlinks) {
+    const source = state.graph.nodes.find(item => item.id === id);
+    if (!source) continue;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.nodeId = source.id;
+    const title = document.createElement("strong");
+    title.textContent = source.title;
+    const path = document.createElement("small");
+    path.textContent = source.name;
+    button.append(title, path);
+    button.addEventListener("click", () => activateGraphDocument(source));
+    list.append(button);
+  }
+}
+
+function rebuildWorkspaceKnowledge({ renderGraph = false } = {}) {
+  state.graph = buildKnowledgeGraph(graphDocuments());
+  updateDocumentBacklinks();
+  if (renderGraph || $("#knowledge-graph").classList.contains("is-open")) renderKnowledgeGraph(state.graph);
+}
+
+async function refreshWorkspaceKnowledge({ renderGraph = false } = {}) {
+  const request = ++workspaceKnowledgeRequest;
+  try {
+    if (window.moryNative || nativeMacHost) {
+      const documents = await hostRequest("workspaceDocuments");
+      if (request !== workspaceKnowledgeRequest) return;
+      state.workspaceDocuments = Array.isArray(documents) ? documents : [];
+    }
+    rebuildWorkspaceKnowledge({ renderGraph });
+  } catch (error) {
+    if (renderGraph) toast(locale() === "en" ? `Unable to build graph: ${error.message}` : `无法生成知识图谱：${error.message}`);
+  }
+}
+
+function updateGraphLabels() {
+  const graph = state.graph;
+  $("#graph-title").textContent = localized("知识图谱");
+  $("#graph-stats").textContent = locale() === "en"
+    ? `${graph.nodes.length} notes · ${graph.edges.length} links`
+    : `${graph.nodes.length} 篇文稿 · ${graph.edges.length} 条链接`;
+  $("#graph-refresh").textContent = localized("刷新");
+  $("#graph-search").placeholder = localized("筛选文稿");
+  $("#graph-empty").textContent = localized("当前工作区还没有可显示的文稿");
+  const selected = graph.nodes.find(node => node.id === state.selectedGraphNodeId);
+  if (selected) renderGraphRelations(selected);
+}
+
+function openGraphNode(node) {
+  activateGraphDocument(node);
+  toggleKnowledgeGraph(false);
+}
+
+function graphNodeID(value) {
+  return typeof value === "object" ? value.id : value;
+}
+
+function renderGraphRelationList(container, ids, emptyLabel) {
+  container.innerHTML = "";
+  for (const id of ids) {
+    const target = state.graph.nodes.find(node => node.id === id);
+    if (!target) continue;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.nodeId = target.id;
+    const title = document.createElement("span");
+    title.textContent = target.title;
+    const path = document.createElement("small");
+    path.textContent = target.name;
+    button.append(title, path);
+    button.addEventListener("click", () => selectKnowledgeNode(target.id));
+    button.addEventListener("dblclick", () => openGraphNode(target));
+    container.append(button);
+  }
+  if (!container.children.length) {
+    const empty = document.createElement("p");
+    empty.textContent = localized(emptyLabel);
+    container.append(empty);
+  }
+}
+
+function renderGraphRelations(node) {
+  const panel = $("#graph-relations");
+  panel.hidden = false;
+  $("#graph-relation-title").textContent = node.title;
+  $("#graph-relations-close").setAttribute("aria-label", localized("收起关系"));
+  $("#graph-forward-heading").textContent = `${localized("链接到")} · ${node.forwardLinks.length}`;
+  $("#graph-backlink-heading").textContent = `${localized("被链接")} · ${node.backlinks.length}`;
+  renderGraphRelationList($("#graph-forward-list"), node.forwardLinks, "没有正向链接");
+  renderGraphRelationList($("#graph-backlink-list"), node.backlinks, "没有反向链接");
+}
+
+function updateGraphEmphasis() {
+  const query = $("#graph-search").value.trim().toLocaleLowerCase();
+  const selected = state.graph.nodes.find(node => node.id === state.selectedGraphNodeId);
+  const forward = new Set(selected?.forwardLinks || []);
+  const backlinks = new Set(selected?.backlinks || []);
+  window.d3?.selectAll?.("#graph-svg .graph-node")
+    .classed("is-selected", item => item.id === selected?.id)
+    .classed("is-forward", item => forward.has(item.id))
+    .classed("is-backlink", item => backlinks.has(item.id))
+    .classed("is-mutual", item => forward.has(item.id) && backlinks.has(item.id))
+    .classed("is-match", item => Boolean(query) && `${item.title} ${item.name}`.toLocaleLowerCase().includes(query))
+    .classed("is-dimmed", item => {
+      const queryMiss = Boolean(query) && !`${item.title} ${item.name}`.toLocaleLowerCase().includes(query);
+      const relationMiss = Boolean(selected) && item.id !== selected.id && !forward.has(item.id) && !backlinks.has(item.id);
+      return queryMiss || relationMiss;
+    });
+  window.d3?.selectAll?.("#graph-svg .graph-link")
+    .classed("is-outgoing", item => graphNodeID(item.source) === selected?.id)
+    .classed("is-incoming", item => graphNodeID(item.target) === selected?.id)
+    .classed("is-mutual", item => Boolean(item.mutual))
+    .classed("is-dimmed", item => Boolean(selected) && graphNodeID(item.source) !== selected.id && graphNodeID(item.target) !== selected.id);
+}
+
+function selectKnowledgeNode(id) {
+  const node = state.graph.nodes.find(item => item.id === id);
+  if (!node) return;
+  state.selectedGraphNodeId = node.id;
+  renderGraphRelations(node);
+  updateGraphEmphasis();
+}
+
+function clearKnowledgeSelection() {
+  state.selectedGraphNodeId = "";
+  $("#graph-relations").hidden = true;
+  updateGraphEmphasis();
+}
+
+function graphNodeRadius(node) {
+  return Math.min(15, 6.5 + Math.sqrt(node.degree) * 2.2);
+}
+
+function renderKnowledgeGraph(graph = state.graph) {
+  state.graphSimulation?.stop();
+  const svg = window.d3?.select?.("#graph-svg");
+  if (!svg) {
+    toast(locale() === "en" ? "Graph runtime failed to load" : "知识图谱运行时未加载");
+    return;
+  }
+  svg.selectAll("*").remove();
+  $("#graph-empty").hidden = graph.nodes.length > 0;
+  updateGraphLabels();
+  if (!graph.nodes.length) return;
+  const bounds = $("#graph-canvas").getBoundingClientRect();
+  const width = Math.max(420, bounds.width || 680);
+  const height = Math.max(300, bounds.height || 480);
+  const root = svg.append("g");
+  svg.attr("viewBox", `0 0 ${width} ${height}`);
+  const marker = svg.append("defs").append("marker")
+    .attr("id", "graph-arrowhead").attr("viewBox", "0 -4 8 8").attr("refX", 7).attr("refY", 0)
+    .attr("markerWidth", 6).attr("markerHeight", 6).attr("orient", "auto").attr("markerUnits", "userSpaceOnUse");
+  marker.append("path").attr("d", "M0,-3.2L7,0L0,3.2Z").attr("fill", "context-stroke");
+  svg.call(window.d3.zoom().scaleExtent([.35, 3.5]).on("zoom", event => root.attr("transform", event.transform)));
+  const nodes = graph.nodes.map(node => ({ ...node }));
+  const links = graph.edges.map(edge => ({ ...edge }));
+  const current = activeDocument();
+  const currentPath = current?.path || "";
+  const link = root.append("g").selectAll("line").data(links).join("line").attr("class", "graph-link").attr("marker-end", "url(#graph-arrowhead)");
+  const node = root.append("g").selectAll("g").data(nodes).join("g")
+    .attr("class", item => `graph-node${item.path && item.path === currentPath ? " is-current" : ""}`)
+    .attr("data-node-id", item => item.id)
+    .attr("tabindex", "0").attr("role", "button")
+    .attr("aria-label", item => item.title)
+    .on("click", (_event, item) => selectKnowledgeNode(item.id))
+    .on("dblclick", (event, item) => { event.stopPropagation(); openGraphNode(item); })
+    .on("keydown", (event, item) => {
+      if (event.key === "Enter") selectKnowledgeNode(item.id);
+      if (event.key === " " && !event.repeat) { event.preventDefault(); openGraphNode(item); }
+    });
+  node.append("circle").attr("r", graphNodeRadius);
+  node.append("text").attr("x", item => 11 + Math.min(8, Math.sqrt(item.degree) * 1.5)).attr("y", 3.5).text(item => item.title);
+  const simulation = window.d3.forceSimulation(nodes)
+    .force("link", window.d3.forceLink(links).id(item => item.id).distance(82).strength(.5))
+    .force("charge", window.d3.forceManyBody().strength(-185))
+    .force("center", window.d3.forceCenter(width / 2, height / 2))
+    .force("collision", window.d3.forceCollide().radius(item => 26 + Math.min(20, item.title.length * 2)))
+    .on("tick", () => {
+      link
+        .attr("x1", item => {
+          const length = Math.hypot(item.target.x - item.source.x, item.target.y - item.source.y) || 1;
+          return item.source.x + (item.target.x - item.source.x) * (graphNodeRadius(item.source) + 2) / length;
+        })
+        .attr("y1", item => {
+          const length = Math.hypot(item.target.x - item.source.x, item.target.y - item.source.y) || 1;
+          return item.source.y + (item.target.y - item.source.y) * (graphNodeRadius(item.source) + 2) / length;
+        })
+        .attr("x2", item => {
+          const length = Math.hypot(item.target.x - item.source.x, item.target.y - item.source.y) || 1;
+          return item.target.x - (item.target.x - item.source.x) * (graphNodeRadius(item.target) + 5) / length;
+        })
+        .attr("y2", item => {
+          const length = Math.hypot(item.target.x - item.source.x, item.target.y - item.source.y) || 1;
+          return item.target.y - (item.target.y - item.source.y) * (graphNodeRadius(item.target) + 5) / length;
+        });
+      node.attr("transform", item => `translate(${item.x},${item.y})`);
+    });
+  const drag = window.d3.drag()
+    .on("start", (event, item) => { if (!event.active) simulation.alphaTarget(.2).restart(); item.fx = item.x; item.fy = item.y; })
+    .on("drag", (event, item) => { item.fx = event.x; item.fy = event.y; })
+    .on("end", (event, item) => { if (!event.active) simulation.alphaTarget(0); item.fx = null; item.fy = null; });
+  node.call(drag);
+  state.graphSimulation = simulation;
+  state.selectedGraphNodeId = graph.nodes.some(item => item.id === state.selectedGraphNodeId) ? state.selectedGraphNodeId : "";
+  if (state.selectedGraphNodeId) selectKnowledgeNode(state.selectedGraphNodeId);
+  else clearKnowledgeSelection();
+}
+
+function filterKnowledgeGraph(value = "") {
+  void value;
+  updateGraphEmphasis();
+}
+
+async function refreshKnowledgeGraph() {
+  $("#graph-stats").textContent = localized("正在读取工作区…");
+  await refreshWorkspaceKnowledge({ renderGraph: true });
+}
+
+function toggleKnowledgeGraph(force) {
+  const panel = $("#knowledge-graph");
+  const open = typeof force === "boolean" ? force : !panel.classList.contains("is-open");
+  panel.classList.toggle("is-open", open);
+  panel.setAttribute("aria-hidden", String(!open));
+  $("#graph-button").classList.toggle("is-active", open);
+  if (open) {
+    $("#graph-search").value = "";
+    void refreshKnowledgeGraph();
+  } else {
+    state.graphSimulation?.stop();
   }
 }
 
@@ -1212,11 +1562,54 @@ async function readThemeCSS(theme) {
   }
 }
 
+function syncThemeOptions() {
+  for (const select of [$("#document-theme-select"), $("#export-theme")]) {
+    select.querySelector('optgroup[data-custom-themes="true"]')?.remove();
+    if (!state.customThemes.length) continue;
+    const group = document.createElement("optgroup");
+    group.dataset.customThemes = "true";
+    group.label = localized("用户主题");
+    for (const theme of state.customThemes) {
+      const option = document.createElement("option");
+      option.value = theme.id;
+      option.textContent = theme.name;
+      group.append(option);
+    }
+    select.append(group);
+  }
+  $("#custom-theme-summary").textContent = state.customThemes.length
+    ? (locale() === "en" ? `${state.customThemes.length} custom theme(s) installed` : `已安装 ${state.customThemes.length} 个用户主题`)
+    : localized("导入 CSS，或把主题与资源放入主题目录");
+}
+
+function registerCustomThemes(themes = []) {
+  for (const theme of state.customThemes) state.themeCSS.delete(theme.id);
+  state.customThemes = Array.isArray(themes) ? themes.filter(theme => theme && typeof theme.id === "string" && typeof theme.css === "string") : [];
+  for (const theme of state.customThemes) state.themeCSS.set(theme.id, theme.css);
+  syncThemeOptions();
+  const selected = localStorage.getItem("mory.documentTheme") || state.documentTheme;
+  if (state.customThemes.some(theme => theme.id === selected)) setDocumentTheme(selected);
+  else if (!builtInThemes.includes(state.documentTheme)) setDocumentTheme("yuluo-css");
+}
+
+async function refreshCustomThemes(announce = false) {
+  try {
+    const result = await hostRequest("listThemes");
+    registerCustomThemes(result);
+    if (announce) toast(locale() === "en" ? "Custom themes refreshed" : "用户主题已刷新");
+  } catch {
+    registerCustomThemes([]);
+  }
+}
+
 function setDocumentTheme(theme) {
-  const next = ["yuluo-css", "github", "whitey", "newsprint", "pixyll", "gothic", "night"].includes(theme) ? theme : "yuluo-css";
+  const custom = state.customThemes.find(item => item.id === theme);
+  const next = builtInThemes.includes(theme) || custom ? theme : "yuluo-css";
   state.documentTheme = next;
   document.documentElement.dataset.docTheme = next;
-  $("#document-theme").href = `themes/${next}.css`;
+  $("#document-theme").disabled = Boolean(custom);
+  if (!custom) $("#document-theme").href = `themes/${next}.css`;
+  $("#user-document-theme").textContent = custom?.css || "";
   $("#document-theme-select").value = next;
   localStorage.setItem("mory.documentTheme", next);
   readThemeCSS(next);
@@ -1234,7 +1627,7 @@ async function exportDocument(options = {}) {
   applyDocumentAssets(exportRoot);
   highlightCodeBlocks(exportRoot, true);
   await renderMermaidDiagrams(exportRoot, theme);
-  return `<!doctype html>\n<html lang="zh-CN" data-doc-theme="${theme}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escapeHTML(title)}</title><style>${exportBaseCSS}\n${themeCSS}\n${backgroundOverride}</style></head><body><main class="editor-scroll"><article class="write">${exportRoot.innerHTML}</article></main></body></html>`;
+  return `<!doctype html>\n<html lang="${locale()}" data-doc-theme="${escapeHTML(theme)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escapeHTML(title)}</title><style>${exportBaseCSS}\n${themeCSS}\n${backgroundOverride}</style></head><body><main class="editor-scroll"><article id="write" class="write">${exportRoot.innerHTML}</article></main></body></html>`;
 }
 
 function toggleExportDialog(force) {
@@ -1628,6 +2021,11 @@ document.addEventListener("pointerup", event => {
 });
 
 $("#source-toggle").addEventListener("click", () => toggleSource());
+$("#graph-button").addEventListener("click", () => toggleKnowledgeGraph());
+$("#graph-close").addEventListener("click", () => toggleKnowledgeGraph(false));
+$("#graph-relations-close").addEventListener("click", clearKnowledgeSelection);
+$("#graph-refresh").addEventListener("click", () => void refreshKnowledgeGraph());
+$("#graph-search").addEventListener("input", event => filterKnowledgeGraph(event.target.value));
 $("#sidebar-toggle").addEventListener("click", () => $("#sidebar").classList.toggle("is-hidden"));
 $("#new-file-button").addEventListener("click", () => createUntitledDocument());
 $("#settings-button").addEventListener("click", () => togglePreferences(true));
@@ -1690,6 +2088,14 @@ $("#word-count").addEventListener("click", () => {
   const stats = documentStats(state.markdown);
   toast(`${stats.words} 字 · ${stats.characters} 字符 · ${stats.lines} 行`);
 });
+$("#backlink-count").addEventListener("click", () => {
+  const panel = $("#document-backlinks");
+  if (panel.hidden) {
+    toast(locale() === "en" ? "No backlinks for this note" : "当前文稿没有反向链接");
+    return;
+  }
+  panel.scrollIntoView({ behavior: "smooth", block: "center" });
+});
 
 $("#find-input").addEventListener("input", updateFindMatches);
 $("#find-input").addEventListener("keydown", event => { if (event.key === "Enter") stepFind(event.shiftKey ? -1 : 1); });
@@ -1706,6 +2112,21 @@ $("#theme-select").addEventListener("change", event => {
   localStorage.setItem("mory.theme", theme);
 });
 $("#document-theme-select").addEventListener("change", event => setDocumentTheme(event.target.value));
+$("#theme-import").addEventListener("click", async () => {
+  try {
+    const result = await hostRequest("importTheme");
+    if (!result?.canceled) {
+      registerCustomThemes(result.themes || []);
+      toast(locale() === "en" ? "Theme imported" : "用户主题已导入");
+    }
+  } catch (error) { toast(error.message); }
+});
+$("#theme-folder").addEventListener("click", async () => {
+  try { await hostRequest("openThemeFolder"); }
+  catch (error) { toast(error.message); }
+});
+$("#theme-refresh").addEventListener("click", () => void refreshCustomThemes(true));
+$("#language-select").addEventListener("change", event => applyLocale(event.target.value));
 $("#width-select").addEventListener("change", event => {
   document.documentElement.style.setProperty("--editor-width", `${event.target.value}px`);
   localStorage.setItem("mory.width", event.target.value);
@@ -1727,10 +2148,11 @@ document.addEventListener("keydown", event => {
   const command = event.metaKey || event.ctrlKey;
   if (command && event.key.toLowerCase() === "p") { event.preventDefault(); openQuickOpen(); }
   if (command && event.key.toLowerCase() === "f") { event.preventDefault(); showFind(); }
-  if (event.key === "Escape") { closeQuickOpen(); closeFind(); togglePreferences(false); toggleExportDialog(false); }
+  if (event.key === "Escape") { closeQuickOpen(); closeFind(); togglePreferences(false); toggleExportDialog(false); toggleKnowledgeGraph(false); }
 });
 
 function restorePreferences() {
+  const savedLocale = localStorage.getItem("mory.locale") || "zh-CN";
   const theme = localStorage.getItem("mory.theme") || "system";
   const width = localStorage.getItem("mory.width") || "820";
   const showStatus = localStorage.getItem("mory.status") !== "false";
@@ -1749,7 +2171,9 @@ function restorePreferences() {
   document.documentElement.style.setProperty("--editor-width", `${width}px`);
   $("#statusbar").hidden = !showStatus;
   write.spellcheck = spellcheck;
-  setDocumentTheme(documentTheme);
+  setDocumentTheme(builtInThemes.includes(documentTheme) ? documentTheme : "yuluo-css");
+  if (!builtInThemes.includes(documentTheme)) localStorage.setItem("mory.documentTheme", documentTheme);
+  applyLocale(savedLocale);
 }
 
 window.Mory = {
@@ -1759,7 +2183,12 @@ window.Mory = {
   closeDocument,
   normalizeMarkdown: renderMarkdownDocumentAtCaret,
   getMarkdown: () => state.sourceMode ? sourceEditor.value : editorToMarkdown(write),
-  setFiles: files => { state.files = files; renderFiles(); },
+  setFiles: files => { state.files = files; renderFiles(); void refreshWorkspaceKnowledge(); },
+  setWorkspaceDocuments: documents => {
+    state.workspaceDocuments = Array.isArray(documents) ? documents : [];
+    rebuildWorkspaceKnowledge();
+  },
+  setCustomThemes: registerCustomThemes,
   didSave: payload => {
     const document = activeDocument();
     if (document) {
@@ -1771,6 +2200,7 @@ window.Mory = {
       state.documents = state.documents.filter(item => item === document || !document.path || item.path !== document.path);
     }
     state.dirty = false;
+    rebuildWorkspaceKnowledge();
     if (document && typeof payload?.markdown === "string" && payload.markdown !== state.markdown) renderDocument(document);
     renderFiles();
     $("#save-state").textContent = "已保存";
@@ -1803,3 +2233,4 @@ restorePreferences();
 const browserDraft = (window.webkit || window.moryNative) ? null : localStorage.getItem("mory.draft");
 createUntitledDocument(browserDraft || defaultMarkdown, { announce: false, notifyHost: false });
 bridge({ type: "ready" });
+void refreshCustomThemes();

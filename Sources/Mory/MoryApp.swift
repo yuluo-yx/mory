@@ -115,11 +115,13 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     private var currentMarkdown = ""
     private var currentDocumentName = "未命名.md"
     private var workspaceManager: WorkspaceManager!
+    private var themeManager: ThemeManager!
     private var editorReady = false
     private var pendingDocument: [String: Any]?
     private var exportRenderers: [ExportRenderer] = []
     private var dragStartPointer: NSPoint?
     private var dragStartWindowOrigin: NSPoint?
+    private var interfaceLocale = "zh-CN"
 
     static func main() {
         let application = NSApplication.shared
@@ -138,6 +140,7 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         configureWindow()
         do {
             workspaceManager = try WorkspaceManager()
+            themeManager = try ThemeManager()
         } catch {
             presentError("无法初始化工作区：\(error.localizedDescription)")
             NSApp.terminate(nil)
@@ -245,6 +248,23 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         presentError("编辑器页面加载失败：\(error.localizedDescription)")
     }
 
+    private func localizeMenu(_ menu: NSMenu) {
+        guard interfaceLocale == "en" else { return }
+        let translations = [
+            "关于 Mory": "About Mory", "偏好设置…": "Preferences…", "退出 Mory": "Quit Mory", "文件": "File", "新建": "New",
+            "打开…": "Open…", "打开文件夹…": "Open Folder…", "保存": "Save", "另存为…": "Save As…", "导出…": "Export…",
+            "编辑": "Edit", "撤销": "Undo", "重做": "Redo", "剪切": "Cut", "复制": "Copy", "粘贴": "Paste", "全选": "Select All",
+            "查找和替换": "Find and Replace", "格式": "Format", "加粗": "Bold", "斜体": "Italic", "删除线": "Strikethrough", "行内代码": "Inline Code",
+            "显示": "View", "显示／隐藏侧边栏": "Show/Hide Sidebar", "源代码模式": "Source Mode", "专注模式": "Focus Mode",
+            "打字机模式": "Typewriter Mode", "实际大小": "Actual Size", "放大": "Zoom In", "缩小": "Zoom Out"
+        ]
+        for item in menu.items {
+            if let translated = translations[item.title] { item.title = translated }
+            else if item.title.hasSuffix(" 级标题"), let level = item.title.split(separator: " ").first { item.title = "Heading \(level)" }
+            if let submenu = item.submenu { localizeMenu(submenu) }
+        }
+    }
+
     private func configureMenu() {
         let main = NSMenu()
 
@@ -314,6 +334,7 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         viewMenu.addItem(withTitle: "缩小", action: #selector(zoomOut), keyEquivalent: "-")
         viewItem.submenu = viewMenu
 
+        localizeMenu(main)
         NSApp.mainMenu = main
     }
 
@@ -544,6 +565,24 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
                 refreshWorkspace()
             case "importImage":
                 answerHostRequest(id: id, result: try workspaceManager.importImage(arguments: arguments))
+            case "workspaceDocuments":
+                answerHostRequest(id: id, result: try workspaceManager.documentContents())
+            case "listThemes":
+                answerHostRequest(id: id, result: try themeManager.list())
+            case "importTheme":
+                let panel = NSOpenPanel()
+                panel.canChooseFiles = true
+                panel.canChooseDirectories = false
+                panel.allowsMultipleSelection = false
+                panel.allowedContentTypes = [UTType(filenameExtension: "css") ?? .text]
+                guard panel.runModal() == .OK, let source = panel.url else {
+                    answerHostRequest(id: id, result: ["canceled": true])
+                    return
+                }
+                answerHostRequest(id: id, result: ["themes": try themeManager.importFile(source)])
+            case "openThemeFolder":
+                NSWorkspace.shared.open(themeManager.directory)
+                answerHostRequest(id: id, result: ["opened": true])
             case "syncWorkspace":
                 let action = arguments["action"] as? String == "push" ? "push" : "pull"
                 let manager = workspaceManager!
@@ -597,6 +636,9 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
             }
         case "export":
             if let options = payload["options"] as? [String: Any] { exportDocument(options: options) }
+        case "localeChanged":
+            interfaceLocale = payload["locale"] as? String == "en" ? "en" : "zh-CN"
+            configureMenu()
         case "hostRequest":
             if let requestId = payload["requestId"] as? String,
                let method = payload["method"] as? String {

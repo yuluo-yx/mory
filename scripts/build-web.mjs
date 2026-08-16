@@ -7,6 +7,7 @@ const projectDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url
 const webDirectory = path.join(projectDirectory, "Sources", "Mory", "Web");
 const markdownPath = path.join(webDirectory, "markdown.js");
 const appPath = path.join(webDirectory, "app.js");
+const knowledgePath = path.join(webDirectory, "knowledge.js");
 const outputPath = path.join(webDirectory, "app.bundle.js");
 const vendorDirectory = path.join(webDirectory, "vendor");
 const mermaidInputPath = path.join(projectDirectory, "node_modules", "mermaid", "dist", "mermaid.min.js");
@@ -17,12 +18,20 @@ const highlightInputPath = path.join(projectDirectory, "node_modules", "@highlig
 const highlightOutputPath = path.join(vendorDirectory, "highlight.min.js");
 const highlightLicenseInputPath = path.join(projectDirectory, "node_modules", "@highlightjs", "cdn-assets", "LICENSE");
 const highlightLicenseOutputPath = path.join(vendorDirectory, "highlight.LICENSE");
+const d3InputPath = path.join(projectDirectory, "node_modules", "d3", "dist", "d3.min.js");
+const d3OutputPath = path.join(vendorDirectory, "d3.min.js");
+const d3LicenseInputPath = path.join(projectDirectory, "node_modules", "d3", "LICENSE");
+const d3LicenseOutputPath = path.join(vendorDirectory, "d3.LICENSE");
 const themeNames = ["yuluo-css", "github", "whitey", "newsprint", "pixyll", "gothic", "night"];
 
 const markdownSource = (await readFile(markdownPath, "utf8"))
   .replace(/^export\s+/gm, "");
+const knowledgeSource = (await readFile(knowledgePath, "utf8"))
+  .replace(/^export\s+/gm, "")
+  .replace(/^\s*\{[^\n]+\};?\s*$/gm, "");
 const appSource = (await readFile(appPath, "utf8"))
   .replace(/^import\s+\{[^\n]+\}\s+from\s+["']\.\/markdown\.js["'];?\s*\n/, "")
+  .replace(/^import\s+\{[^\n]+\}\s+from\s+["']\.\/knowledge\.js["'];?\s*\n/, "")
   .replaceAll("import.meta.url", "document.baseURI");
 
 const banner = `/* 此文件由 scripts/build-web.mjs 生成，请勿直接编辑。\n` +
@@ -31,9 +40,11 @@ const mermaidRuntime = await readFile(mermaidInputPath, "utf8");
 const mermaidLicense = await readFile(mermaidLicenseInputPath, "utf8");
 const highlightRuntime = await readFile(highlightInputPath, "utf8");
 const highlightLicense = await readFile(highlightLicenseInputPath, "utf8");
+const d3Runtime = await readFile(d3InputPath, "utf8");
+const d3License = await readFile(d3LicenseInputPath, "utf8");
 const themeCSS = Object.fromEntries(await Promise.all(themeNames.map(async name => [name, await readFile(path.join(webDirectory, "themes", `${name}.css`), "utf8")])));
 const themeBootstrap = `globalThis.__MORY_THEME_CSS__ = ${JSON.stringify(themeCSS)};`;
-const bundle = `${banner}\n${themeBootstrap}\n\n${markdownSource}\n\n${appSource}`;
+const bundle = `${banner}\n${themeBootstrap}\n\n${markdownSource}\n\n${knowledgeSource}\n\n${appSource}`;
 
 if (process.argv.includes("--check")) {
   const current = await readFile(outputPath, "utf8").catch(() => "");
@@ -41,8 +52,11 @@ if (process.argv.includes("--check")) {
   const currentLicense = await readFile(mermaidLicenseOutputPath, "utf8").catch(() => "");
   const currentHighlight = await readFile(highlightOutputPath, "utf8").catch(() => "");
   const currentHighlightLicense = await readFile(highlightLicenseOutputPath, "utf8").catch(() => "");
+  const currentD3 = await readFile(d3OutputPath, "utf8").catch(() => "");
+  const currentD3License = await readFile(d3LicenseOutputPath, "utf8").catch(() => "");
   if (current !== bundle || currentMermaid !== mermaidRuntime || currentLicense !== mermaidLicense
-    || currentHighlight !== highlightRuntime || currentHighlightLicense !== highlightLicense) {
+    || currentHighlight !== highlightRuntime || currentHighlightLicense !== highlightLicense
+    || currentD3 !== d3Runtime || currentD3License !== d3License) {
     console.error("Web 运行包已过期，请执行 npm run build:web");
     process.exit(1);
   }
@@ -53,7 +67,10 @@ if (process.argv.includes("--check")) {
   await writeFile(mermaidLicenseOutputPath, mermaidLicense, "utf8");
   await writeFile(highlightOutputPath, highlightRuntime, "utf8");
   await writeFile(highlightLicenseOutputPath, highlightLicense, "utf8");
+  await writeFile(d3OutputPath, d3Runtime, "utf8");
+  await writeFile(d3LicenseOutputPath, d3License, "utf8");
   console.log(`已生成 ${path.relative(projectDirectory, outputPath)}`);
   console.log(`已同步 Mermaid 运行时 ${path.relative(projectDirectory, mermaidOutputPath)}`);
   console.log(`已同步 Highlight.js 运行时 ${path.relative(projectDirectory, highlightOutputPath)}`);
+  console.log(`已同步 D3 运行时 ${path.relative(projectDirectory, d3OutputPath)}`);
 }

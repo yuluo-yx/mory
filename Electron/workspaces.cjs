@@ -152,6 +152,20 @@ async function listDocuments(root) {
   return files;
 }
 
+async function readWorkspaceDocuments(root) {
+  const documents = [];
+  for (const file of await listDocuments(root)) {
+    try {
+      const stat = await fs.stat(file.path);
+      if (stat.size > 2 * 1024 * 1024) continue;
+      documents.push({ ...file, markdown: await fs.readFile(file.path, "utf8") });
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+  }
+  return documents;
+}
+
 function markdownImagePaths(markdown) {
   const paths = new Set();
   const expression = /!\[[^\]]*\]\((?:<([^>]+)>|([^\s)]+))(?:\s+["'][^"']*["'])?\)/g;
@@ -253,4 +267,4 @@ function runSidecar(executable, payload) {
   });
 }
 
-module.exports = { createWorkspaceManager, importImage, listDocuments, loadDocumentAssets, markdownImagePaths, relocateDocumentAssets, sanitizeSegment, validateWorkspace };
+module.exports = { createWorkspaceManager, importImage, listDocuments, loadDocumentAssets, markdownImagePaths, readWorkspaceDocuments, relocateDocumentAssets, sanitizeSegment, validateWorkspace };

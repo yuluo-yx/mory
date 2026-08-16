@@ -3,6 +3,7 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const { createThemeManager, themeID } = require("../Electron/themes.cjs");
 
 const {
   createWorkspaceManager,
@@ -10,6 +11,7 @@ const {
   listDocuments,
   loadDocumentAssets,
   markdownImagePaths,
+  readWorkspaceDocuments,
   relocateDocumentAssets,
   sanitizeSegment,
   validateWorkspace
@@ -105,7 +107,27 @@ test("递归列出文稿并忽略资源目录中的非文稿", async t => {
   assert.deepEqual(await listDocuments(root), [{ name: path.join("专题", "文章.md"), path: path.join(root, "专题", "文章.md") }]);
 });
 
+test("知识图谱数据读取工作区文稿内容", async t => {
+  const root = await fixture(t);
+  await fs.writeFile(path.join(root, "入口.md"), "# 入口\n[[目标]]");
+  assert.deepEqual(await readWorkspaceDocuments(root), [{ name: "入口.md", path: path.join(root, "入口.md"), markdown: "# 入口\n[[目标]]" }]);
+});
+
 test("Markdown 图片路径与文件名清理保持稳定", () => {
   assert.deepEqual(markdownImagePaths("![a](文稿/a.png)\n![b](https://x/b.png)"), ["文稿/a.png"]);
   assert.equal(sanitizeSegment("  封面 图:*  "), "-封面-图-");
+});
+
+test("用户主题导入后保持稳定标识并内联相对资源", async t => {
+  const root = await fixture(t);
+  const source = path.join(root, "纸张.css");
+  await fs.writeFile(path.join(root, "纹理.svg"), "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>");
+  await fs.writeFile(source, '.write{background-image:url("纹理.svg")}');
+  const manager = createThemeManager({ userDataPath: path.join(root, "config") });
+  const themes = await manager.importFile(source);
+  await fs.copyFile(path.join(root, "纹理.svg"), path.join(manager.directory, "纹理.svg"));
+  const refreshed = await manager.list();
+  assert.equal(themes[0].id, themeID("纸张.css"));
+  assert.equal(refreshed[0].name, "纸张");
+  assert.match(refreshed[0].css, /data:image\/svg\+xml;base64,/);
 });

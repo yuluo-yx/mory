@@ -1,7 +1,8 @@
-const { app, BrowserWindow, dialog, ipcMain, Menu } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, Menu, shell } = require("electron");
 const fs = require("node:fs/promises");
 const path = require("node:path");
-const { createWorkspaceManager, importImage, listDocuments, loadDocumentAssets, relocateDocumentAssets } = require("./workspaces.cjs");
+const { createWorkspaceManager, importImage, listDocuments, loadDocumentAssets, readWorkspaceDocuments, relocateDocumentAssets } = require("./workspaces.cjs");
+const { createThemeManager } = require("./themes.cjs");
 
 let mainWindow;
 let currentFilePath = null;
@@ -10,6 +11,25 @@ let currentDocumentName = "未命名.md";
 let editorReady = false;
 let pendingDocument = null;
 let workspaceManager;
+let themeManager;
+let interfaceLocale = "zh-CN";
+
+const menuEnglish = {
+  "文件": "File", "新建": "New", "打开…": "Open…", "打开文件夹…": "Open Folder…", "保存": "Save", "另存为…": "Save As…", "导出": "Export", "退出": "Quit",
+  "编辑": "Edit", "撤销": "Undo", "重做": "Redo", "剪切": "Cut", "复制": "Copy", "粘贴": "Paste", "全选": "Select All", "查找和替换": "Find and Replace",
+  "格式": "Format", "加粗": "Bold", "斜体": "Italic", "删除线": "Strikethrough", "行内代码": "Inline Code",
+  "显示": "View", "显示／隐藏侧边栏": "Show/Hide Sidebar", "源代码模式": "Source Mode", "专注模式": "Focus Mode", "打字机模式": "Typewriter Mode",
+  "实际大小": "Actual Size", "放大": "Zoom In", "缩小": "Zoom Out", "全屏": "Full Screen", "帮助": "Help", "关于 Mory": "About Mory", "偏好设置": "Preferences"
+};
+
+function localizeMenu(items) {
+  for (const item of items) {
+    if (interfaceLocale === "en" && menuEnglish[item.label]) item.label = menuEnglish[item.label];
+    else if (interfaceLocale === "en" && /^(\d) 级标题$/.test(item.label || "")) item.label = `Heading ${RegExp.$1}`;
+    if (Array.isArray(item.submenu)) localizeMenu(item.submenu);
+  }
+  return items;
+}
 
 function storageSidecarPath() {
   const filename = process.platform === "win32" ? "mory-storage.exe" : "mory-storage";
@@ -156,6 +176,24 @@ async function handleWorkspaceRequest(method, args = {}) {
     }
     case "importImage":
       return importImage({ root: workspaceManager.activeRoot(), ...args });
+    case "workspaceDocuments":
+      return readWorkspaceDocuments(workspaceManager.activeRoot());
+    case "listThemes":
+      return themeManager.list();
+    case "importTheme": {
+      const result = await dialog.showOpenDialog(mainWindow, {
+        properties: ["openFile"],
+        filters: [{ name: "CSS Theme", extensions: ["css"] }]
+      });
+      if (result.canceled || !result.filePaths[0]) return { canceled: true };
+      return { themes: await themeManager.importFile(result.filePaths[0]) };
+    }
+    case "openThemeFolder": {
+      await fs.mkdir(themeManager.directory, { recursive: true });
+      const error = await shell.openPath(themeManager.directory);
+      if (error) throw new Error(error);
+      return { opened: true };
+    }
     default:
       throw new Error(`未知宿主请求：${method}`);
   }
@@ -299,7 +337,7 @@ function buildMenu() {
       ]
     }
   ];
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  Menu.setApplicationMenu(Menu.buildFromTemplate(localizeMenu(template)));
 }
 
 function createWindow() {
@@ -348,6 +386,9 @@ ipcMain.on("mory:message", async (_event, payload) => {
     setWindowTitle(payload.value || currentDocumentName.replace(/\.md$/i, ""), payload.dirty === true);
   } else if (payload.type === "export" && payload.options && typeof payload.options === "object") {
     await exportRendered(payload.options);
+  } else if (payload.type === "localeChanged") {
+    interfaceLocale = payload.locale === "en" ? "en" : "zh-CN";
+    buildMenu();
   }
 });
 
@@ -358,6 +399,7 @@ ipcMain.handle("mory:request", async (_event, payload) => {
 
 app.whenReady().then(async () => {
   workspaceManager = createWorkspaceManager({ userDataPath: app.getPath("userData"), sidecarPath: storageSidecarPath });
+  themeManager = createThemeManager({ userDataPath: app.getPath("userData") });
   await workspaceManager.initialize();
   createWindow();
   const argument = process.argv.find(value => /\.(?:md|markdown|mmd|mdown|mkd|txt)$/i.test(value));

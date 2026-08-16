@@ -183,6 +183,15 @@ final class WorkspaceManager: @unchecked Sendable {
         return result.sorted { ($0["name"] ?? "").localizedStandardCompare($1["name"] ?? "") == .orderedAscending }
     }
 
+    func documentContents() throws -> [[String: String]] {
+        try documents().compactMap { document in
+            guard let path = document["path"], let attributes = try? fileManager.attributesOfItem(atPath: path),
+                  ((attributes[.size] as? NSNumber)?.intValue ?? 0) <= 2 * 1024 * 1024,
+                  let markdown = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
+            return ["name": document["name"] ?? URL(fileURLWithPath: path).lastPathComponent, "path": path, "markdown": markdown]
+        }
+    }
+
     func importImage(arguments: [String: Any]) throws -> [String: String] {
         guard let mime = arguments["mime"] as? String, let fileExtension = imageExtension(for: mime),
               let encoded = arguments["data"] as? String, let data = Data(base64Encoded: encoded), !data.isEmpty, data.count <= 50 * 1024 * 1024 else {

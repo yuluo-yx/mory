@@ -178,6 +178,30 @@ app.whenReady().then(async () => {
     await click(window, "#source-toggle");
     await expect(window, "预览模式可恢复", "!document.querySelector('.workspace').classList.contains('source-mode')");
 
+    await inspect(window, `window.Mory.setWorkspaceDocuments([
+      { name: '入口.md', path: '/virtual/入口.md', markdown: '# 入口\\n[[专题/设计]]' },
+      { name: '专题/设计.md', path: '/virtual/专题/设计.md', markdown: '# 设计\\n[返回](../入口.md)' },
+      { name: '引用者.md', path: '/virtual/引用者.md', markdown: '# 引用者\\n[[专题/设计]]' },
+      { name: '孤立.md', path: '/virtual/孤立.md', markdown: '# 孤立' }
+    ])`);
+    await click(window, "#graph-button");
+    await expect(window, "右下角知识图谱入口可打开", "document.querySelector('#knowledge-graph').classList.contains('is-open')");
+    await expect(window, "知识图谱渲染工作区节点和链接", "document.querySelectorAll('#graph-svg .graph-node').length === 4 && document.querySelectorAll('#graph-svg .graph-link').length === 3");
+    await click(window, "#graph-svg .graph-node[data-node-id='专题/设计.md'] circle");
+    await expect(window, "单击节点展示正向链接与反向链接", "!document.querySelector('#graph-relations').hidden && document.querySelectorAll('#graph-forward-list button').length === 1 && document.querySelectorAll('#graph-backlink-list button').length === 2");
+    await expect(window, "图谱区分正向、反向和互相引用", "document.querySelectorAll('#graph-svg .graph-link.is-outgoing').length === 1 && document.querySelectorAll('#graph-svg .graph-link.is-incoming').length === 2 && document.querySelectorAll('#graph-svg .graph-node.is-mutual').length === 1 && document.querySelectorAll('#graph-svg .graph-node.is-backlink').length === 2");
+    await click(window, "#graph-relations-close");
+    await inspect(window, "(() => { const input = document.querySelector('#graph-search'); input.value = '孤立'; input.dispatchEvent(new Event('input', { bubbles: true })); })()");
+    await expect(window, "知识图谱支持文稿筛选", "document.querySelectorAll('#graph-svg .graph-node.is-match').length === 1 && document.querySelectorAll('#graph-svg .graph-node.is-dimmed').length === 3");
+    await click(window, "#graph-close");
+    await expect(window, "知识图谱可关闭", "!document.querySelector('#knowledge-graph').classList.contains('is-open')");
+
+    await inspect(window, `window.Mory.openDocument({ name: '专题/设计.md', path: '/virtual/专题/设计.md', markdown: '# 设计\\n[返回](../入口.md)' })`);
+    await expect(window, "状态栏显示当前文稿反向链接数量", "document.querySelector('#backlink-count').textContent === '反向链接 2'");
+    await expect(window, "文稿底部列出反向链接来源", "!document.querySelector('#document-backlinks').hidden && document.querySelectorAll('#document-backlinks-list button').length === 2 && [...document.querySelectorAll('#document-backlinks-list strong')].map(item => item.textContent).join('|') === '入口|引用者'");
+    await click(window, "#backlink-count");
+    await expect(window, "状态栏反链入口可定位文章反链区", "!document.querySelector('#document-backlinks').hidden");
+
     await click(window, "#export-button");
     await expect(window, "导出按钮可点击", "document.querySelector('#export-dialog').classList.contains('is-open')");
     await click(window, "#export-close");
@@ -185,6 +209,15 @@ app.whenReady().then(async () => {
 
     await click(window, "#settings-button");
     await expect(window, "设置按钮可点击", "document.querySelector('#preferences').classList.contains('is-open')");
+    await inspect(window, "window.Mory.setCustomThemes([{ id: 'user-paper-test', name: '纸张', css: '#write{letter-spacing:1px}' }])");
+    await inspect(window, "(() => { const select = document.querySelector('#document-theme-select'); select.value = 'user-paper-test'; select.dispatchEvent(new Event('change', { bubbles: true })); })()");
+    await expect(window, "用户 CSS 主题即时应用", "document.documentElement.dataset.docTheme === 'user-paper-test' && document.querySelector('#user-document-theme').textContent.includes('letter-spacing')");
+    await expect(window, "用户主题进入导出选择", "document.querySelector('#export-theme option[value=\"user-paper-test\"]')");
+    await expect(window, "用户主题写入导出 HTML", "window.Mory.exportDocument({ theme: 'current' }).then(html => html.includes('#write{letter-spacing:1px}'))");
+    await inspect(window, "(() => { const select = document.querySelector('#language-select'); select.value = 'en'; select.dispatchEvent(new Event('change', { bubbles: true })); })()");
+    await expect(window, "设置可即时切换英文", "document.documentElement.lang === 'en' && document.querySelector('#preferences h2').textContent === 'Preferences' && document.querySelector('#graph-button').getAttribute('aria-label') === 'Knowledge graph' && document.querySelector('#backlink-count').textContent === 'Backlinks 2'");
+    await inspect(window, "(() => { const select = document.querySelector('#language-select'); select.value = 'zh-CN'; select.dispatchEvent(new Event('change', { bubbles: true })); })()");
+    await expect(window, "设置可切回中文", "document.documentElement.lang === 'zh-CN' && document.querySelector('#preferences h2').textContent === '偏好设置'");
     await click(window, ".setting-row:has(#status-toggle) .switch span");
     await expect(window, "关闭状态栏设置即时生效", "document.querySelector('#statusbar').hidden && getComputedStyle(document.querySelector('#statusbar')).display === 'none' && localStorage.getItem('mory.status') === 'false'");
     await click(window, ".setting-row:has(#status-toggle) .switch span");
