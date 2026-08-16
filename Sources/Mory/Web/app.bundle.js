@@ -1313,8 +1313,13 @@ function toggleNewFolderForm(force) {
   form.hidden = !open;
   $("#new-folder-button").classList.toggle("is-active", open);
   if (open) {
-    $("#new-folder-input").value = "";
-    requestAnimationFrame(() => $("#new-folder-input").focus());
+    const input = $("#new-folder-input");
+    input.value = "";
+    // 离屏窗口可能暂停下一帧，先同步聚焦保证菜单和快捷键打开后可以直接输入。
+    input.focus({ preventScroll: true });
+    requestAnimationFrame(() => {
+      if (!form.hidden) input.focus({ preventScroll: true });
+    });
   }
 }
 
