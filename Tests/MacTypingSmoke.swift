@@ -170,10 +170,8 @@ final class MacTypingSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegat
     }
 
     private func appendText(_ text: String, to actions: inout [() -> Void]) {
-        for character in text {
-            let value = String(character)
-            actions.append { [weak self] in self?.sendKey(value, keyCode: 0) }
-        }
+        // 以一次原生文本输入事件提交一个语义片段，避免无显示设备的 Intel WebView 丢弃密集逐字符 IPC。
+        actions.append { [weak self] in self?.sendKey(text, keyCode: 0) }
     }
 
     private func perform(_ actions: [() -> Void], index: Int = 0, completion: @escaping () -> Void) {
