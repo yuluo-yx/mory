@@ -1397,6 +1397,9 @@ async function refreshWorkspaceKnowledge({ renderGraph = false } = {}) {
     }
     rebuildWorkspaceKnowledge({ renderGraph });
   } catch (error) {
+    if (request !== workspaceKnowledgeRequest) return;
+    // 宿主刷新失败时保留最近一次有效文稿，避免离线或瞬时 I/O 错误清空知识图谱。
+    rebuildWorkspaceKnowledge({ renderGraph });
     if (renderGraph) toast(locale() === "en" ? `Unable to build graph: ${error.message}` : `无法生成知识图谱：${error.message}`);
   }
 }
@@ -2424,6 +2427,8 @@ window.Mory = {
   setFiles: setWorkspaceFiles,
   setWorkspaceSnapshot,
   setWorkspaceDocuments: documents => {
+    // 显式快照比尚未完成的宿主请求更新，使旧响应不能覆盖当前工作区。
+    workspaceKnowledgeRequest += 1;
     state.workspaceDocuments = Array.isArray(documents) ? documents : [];
     rebuildWorkspaceKnowledge();
   },
