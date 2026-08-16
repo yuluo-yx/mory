@@ -86,6 +86,18 @@ async function expect(window, label, expression) {
   process.stdout.write(`[button] ${label}\n`);
 }
 
+async function expectEventually(window, label, expression, timeout = 2000) {
+  const deadline = Date.now() + timeout;
+  do {
+    if (await inspect(window, expression)) {
+      process.stdout.write(`[button] ${label}\n`);
+      return;
+    }
+    await wait(50);
+  } while (Date.now() < deadline);
+  throw new Error(`${label}：${timeout} ms 内状态未变化`);
+}
+
 app.whenReady().then(async () => {
   let exitCode = 0;
   const errors = [];
@@ -338,8 +350,7 @@ app.whenReady().then(async () => {
       clipboard.setData('text/plain', ${JSON.stringify(pastedMarkdown)});
       document.querySelector('#write').dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: clipboard }));
     })()`);
-    await wait(120);
-    await expect(window, "整段粘贴即时渲染标题加粗和代码块", "document.querySelector('#write > h1')?.textContent === '粘贴标题' && document.querySelector('#write strong')?.textContent === '粘贴加粗' && document.querySelector('#write > pre[data-language=\"go\"] code')?.textContent === 'fmt.Println(\"paste\")'");
+    await expectEventually(window, "整段粘贴即时渲染标题加粗和代码块", "document.querySelector('#write > h1')?.textContent === '粘贴标题' && document.querySelector('#write strong')?.textContent === '粘贴加粗' && document.querySelector('#write > pre[data-language=\"go\"] code')?.textContent === 'fmt.Println(\"paste\")'");
 
     await inspect(window, `(() => {
       window.Mory.loadMarkdown('');
