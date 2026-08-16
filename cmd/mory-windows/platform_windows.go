@@ -1,0 +1,176 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"sync"
+	"unsafe"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"golang.org/x/sys/windows"
+
+	"github.com/yuluo-yx/mory/internal/windowshost"
+)
+
+type windowsPlatform struct {
+	mu   sync.RWMutex
+	ctx  context.Context
+	host *windowshost.Host
+}
+
+func (platform *windowsPlatform) setContext(ctx context.Context) {
+	platform.mu.Lock()
+	platform.ctx = ctx
+	platform.mu.Unlock()
+}
+
+func (platform *windowsPlatform) context() context.Context {
+	platform.mu.RLock()
+	defer platform.mu.RUnlock()
+	return platform.ctx
+}
+
+func (platform *windowsPlatform) ChooseDirectory(defaultDirectory string) (string, error) {
+	return runtime.OpenDirectoryDialog(platform.context(), runtime.OpenDialogOptions{
+		DefaultDirectory:     defaultDirectory,
+		Title:                "选择工作目录",
+		CanCreateDirectories: true,
+	})
+}
+
+func (platform *windowsPlatform) ChooseFile(defaultDirectory string, extensions []string) (string, error) {
+	patterns := make([]string, 0, len(extensions))
+	for _, extension := range extensions {
+		patterns = append(patterns, "*."+strings.TrimPrefix(extension, "."))
+	}
+	return runtime.OpenFileDialog(platform.context(), runtime.OpenDialogOptions{
+		DefaultDirectory: defaultDirectory,
+		Title:            "打开文件",
+		Filters:          []runtime.FileFilter{{DisplayName: "支持的文件", Pattern: strings.Join(patterns, ";")}},
+	})
+}
+
+func (platform *windowsPlatform) ChooseSavePath(defaultPath string, extensions []string) (string, error) {
+	patterns := make([]string, 0, len(extensions))
+	for _, extension := range extensions {
+		patterns = append(patterns, "*."+strings.TrimPrefix(extension, "."))
+	}
+	return runtime.SaveFileDialog(platform.context(), runtime.SaveDialogOptions{
+		DefaultDirectory:     filepath.Dir(defaultPath),
+		DefaultFilename:      filepath.Base(defaultPath),
+		Title:                "保存文件",
+		CanCreateDirectories: true,
+		Filters:              []runtime.FileFilter{{DisplayName: "支持的文件", Pattern: strings.Join(patterns, ";")}},
+	})
+}
+
+func (platform *windowsPlatform) Confirm(title, message, detail string) (bool, error) {
+	result, err := runtime.MessageDialog(platform.context(), runtime.MessageDialogOptions{
+		Type:          runtime.WarningDialog,
+		Title:         title,
+		Message:       message + "\n\n" + detail,
+		Buttons:       []string{"确定", "取消"},
+		DefaultButton: "取消",
+		CancelButton:  "取消",
+	})
+	return result == "确定", err
+}
+
+func (platform *windowsPlatform) Trash(path string) error { return moveToRecycleBin(path) }
+
+func (platform *windowsPlatform) Reveal(path string) error {
+	return exec.Command("explorer.exe", "/select,"+path).Start()
+}
+
+func (platform *windowsPlatform) OpenDirectory(path string) error {
+	return exec.Command("explorer.exe", path).Start()
+}
+
+func (platform *windowsPlatform) Evaluate(script string) {
+	runtime.WindowExecJS(platform.context(), script)
+}
+
+func (platform *windowsPlatform) SetTitle(title string) {
+	runtime.WindowSetTitle(platform.context(), title)
+}
+
+func (platform *windowsPlatform) SetLocale(locale string) {
+	runtime.MenuSetApplicationMenu(platform.context(), buildMenu(platform.host, locale == "en"))
+}
+
+func (platform *windowsPlatform) ToggleMaximise() {
+	runtime.WindowToggleMaximise(platform.context())
+}
+
+func (platform *windowsPlatform) Export(request windowshost.ExportRequest) error {
+	if request.Format == "" {
+		request.Format = "html"
+	}
+	extension := request.Format
+	if extension == "jpeg" {
+		extension = "jpg"
+	}
+	defaultName := request.Name
+	if defaultName == "" {
+		defaultName = "未命名"
+	}
+	path, err := platform.ChooseSavePath(defaultName+"."+extension, []string{extension})
+	if err != nil || path == "" {
+		return err
+	}
+	if request.HTML == "" {
+		return errors.New("前端没有返回已渲染的导出页面")
+	}
+	if request.Format == "html" {
+		return writeExportFile(path, []byte(request.HTML))
+	}
+	return exportWithEdge(platform.context(), request, path)
+}
+
+func (platform *windowsPlatform) showError(title string, cause error) {
+	_, _ = runtime.MessageDialog(platform.context(), runtime.MessageDialogOptions{
+		Type:          runtime.ErrorDialog,
+		Title:         title,
+		Message:       cause.Error(),
+		Buttons:       []string{"确定"},
+		DefaultButton: "确定",
+	})
+}
+
+type shFileOperation struct {
+	Window               windows.Handle
+	Function             uint32
+	From                 *uint16
+	To                   *uint16
+	Flags                uint16
+	AnyOperationsAborted int32
+	NameMappings         uintptr
+	ProgressTitle        *uint16
+}
+
+var shFileOperationW = windows.NewLazySystemDLL("shell32.dll").NewProc("SHFileOperationW")
+
+func moveToRecycleBin(path string) error {
+	// SHFileOperationW 要求来源列表以两个 NUL 结尾。
+	from, err := windows.UTF16PtrFromString(path + "\x00")
+	if err != nil {
+		return fmt.Errorf("编码回收站路径：%w", err)
+	}
+	operation := shFileOperation{
+		Function: 3, // FO_DELETE
+		From:     from,
+		Flags:    0x0040 | 0x0010 | 0x0400, // FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_NOERRORUI
+	}
+	result, _, callErr := shFileOperationW.Call(uintptr(unsafe.Pointer(&operation)))
+	if result != 0 {
+		return fmt.Errorf("移动到回收站失败，系统错误码 %d：%w", result, callErr)
+	}
+	if operation.AnyOperationsAborted != 0 {
+		return errors.New("移动到回收站的操作已取消")
+	}
+	return nil
+}

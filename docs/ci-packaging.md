@@ -38,7 +38,7 @@ make package-windows
 - `macos-15-intel` 生成 x64 DMG 和 ZIP。
 - `windows-2025` 生成 x64 和 ARM64 安装版、便携版。
 - 每个任务先运行检查、单元测试和 Electron 端到端测试。
-- 每个应用包包含对应架构的 `mory-storage` 侧车。
+- macOS 应用包包含对应架构的 `mory-storage` 侧车；Windows Wails 宿主直接调用同一组 Go 存储后端，不再携带侧车进程。
 - macOS 任务额外运行 WKWebView、窗口交互、知识图谱滚轮和工作区监听冒烟测试。
 - Electron Builder 显式使用 `--publish never`，防止 CI 环境误触发发布并索取个人 Token。
 - 制品保留 14 天。
@@ -46,7 +46,7 @@ make package-windows
 普通分支推送和拉取请求不会发布版本。需要发布时，手动传入与 `package.json` 完全一致的标签：
 
 ```bash
-gh workflow run build-binaries.yml -f release_tag=v0.1.0
+gh workflow run build-binaries.yml -f release_tag=v0.2.0
 ```
 
 全部平台构建通过后，`Publish GitHub Release` 任务会执行以下操作：

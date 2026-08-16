@@ -872,9 +872,10 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     }
 
     @objc private func showAbout() {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.0"
         NSApp.orderFrontStandardAboutPanel(options: [
             .applicationName: "Mory",
-            .applicationVersion: "0.1.0",
+            .applicationVersion: version,
             .credits: NSAttributedString(string: "一个原生、专注的 Markdown 编辑器。")
         ])
     }

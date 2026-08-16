@@ -1,0 +1,582 @@
+package windowshost
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"sync"
+	"time"
+)
+
+// ExportRequest 是前端完成 Markdown、Mermaid 与主题渲染后交给 WebView2 的导出任务。
+type ExportRequest struct {
+	Format     string `json:"format"`
+	Theme      string `json:"theme"`
+	Paper      string `json:"paper"`
+	Width      int    `json:"width"`
+	Background bool   `json:"background"`
+	HTML       string `json:"html"`
+	Name       string `json:"name"`
+}
+
+// Platform 隔离 Wails 运行时，使工作区与消息协议可在 macOS 上执行单元测试。
+type Platform interface {
+	ChooseDirectory(defaultDirectory string) (string, error)
+	ChooseFile(defaultDirectory string, extensions []string) (string, error)
+	ChooseSavePath(defaultPath string, extensions []string) (string, error)
+	Confirm(title, message, detail string) (bool, error)
+	Trash(path string) error
+	Reveal(path string) error
+	OpenDirectory(path string) error
+	Evaluate(script string)
+	SetTitle(title string)
+	SetLocale(locale string)
+	ToggleMaximise()
+	Export(ExportRequest) error
+}
+
+// Host 实现前端与 Windows WebView2 宿主之间的稳定消息协议。
+type Host struct {
+	mu              sync.RWMutex
+	platform        Platform
+	workspaces      *workspaceManager
+	themes          *themeManager
+	ctx             context.Context
+	cancel          context.CancelFunc
+	currentPath     string
+	currentMarkdown string
+	currentName     string
+	locale          string
+	exporting       bool
+	watchRoot       string
+	watchSignature  string
+}
+
+// New 创建 Windows 宿主核心。Start 之后才能处理前端请求。
+func New(platform Platform, userDataPath, defaultWorkspace string) *Host {
+	return &Host{
+		platform:    platform,
+		workspaces:  newWorkspaceManager(userDataPath, defaultWorkspace),
+		themes:      newThemeManager(userDataPath),
+		currentName: "未命名.md",
+		locale:      "zh-CN",
+	}
+}
+
+// Start 初始化持久化状态并启动工作区变更轮询。
+func (host *Host) Start(parent context.Context) error {
+	if err := host.workspaces.initialize(); err != nil {
+		return err
+	}
+	if err := host.themes.initialize(); err != nil {
+		return err
+	}
+	host.ctx, host.cancel = context.WithCancel(parent)
+	go host.watchWorkspace()
+	return nil
+}
+
+// Stop 结束后台工作区监听。
+func (host *Host) Stop() {
+	if host.cancel != nil {
+		host.cancel()
+	}
+}
+
+// Send 处理无需返回值的编辑器事件。
+func (host *Host) Send(payload map[string]any) error {
+	typeName := stringValue(payload, "type")
+	switch typeName {
+	case "ready":
+		return host.refreshWorkspace()
+	case "changed":
+		host.mu.Lock()
+		if markdown, ok := payload["markdown"].(string); ok {
+			host.currentMarkdown = markdown
+		}
+		if name, ok := payload["name"].(string); ok && name != "" {
+			host.currentName = name
+		}
+		title := documentTitle(host.currentPath, host.currentName)
+		host.mu.Unlock()
+		host.platform.SetTitle("● " + title + " — Mory")
+		return nil
+	case "documentSelected":
+		host.selectDocument(payload)
+		return nil
+	case "openFile":
+		return host.OpenFile(stringValue(payload, "path"))
+	case "title":
+		host.mu.RLock()
+		path := host.currentPath
+		name := host.currentName
+		host.mu.RUnlock()
+		if path == "" {
+			value := stringValue(payload, "value")
+			if value == "" {
+				value = strings.TrimSuffix(name, filepath.Ext(name))
+			}
+			host.platform.SetTitle(value + " — Mory")
+		}
+		return nil
+	case "export":
+		var request ExportRequest
+		if err := decodeValue(payload["options"], &request); err != nil {
+			return fmt.Errorf("解析导出参数：%w", err)
+		}
+		host.mu.Lock()
+		if host.exporting {
+			host.mu.Unlock()
+			host.platform.Evaluate("window.Mory.exportBusy()")
+			return nil
+		}
+		host.exporting = true
+		host.mu.Unlock()
+		defer func() {
+			host.mu.Lock()
+			host.exporting = false
+			host.mu.Unlock()
+		}()
+		if request.Name == "" {
+			host.mu.RLock()
+			request.Name = strings.TrimSuffix(host.currentName, filepath.Ext(host.currentName))
+			host.mu.RUnlock()
+		}
+		host.evaluate("window.Mory.exportStarted", request.Format)
+		if err := host.platform.Export(request); err != nil {
+			return err
+		}
+		host.evaluate("window.Mory.didExport", request.Format)
+		return nil
+	case "localeChanged":
+		locale := "zh-CN"
+		if stringValue(payload, "locale") == "en" {
+			locale = "en"
+		}
+		host.mu.Lock()
+		host.locale = locale
+		host.mu.Unlock()
+		host.platform.SetLocale(locale)
+		return nil
+	case "windowTitlebarDoubleClick":
+		host.platform.ToggleMaximise()
+		return nil
+	case "windowDragStart", "windowDragMove", "windowDragEnd":
+		// Windows 使用 Wails 的 CSS 拖动区，不需要手工计算屏幕坐标。
+		return nil
+	default:
+		return fmt.Errorf("未知宿主消息：%s", typeName)
+	}
+}
+
+// Request 处理需要返回结果的工作区请求。
+func (host *Host) Request(method string, args map[string]any) (any, error) {
+	switch method {
+	case "workspaceState":
+		return host.workspaces.state(), nil
+	case "chooseLocalWorkspace":
+		chosen, err := host.platform.ChooseDirectory(host.workspaces.activeRoot())
+		if err != nil || chosen == "" {
+			return map[string]bool{"canceled": true}, err
+		}
+		workspace := Workspace{}
+		workspace.ID = stringValue(args, "id")
+		workspace.Name = stringValue(args, "name")
+		if workspace.Name == "" {
+			workspace.Name = filepath.Base(chosen)
+		}
+		workspace.Provider = "local"
+		workspace.LocalPath = chosen
+		state, err := host.workspaces.save(workspace)
+		if err == nil {
+			err = host.refreshWorkspace()
+		}
+		return state, err
+	case "saveWorkspace":
+		var workspace Workspace
+		if err := decodeValue(args["workspace"], &workspace); err != nil {
+			return nil, fmt.Errorf("解析工作区设置：%w", err)
+		}
+		state, err := host.workspaces.save(workspace)
+		if err == nil {
+			err = host.refreshWorkspace()
+		}
+		return state, err
+	case "activateWorkspace":
+		state, err := host.workspaces.activate(stringValue(args, "id"))
+		if err == nil {
+			err = host.refreshWorkspace()
+		}
+		return state, err
+	case "removeWorkspace":
+		state, err := host.workspaces.remove(stringValue(args, "id"))
+		if err == nil {
+			err = host.refreshWorkspace()
+		}
+		return state, err
+	case "deleteDocument":
+		return host.deleteDocument(stringValue(args, "path"), stringValue(args, "name"))
+	case "createDirectory":
+		directory, err := createWorkspaceDirectory(host.workspaces.activeRoot(), stringValue(args, "relativePath"))
+		if err == nil {
+			err = host.refreshWorkspace()
+		}
+		return directory, err
+	case "syncWorkspace":
+		action := "pull"
+		if stringValue(args, "action") == "push" {
+			action = "push"
+		}
+		summary, err := host.workspaces.syncWorkspace(host.ctx, action)
+		if err == nil {
+			err = host.refreshWorkspace()
+		}
+		return summary, err
+	case "importImage":
+		result, err := importImage(host.workspaces.activeRoot(), stringValue(args, "documentPath"), stringValue(args, "documentName"), stringValue(args, "name"), stringValue(args, "mime"), stringValue(args, "data"))
+		if err == nil {
+			_ = host.refreshWorkspace()
+		}
+		return result, err
+	case "documentAssets":
+		host.mu.RLock()
+		path := host.currentPath
+		host.mu.RUnlock()
+		if path == "" {
+			return map[string]string{}, nil
+		}
+		return loadDocumentAssets(path, stringValue(args, "markdown")), nil
+	case "documentImage":
+		return readDocumentImage(host.workspaces.activeRoot(), stringValue(args, "path"))
+	case "revealFile":
+		path, err := safeExistingPath(host.workspaces.activeRoot(), stringValue(args, "path"))
+		if err != nil {
+			return nil, err
+		}
+		return map[string]bool{"revealed": true}, host.platform.Reveal(path)
+	case "readDocument":
+		path, err := safeExistingPath(host.workspaces.activeRoot(), stringValue(args, "path"))
+		if err != nil {
+			return nil, err
+		}
+		return loadDocument(path)
+	case "workspaceDocuments":
+		return listDocuments(host.workspaces.activeRoot(), true)
+	case "listThemes":
+		return host.themes.list()
+	case "importTheme":
+		path, err := host.platform.ChooseFile(host.themes.path(), []string{"css"})
+		if err != nil || path == "" {
+			return map[string]bool{"canceled": true}, err
+		}
+		themes, err := host.themes.importFile(path)
+		return map[string]any{"themes": themes}, err
+	case "openThemeFolder":
+		return map[string]bool{"opened": true}, host.platform.OpenDirectory(host.themes.path())
+	case "chooseThemeFolder":
+		path, err := host.platform.ChooseDirectory(host.themes.path())
+		if err != nil || path == "" {
+			return map[string]bool{"canceled": true}, err
+		}
+		return host.themes.setDirectory(path)
+	default:
+		return nil, fmt.Errorf("未知宿主请求：%s", method)
+	}
+}
+
+// OpenFile 从磁盘加载文稿并通知前端。
+func (host *Host) OpenFile(path string) error {
+	return host.openFile(path, true)
+}
+
+func (host *Host) openFile(path string, requireWorkspace bool) error {
+	if strings.TrimSpace(path) == "" {
+		return errors.New("文稿路径为空")
+	}
+	resolved, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("解析文稿路径：%w", err)
+	}
+	if requireWorkspace {
+		if _, err := safeDescendant(host.workspaces.activeRoot(), resolved); err != nil {
+			return err
+		}
+	}
+	document, err := loadDocument(resolved)
+	if err != nil {
+		return err
+	}
+	host.mu.Lock()
+	host.currentPath = resolved
+	host.currentMarkdown = document.Markdown
+	host.currentName = filepath.Base(resolved)
+	host.mu.Unlock()
+	host.platform.SetTitle(filepath.Base(resolved) + " — Mory")
+	host.evaluate("window.Mory.openDocument", document)
+	return nil
+}
+
+// OpenDocument 显示系统文件选择器。
+func (host *Host) OpenDocument() error {
+	path, err := host.platform.ChooseFile(host.workspaces.activeRoot(), []string{"md", "markdown", "mmd", "mdown", "mkd", "txt", "text"})
+	if err != nil || path == "" {
+		return err
+	}
+	return host.openFile(path, false)
+}
+
+// OpenFolder 把选择的目录保存为当前本地工作区。
+func (host *Host) OpenFolder() error {
+	path, err := host.platform.ChooseDirectory(host.workspaces.activeRoot())
+	if err != nil || path == "" {
+		return err
+	}
+	workspace := Workspace{LocalPath: path}
+	workspace.Provider = "local"
+	workspace.Name = filepath.Base(path)
+	if _, err := host.workspaces.save(workspace); err != nil {
+		return err
+	}
+	return host.refreshWorkspace()
+}
+
+// NewDocument 清除宿主当前路径并让前端创建独立草稿。
+func (host *Host) NewDocument() {
+	host.mu.Lock()
+	host.currentPath = ""
+	host.currentMarkdown = ""
+	host.currentName = "未命名.md"
+	host.mu.Unlock()
+	host.platform.SetTitle("未命名 — Mory")
+	host.platform.Evaluate("window.Mory.newDocument()")
+}
+
+// Save 保存当前文稿；非隐式工作区中的草稿直接分配不冲突的文件名。
+func (host *Host) Save() error {
+	host.mu.RLock()
+	path, markdown, name := host.currentPath, host.currentMarkdown, host.currentName
+	host.mu.RUnlock()
+	if path == "" {
+		if host.workspaces.active().IsImplicit {
+			return host.SaveAs()
+		}
+		path = availableDocumentPath(host.workspaces.activeRoot(), suggestedDocumentName(markdown, name))
+	}
+	return host.writeDocument(path, markdown)
+}
+
+// SaveAs 显示系统另存为对话框。
+func (host *Host) SaveAs() error {
+	host.mu.RLock()
+	path, markdown, name := host.currentPath, host.currentMarkdown, host.currentName
+	host.mu.RUnlock()
+	if path == "" {
+		path = filepath.Join(host.workspaces.activeRoot(), suggestedDocumentName(markdown, name))
+	}
+	chosen, err := host.platform.ChooseSavePath(path, []string{"md"})
+	if err != nil || chosen == "" {
+		return err
+	}
+	return host.writeDocument(chosen, markdown)
+}
+
+// Evaluate 调用前端公开命令，用于菜单快捷键。
+func (host *Host) Evaluate(script string) { host.platform.Evaluate(script) }
+
+func (host *Host) writeDocument(path, markdown string) error {
+	host.mu.RLock()
+	oldPath, oldName := host.currentPath, host.currentName
+	host.mu.RUnlock()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("创建文稿目录：%w", err)
+	}
+	var err error
+	markdown, err = relocateDocumentAssets(host.workspaces.activeRoot(), markdown, oldPath, oldName, path)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, []byte(markdown), 0o644); err != nil {
+		return fmt.Errorf("保存文稿：%w", err)
+	}
+	document, err := loadDocument(path)
+	if err != nil {
+		return err
+	}
+	host.mu.Lock()
+	host.currentPath = path
+	host.currentName = filepath.Base(path)
+	host.currentMarkdown = markdown
+	host.mu.Unlock()
+	host.platform.SetTitle(filepath.Base(path) + " — Mory")
+	host.evaluate("window.Mory.didSave", document)
+	return host.refreshWorkspace()
+}
+
+func (host *Host) deleteDocument(path, name string) (any, error) {
+	resolved, err := safeExistingPath(host.workspaces.activeRoot(), path)
+	if err != nil {
+		return nil, err
+	}
+	if name == "" {
+		name = filepath.Base(resolved)
+	}
+	host.mu.RLock()
+	english := host.locale == "en"
+	host.mu.RUnlock()
+	title, message, detail := "删除文稿", "要将“"+name+"”移到回收站吗？", "可以从系统回收站中恢复该文稿。"
+	if english {
+		title, message, detail = "Delete document", "Move “"+name+"” to the Recycle Bin?", "The document can be restored from the system Recycle Bin."
+	}
+	confirmed, err := host.platform.Confirm(title, message, detail)
+	if err != nil || !confirmed {
+		return map[string]bool{"canceled": true}, err
+	}
+	if err := host.platform.Trash(resolved); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	return map[string]bool{"deleted": true}, host.refreshWorkspace()
+}
+
+func (host *Host) selectDocument(payload map[string]any) {
+	host.mu.Lock()
+	host.currentPath = stringValue(payload, "path")
+	host.currentMarkdown = stringValue(payload, "markdown")
+	host.currentName = stringValue(payload, "name")
+	if host.currentName == "" {
+		host.currentName = "未命名.md"
+	}
+	title := documentTitle(host.currentPath, host.currentName)
+	dirty, _ := payload["dirty"].(bool)
+	host.mu.Unlock()
+	if dirty {
+		title = "● " + title
+	}
+	host.platform.SetTitle(title + " — Mory")
+}
+
+func (host *Host) refreshWorkspace() error {
+	root := host.workspaces.activeRoot()
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return fmt.Errorf("创建工作目录：%w", err)
+	}
+	files, err := listDocuments(root, false)
+	if err != nil {
+		return err
+	}
+	directories, err := listDirectories(root)
+	if err != nil {
+		return err
+	}
+	snapshot := map[string]any{"state": host.workspaces.state(), "files": files, "directories": directories}
+	host.evaluate("window.Mory.setWorkspaceSnapshot", snapshot)
+	host.mu.Lock()
+	host.watchRoot = root
+	host.watchSignature = workspaceSignature(root)
+	host.mu.Unlock()
+	return nil
+}
+
+func (host *Host) watchWorkspace() {
+	ticker := time.NewTicker(750 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-host.ctx.Done():
+			return
+		case <-ticker.C:
+			host.mu.RLock()
+			root, previous := host.watchRoot, host.watchSignature
+			host.mu.RUnlock()
+			if root == "" {
+				continue
+			}
+			next := workspaceSignature(root)
+			if next != previous {
+				_ = host.refreshWorkspace()
+			}
+		}
+	}
+}
+
+func workspaceSignature(root string) string {
+	var builder strings.Builder
+	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if path != root && entry.IsDir() && hiddenWorkspaceEntry(entry.Name()) {
+			return filepath.SkipDir
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		info, infoErr := entry.Info()
+		if infoErr == nil {
+			builder.WriteString(path)
+			builder.WriteString(fmt.Sprintf(":%d:%d\n", info.Size(), info.ModTime().UnixNano()))
+		}
+		return nil
+	})
+	return builder.String()
+}
+
+func (host *Host) evaluate(functionName string, value any) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return
+	}
+	host.platform.Evaluate(functionName + "(" + string(data) + ")")
+}
+
+func stringValue(values map[string]any, key string) string {
+	value, _ := values[key].(string)
+	return value
+}
+
+func decodeValue(value any, target any) error {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(data, target)
+}
+
+func documentTitle(path, name string) string {
+	if path != "" {
+		return filepath.Base(path)
+	}
+	return strings.TrimSuffix(name, filepath.Ext(name))
+}
+
+var headingName = regexp.MustCompile(`(?m)^#\s+(.+?)\s*#*\s*$`)
+
+func suggestedDocumentName(markdown, fallback string) string {
+	name := strings.TrimSuffix(fallback, filepath.Ext(fallback))
+	if match := headingName.FindStringSubmatch(markdown); len(match) > 1 {
+		name = strings.TrimSpace(strings.NewReplacer("*", "", "_", "", "`", "", "~", "").Replace(match[1]))
+	}
+	return sanitizeSegment(name) + ".md"
+}
+
+func availableDocumentPath(root, filename string) string {
+	extension := filepath.Ext(filename)
+	if extension == "" {
+		extension = ".md"
+	}
+	base := strings.TrimSuffix(filename, filepath.Ext(filename))
+	for serial := 1; ; serial++ {
+		name := base + extension
+		if serial > 1 {
+			name = fmt.Sprintf("%s %d%s", base, serial, extension)
+		}
+		candidate := filepath.Join(root, name)
+		if _, err := os.Stat(candidate); errors.Is(err, os.ErrNotExist) {
+			return candidate
+		}
+	}
+}

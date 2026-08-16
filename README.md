@@ -2,6 +2,64 @@
 
 Mory 是一个跨平台 Markdown 编辑器。项目采用原生桌面宿主与共享 Web 编辑器内核，支持 macOS 和 Windows。界面结构、主题机制与导出链路参考本机 Typora 0.11.18 的可观察行为，全部业务代码和主题样式均为独立实现。
 
+## 为什么叫 Mory
+
+`Mory` 由 `M` 和 `ory` 组成。`M` 代表 Markdown 与 Memory，`ory` 取自 Story。这个名字表达了项目的核心目标：用 Markdown 写下内容，把分散文稿组织成可以检索、引用和长期保存的个人记忆与故事。
+
+项目正式名称是 `Mory`，不是 `Moly`。应用名称、包名和发布制品均使用同一拼写。
+
+## 设计思路
+
+Mory 遵循六项设计原则：
+
+- 写作优先：编辑器直接呈现排版结果，同时保留 Markdown 作为唯一文稿格式。
+- 本地优先：默认工作区是普通目录。文稿与图片可以离开 Mory，被其他工具直接读取。
+- 工作区抽象：文件列表、图片、知识图谱、反向链接和同步都以当前工作区为边界。
+- 单一编辑内核：macOS 与 Windows 共享 Markdown、主题、Mermaid、代码高亮和知识图谱实现，避免平台行为分叉。
+- 原生宿主：macOS 使用 AppKit 与 WKWebView，Windows 使用 Go、Wails 与 WebView2。宿主只负责窗口、文件系统、菜单和系统导出。
+- 同源导出：编辑区与 HTML、PDF、PNG、JPEG 共用主题化 HTML，减少预览和最终制品之间的差异。
+
+知识图谱和反向链接由 Markdown 内容实时派生，不维护隐藏的专有数据库。远端存储通过统一后端接口接入，本地目录始终保留完整镜像。用户可以更换 GitHub、S3/S4、OSS 或 SFTP，而不改变编辑器内核。
+
+## 架构
+
+```mermaid
+flowchart TB
+  UI[共享 Web 编辑器内核] --> MD[Markdown 即时渲染]
+  UI --> THEME[主题、Mermaid 与代码高亮]
+  UI --> GRAPH[知识图谱与反向链接]
+  UI --> BRIDGE[统一宿主消息协议]
+
+  BRIDGE --> MAC[macOS：Swift、AppKit、WKWebView]
+  BRIDGE --> WIN[Windows：Go、Wails、WebView2]
+
+  MAC --> WORKSPACE[工作区服务]
+  WIN --> WORKSPACE
+  WORKSPACE --> LOCAL[本地文件系统]
+  WORKSPACE --> STORAGE[存储后端接口]
+  STORAGE --> GITHUB[GitHub]
+  STORAGE --> S3[S3 / S4]
+  STORAGE --> OSS[阿里云 OSS]
+  STORAGE --> SFTP[SFTP]
+
+  MAC --> MACEXPORT[WKWebView 与 Core Graphics 导出]
+  WIN --> WINEXPORT[Edge DevTools Protocol 导出]
+  THEME --> MACEXPORT
+  THEME --> WINEXPORT
+```
+
+共享编辑器通过稳定的请求和事件协议调用宿主，不直接依赖 Swift、Go 或 Electron。Electron 仅作为开发和端到端测试壳，不进入 Windows 0.2.0 发布包。Windows 发布版复用系统 WebView2，因此无需携带完整 Chromium。
+
+目录职责如下：
+
+| 层级 | 目录 | 职责 |
+| --- | --- | --- |
+| 编辑器 | `Sources/Mory/Web/` | Markdown 编辑、即时渲染、主题、图谱和导出 HTML |
+| macOS 宿主 | `Sources/Mory/` | AppKit 窗口、WKWebView、文件系统和原生导出 |
+| Windows 宿主 | `cmd/mory-windows/`、`internal/windowshost/` | Wails/WebView2、工作区、系统菜单和 Edge 导出 |
+| 存储后端 | `internal/storage/` | GitHub、S3/S4、OSS 和 SFTP 适配器 |
+| 开发测试壳 | `Electron/` | 共享编辑器调试与跨平台 E2E 测试 |
+
 ## 功能特性
 
 - 支持所见即所得编辑和 Markdown 源码模式。
@@ -24,7 +82,7 @@ Mory 是一个跨平台 Markdown 编辑器。项目采用原生桌面宿主与�
 - 支持在设置中即时切换简体中文与 English。
 - PDF 导出支持 A4、US Letter 和 US Legal 纸张。
 - 图片导出支持 PNG、JPEG 和 640～1,600 px 宽度。
-- macOS 使用 Swift、AppKit 和 WKWebView；Windows 使用 Electron。
+- macOS 使用 Swift、AppKit 和 WKWebView；Windows 使用 Go、Wails v2 和系统 WebView2 Runtime。
 
 ## 环境要求
 
@@ -37,20 +95,19 @@ Mory 是一个跨平台 Markdown 编辑器。项目采用原生桌面宿主与�
 ### Windows
 
 - Windows 10 或 Windows 11，x64 或 ARM64 架构。
-- Node.js 22 或更高版本。
-- npm 10 或更高版本。
-- Go 1.25 或更高版本，用于构建存储插件侧车。
+- 运行时需要 Microsoft Edge WebView2 Runtime。缺失时，便携版会提示安装内嵌的官方 bootstrapper。
+- 构建时需要 Node.js 22、npm 10、Go 1.25、GNU Make 和 NSIS。
 
 ## 快速开始
 
-安装依赖并启动 Electron 桌面版：
+安装依赖并启动共享编辑器的 Electron 开发壳：
 
 ```bash
 npm install
 npm run dev
 ```
 
-Electron 桌面版可在 macOS 和 Windows 上运行。两个平台共用同一套编辑器、主题和导出代码。
+开发壳用于快速调试共享编辑器。发布版使用 macOS 原生宿主或 Windows WebView2 宿主，两个平台共用同一套编辑器、主题和导出 HTML。
 
 编辑区右下角固定显示纵向格式工具栏。工具栏默认只显示图标，鼠标悬停时显示功能名称。标题不提供 H1/H2 按钮，直接输入 `# `、`## ` 等 Markdown 标记；标题后按 Enter 会恢复为正文。中文输入法的候选确认回车不会提前退出标题，候选提交后立即按 Enter 也会同步创建正文，不会跳到文章顶部。连续输入多个标题会保持独立块。粘贴整段 Markdown 时同样会进入即时渲染管线。
 
@@ -106,19 +163,28 @@ make package-windows
 也可以在 Windows PowerShell 中只生成 x64 制品：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\package-windows-wails.ps1 -Architecture amd64
 ```
 
-脚本会执行语法检查、单元测试和 electron-builder 打包。输出目录为：
+脚本调用 Wails v2 官方构建器，生成带应用清单、图标和 WebView2 bootstrapper 的 GUI 程序，再使用 NSIS 生成安装版。输出目录为：
 
 ```text
 dist\windows
 ```
 
-默认生成 x64 NSIS 安装版和便携版。ARM64 版本可使用以下命令生成：
+默认文件名如下：
+
+```text
+Mory-Setup-<版本>-x64.exe
+Mory-Portable-<版本>-x64.exe
+Mory-Setup-<版本>-arm64.exe
+Mory-Portable-<版本>-arm64.exe
+```
+
+在 macOS 或 Linux 上可交叉编译双架构 GUI，验证 Go、WebView2 绑定和嵌入资源。该命令不生成 NSIS 安装器：
 
 ```bash
-npm run pack:win:arm64
+make windows-build-x64 windows-build-arm64
 ```
 
 ## 通过 GitHub Actions 发布版本
@@ -126,7 +192,7 @@ npm run pack:win:arm64
 GitHub Actions 可以统一构建 macOS ARM64、macOS x64、Windows x64 和 Windows ARM64 制品，并创建 GitHub Release。发布标签必须与 `package.json` 中的版本一致：
 
 ```bash
-gh workflow run build-binaries.yml -f release_tag=v0.1.0
+gh workflow run build-binaries.yml -f release_tag=v0.2.0
 ```
 
 普通分支推送和拉取请求只执行构建与测试，不创建 Release。发布任务使用仓库临时 `GITHUB_TOKEN`，不需要个人 Access Token。完整流程和回滚方式见 [docs/ci-packaging.md](docs/ci-packaging.md)。
@@ -171,7 +237,7 @@ HTML 文件包含完整正文、基础打印样式和所选主题 CSS。导出�
 
 ### PDF
 
-Windows 使用 Electron `printToPDF`。macOS 原生版使用 WKWebView 的异步 `createPDF` 生成长页，再由 Core Graphics 在后台切分为 A4、US Letter 或 US Legal。两端都从同一份主题化 HTML 生成 PDF。主题 CSS 在构建时内嵌到运行包，`file://` 页面导出不再读取跨源样式表；macOS 分页和文件写入不占用主线程，导出期间主窗口仍可响应系统事件。
+Windows 先在 WebView2 编辑器中完成主题、Mermaid、代码高亮和图片内联，再调用系统 Microsoft Edge 的 DevTools 协议生成 PDF。macOS 原生版使用 WKWebView 的异步 `createPDF` 生成长页，再由 Core Graphics 在后台切分为 A4、US Letter 或 US Legal。两端都从同一份主题化 HTML 生成 PDF。导出任务在独立进程或后台队列中运行，不阻塞编辑窗口。
 
 ### PNG 和 JPEG
 
@@ -224,9 +290,11 @@ npm run test:mac-workspace-watcher
 ## 项目结构
 
 ```text
-Electron/                 Windows 和跨平台 Electron 宿主
+Electron/                 共享编辑器的开发与 E2E 测试壳
 cmd/mory-storage/         跨平台存储插件侧车入口
+cmd/mory-windows/         Wails v2 与 WebView2 Windows 宿主
 internal/storage/         GitHub、S3/S4、OSS 和 SFTP 插件实现
+internal/windowshost/     Windows 工作区、文稿、主题和宿主协议
 .github/workflows/        GitHub Actions 多平台打包工作流
 Sources/Mory/             macOS Swift 宿主
 Sources/Mory/Web/         共享编辑器内核
@@ -242,7 +310,7 @@ docs/                     架构与审计记录
 ## 已知限制
 
 - 当前 Markdown 解析器覆盖标题、段落、列表、任务、引用、代码围栏、表格、链接、图片、Mermaid 和常用内联格式，尚未实现数学公式。
-- macOS 原生导出代码已完成编译验证；Windows 安装包仍应在真实 Windows 机器上执行一次安装、文件关联和卸载回归。
+- macOS 原生导出代码和 Windows x64/ARM64 WebView2 主程序已完成编译验证；Windows 安装包仍应在真实 Windows 机器上执行一次安装、文件关联、导出和卸载回归。
 - 当前版本没有代码签名证书。Windows 首次运行时可能显示 SmartScreen 提示。
 
 ## 设计来源

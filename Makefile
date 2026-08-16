@@ -2,7 +2,7 @@
 
 NPM ?= npm
 
-.PHONY: help install web storage storage-macos storage-windows-x64 storage-windows-arm64 check test-unit test-go test-e2e verify test-macos package-macos package-windows-x64 package-windows-arm64 package-windows ci-macos ci-windows
+.PHONY: help install web storage storage-macos windows-build-x64 windows-build-arm64 check test-unit test-go test-e2e verify test-macos package-macos package-windows-x64 package-windows-arm64 package-windows ci-macos ci-windows
 
 help:
 	@echo "Mory 本地构建目标"
@@ -10,8 +10,10 @@ help:
 	@echo "  make verify                 执行语法检查、单元测试和 Electron 端到端测试"
 	@echo "  make storage                生成当前平台的存储插件侧车"
 	@echo "  make package-macos          验证并生成当前架构的 macOS DMG、ZIP 与校验文件"
-	@echo "  make package-windows-x64    验证并生成 Windows x64 安装版和便携版"
-	@echo "  make package-windows-arm64  验证并生成 Windows ARM64 安装版和便携版"
+	@echo "  make windows-build-x64      交叉编译 WebView2 Windows x64 GUI（不打包）"
+	@echo "  make windows-build-arm64    交叉编译 WebView2 Windows ARM64 GUI（不打包）"
+	@echo "  make package-windows-x64    在 Windows 上生成 WebView2 x64 安装版和便携版"
+	@echo "  make package-windows-arm64  在 Windows 上生成 WebView2 ARM64 安装版和便携版"
 	@echo "  make package-windows        验证并生成两种 Windows 架构的全部制品"
 
 install:
@@ -26,13 +28,13 @@ storage:
 
 storage-macos: storage
 
-storage-windows-x64:
-	mkdir -p .build/storage
-	env GOCACHE=$(CURDIR)/.cache/go-build GOOS=windows GOARCH=amd64 go build -trimpath -o .build/storage/mory-storage.exe ./cmd/mory-storage
+windows-build-x64: web
+	mkdir -p .build/windows
+	env GOCACHE=$(CURDIR)/.cache/go-build GOOS=windows GOARCH=amd64 go build -tags desktop,production,wv2runtime.embed -trimpath -ldflags="-s -w -H windowsgui" -o .build/windows/Mory-x64.exe ./cmd/mory-windows
 
-storage-windows-arm64:
-	mkdir -p .build/storage
-	env GOCACHE=$(CURDIR)/.cache/go-build GOOS=windows GOARCH=arm64 go build -trimpath -o .build/storage/mory-storage.exe ./cmd/mory-storage
+windows-build-arm64: web
+	mkdir -p .build/windows
+	env GOCACHE=$(CURDIR)/.cache/go-build GOOS=windows GOARCH=arm64 go build -tags desktop,production,wv2runtime.embed -trimpath -ldflags="-s -w -H windowsgui" -o .build/windows/Mory-arm64.exe ./cmd/mory-windows
 
 check:
 	$(NPM) run check
@@ -66,17 +68,15 @@ package-macos: verify
 	$(NPM) run test:mac-workspace-watcher
 	$(NPM) run dist:mac
 
-package-windows-x64: verify storage-windows-x64
-	$(NPM) run pack:win
+package-windows-x64: verify
+	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-windows-wails.ps1 -Architecture amd64
 
-package-windows-arm64: verify storage-windows-arm64
-	$(NPM) run pack:win:arm64
+package-windows-arm64: verify
+	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-windows-wails.ps1 -Architecture arm64
 
 package-windows: verify
-	$(MAKE) storage-windows-x64
-	$(NPM) run pack:win
-	$(MAKE) storage-windows-arm64
-	$(NPM) run pack:win:arm64
+	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-windows-wails.ps1 -Architecture amd64
+	powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-windows-wails.ps1 -Architecture arm64
 
 ci-macos: package-macos
 

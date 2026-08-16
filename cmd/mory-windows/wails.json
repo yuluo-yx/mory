@@ -1,0 +1,27 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "Mory",
+  "outputfilename": "Mory",
+  "frontend:dir": ".",
+  "wailsjsdir": "./wailsjs",
+  "nsisType": "multiple",
+  "author": {
+    "name": "Mory Contributors"
+  },
+  "info": {
+    "companyName": "Mory Contributors",
+    "productName": "Mory",
+    "productVersion": "0.2.0",
+    "copyright": "Copyright © 2026 Mory Contributors",
+    "comments": "A focused Markdown editor powered by WebView2",
+    "fileAssociations": [
+      {
+        "ext": "md",
+        "name": "Markdown Document",
+        "description": "Markdown document edited with Mory",
+        "iconName": "appicon",
+        "role": "Editor"
+      }
+    ]
+  }
+}

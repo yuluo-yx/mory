@@ -8,7 +8,8 @@ const sourceEditor = $("#source-editor");
 const workspace = $(".workspace");
 const editorScroll = $("#editor-scroll");
 const nativeMacHost = Boolean(window.webkit?.messageHandlers?.mory);
-document.documentElement.dataset.host = nativeMacHost ? "mac-native" : (window.moryNative?.platform || "browser");
+const nativeWailsHost = () => window.go?.main?.WindowsHost;
+document.documentElement.dataset.host = nativeMacHost ? "mac-native" : (nativeWailsHost() ? "windows-webview2" : (window.moryNative?.platform || "browser"));
 
 const defaultMarkdown = `# Mory Markdown 编辑器
 
@@ -181,6 +182,11 @@ function applyLocale(next = state.locale) {
 function bridge(payload) {
   if (window.webkit?.messageHandlers?.mory) {
     window.webkit.messageHandlers.mory.postMessage(payload);
+  } else if (nativeWailsHost()?.Send) {
+    void nativeWailsHost().Send(payload).catch(error => {
+      console.error("Windows 宿主消息失败：", error);
+      toast(state.locale === "en" ? `Desktop operation failed: ${error.message}` : `桌面操作失败：${error.message}`, 5000);
+    });
   } else {
     window.moryNative?.send(payload);
   }
@@ -188,6 +194,7 @@ function bridge(payload) {
 
 function hostRequest(method, args = {}) {
   if (window.moryNative?.request) return window.moryNative.request(method, args);
+  if (nativeWailsHost()?.Request) return nativeWailsHost().Request(method, args);
   if (!window.webkit?.messageHandlers?.mory) return Promise.reject(new Error("当前环境没有桌面宿主。"));
   const requestId = `host-${++hostRequestSequence}`;
   return new Promise((resolve, reject) => {
@@ -336,7 +343,7 @@ function isLocalDocumentImage(source) {
 }
 
 function scheduleDocumentAssetRefresh(document) {
-  if (!document?.path || (!window.moryNative && !nativeMacHost)) return;
+  if (!document?.path || (!window.moryNative && !nativeMacHost && !nativeWailsHost())) return;
   clearTimeout(documentAssetTimer);
   const request = ++documentAssetRequest;
   documentAssetTimer = setTimeout(async () => {
@@ -1598,7 +1605,7 @@ function rebuildWorkspaceKnowledge({ renderGraph = false } = {}) {
 async function refreshWorkspaceKnowledge({ renderGraph = false } = {}) {
   const request = ++workspaceKnowledgeRequest;
   try {
-    if (window.moryNative || nativeMacHost) {
+    if (window.moryNative || nativeMacHost || nativeWailsHost()) {
       const documents = await hostRequest("workspaceDocuments");
       if (request !== workspaceKnowledgeRequest) return;
       state.workspaceDocuments = Array.isArray(documents) ? documents : [];
@@ -2095,8 +2102,11 @@ async function confirmExport() {
     width: Number($("#export-width").value),
     background: $("#export-background").checked
   };
-  if (window.webkit?.messageHandlers?.mory || window.moryNative) {
-    bridge({ type: "export", options });
+  if (window.webkit?.messageHandlers?.mory || window.moryNative || nativeWailsHost()) {
+    // Windows Wails 无法像 Electron executeJavaScript 一样同步取得返回值，
+    // 先在编辑器中完成主题、Mermaid、代码高亮和图片内联，再交给宿主落盘。
+    const html = await exportDocument(options);
+    bridge({ type: "export", options: { ...options, html, name: $("#document-title").value || "未命名" } });
     toggleExportDialog(false);
     return;
   }
@@ -2715,7 +2725,7 @@ window.Mory = {
 };
 
 restorePreferences();
-const browserDraft = (window.webkit || window.moryNative) ? null : localStorage.getItem("mory.draft");
+const browserDraft = (window.webkit || window.moryNative || nativeWailsHost()) ? null : localStorage.getItem("mory.draft");
 createUntitledDocument(browserDraft || defaultMarkdown, {
   announce: false,
   notifyHost: false,

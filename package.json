@@ -1,6 +1,6 @@
 {
   "name": "mory-markdown-editor",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "Mory Contributors",
   "private": true,
   "description": "原生宿主与 Web 编辑器结合的跨平台 Markdown 编辑器",
