@@ -184,7 +184,8 @@ final class MacTypingSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegat
             return
         }
         actions[index]()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { [weak self] in
+        // Intel 托管 runner 的 WKWebView 处理符号键后会异步重排代码块；保留真实打字间隔，避免回车抢在末字符提交前到达。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             self?.perform(actions, index: index + 1, completion: completion)
         }
     }
