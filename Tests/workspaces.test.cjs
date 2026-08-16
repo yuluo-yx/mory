@@ -116,7 +116,7 @@ test("递归列出文稿并忽略资源目录中的非文稿", async t => {
   assert.equal(documents.length, 1);
   assert.deepEqual({ name: documents[0].name, path: documents[0].path }, { name: path.join("专题", "文章.md"), path: path.join(root, "专题", "文章.md") });
   assert.ok(Number.isFinite(documents[0].createdAt));
-  assert.deepEqual(documents[0].images.map(image => image.relative), [path.join("文章", "image.png")]);
+  assert.deepEqual(documents[0].images.map(image => image.relative), ["文章/image.png"]);
   const preview = await readDocumentImage(root, documents[0].images[0].path);
   assert.match(preview.dataURL, /^data:image\/png;base64,/);
   await assert.rejects(() => readDocumentImage(root, path.join(root, "专题", "文章.md")), /图片格式/);
