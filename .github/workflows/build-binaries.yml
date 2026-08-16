@@ -16,7 +16,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: mory-build-${{ github.workflow }}-${{ github.ref }}
+  # 普通提交校验和手动发布可以指向同一提交；按触发类型隔离，避免发布任务把提交检查取消成红叉。
+  group: mory-build-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
