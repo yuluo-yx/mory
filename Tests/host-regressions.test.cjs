@@ -25,6 +25,7 @@ test("macOS 与 Windows 宿主递归监听工作区并刷新原子快照", () =>
   const electron = fs.readFileSync(path.join(root, "Electron", "workspace-watcher.cjs"), "utf8");
   const macOS = fs.readFileSync(path.join(root, "Sources", "Mory", "WorkspaceWatcher.swift"), "utf8");
   assert.match(electron, /fs\.watch\(nextRoot, \{ recursive: true \}/);
+  assert.match(electron, /setInterval\(scheduleRefresh, pollIntervalMs\)/);
   assert.match(electron, /Promise\.resolve\(onChange\(\)\)/);
   assert.match(macOS, /FSEventStreamCreate\(/);
   assert.match(macOS, /kFSEventStreamCreateFlagFileEvents/);
@@ -56,14 +57,17 @@ test("macOS PDF 导出使用 WebKit 异步生成并在后台分页", () => {
 
 test("macOS 左侧顶部与正文标题栏共用原生窗口放大与还原交互", () => {
   const host = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
+  const typingSmoke = fs.readFileSync(path.join(root, "Tests", "MacTypingSmoke.swift"), "utf8");
   const web = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "app.js"), "utf8");
   assert.match(web, /\$\$\("\.titlebar, \.traffic-space"\)/);
   assert.match(web, /region\.addEventListener\("dblclick", handleWindowTitlebarDoubleClick\)/);
   assert.match(web, /windowTitlebarDoubleClick/);
   assert.match(host, /case "windowTitlebarDoubleClick"/);
   assert.match(host, /window\.performZoom\(nil\)/);
+  assert.match(host, /let restored = !window\.isZoomed\s+&& abs\(actual\.width - restoredFrame\.width\)/);
   assert.match(host, /document\.querySelector\('\.traffic-space'\)/);
   assert.match(host, /new MouseEvent\('dblclick'/);
+  assert.match(typingSmoke, /code: document\.querySelector\('#write > pre code'\)\?\.innerText/);
 });
 
 test("知识图谱在 HTML 画布捕获滚轮并按 D3 官方公式归一化", () => {

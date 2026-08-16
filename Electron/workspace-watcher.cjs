@@ -5,10 +5,11 @@ const path = require("node:path");
  * 使用 Node 官方文件系统监听器跟踪当前工作目录。
  * Windows 与 macOS 都支持 recursive；事件经过防抖后只触发一次原子快照刷新。
  */
-function createWorkspaceWatcher({ onChange, onError = () => {}, debounceMs = 180 }) {
+function createWorkspaceWatcher({ onChange, onError = () => {}, debounceMs = 180, pollIntervalMs = 1500 }) {
   let watcher = null;
   let watchedRoot = "";
   let refreshTimer = null;
+  let pollTimer = null;
 
   function scheduleRefresh() {
     clearTimeout(refreshTimer);
@@ -20,7 +21,9 @@ function createWorkspaceWatcher({ onChange, onError = () => {}, debounceMs = 180
 
   function stop() {
     clearTimeout(refreshTimer);
+    clearInterval(pollTimer);
     refreshTimer = null;
+    pollTimer = null;
     watcher?.close();
     watcher = null;
     watchedRoot = "";
@@ -31,17 +34,22 @@ function createWorkspaceWatcher({ onChange, onError = () => {}, debounceMs = 180
     if (watcher && watchedRoot === nextRoot) return;
     stop();
     watchedRoot = nextRoot;
+    // fs.watch 允许操作系统合并或遗漏事件；低频轮询保证 Finder 外部修改最终一定会刷新。
+    pollTimer = setInterval(scheduleRefresh, pollIntervalMs);
+    pollTimer.unref?.();
     try {
       watcher = fs.watch(nextRoot, { recursive: true }, scheduleRefresh);
       watcher.on("error", error => {
         onError(error);
-        stop();
-        // 根目录被移动或临时不可用时，刷新流程会重建目录并重新安装监听器。
+        watcher?.close();
+        watcher = null;
+        // 原生监听失效后继续依靠轮询刷新；切换工作区时 start 会重建监听器。
         scheduleRefresh();
       });
     } catch (error) {
-      stop();
+      watcher = null;
       onError(error);
+      scheduleRefresh();
     }
   }
 
