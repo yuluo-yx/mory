@@ -138,18 +138,28 @@ async function listDocuments(root) {
   const files = [];
   async function visit(directory) {
     const entries = await fs.readdir(directory, { withFileTypes: true });
-    entries.sort((left, right) => left.name.localeCompare(right.name, "zh-CN", { numeric: true }));
     for (const entry of entries) {
       if (entry.name === ".git" || entry.name === ".mory" || entry.name.startsWith(".")) continue;
       const fullPath = path.join(directory, entry.name);
       if (entry.isDirectory()) await visit(fullPath);
       else if (entry.isFile() && DOCUMENT_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
-        files.push({ name: path.relative(root, fullPath), path: fullPath });
+        const stat = await fs.stat(fullPath);
+        const birthtime = Number(stat.birthtimeMs);
+        const createdAt = Number.isFinite(birthtime) && birthtime > 0 ? birthtime : Number(stat.ctimeMs);
+        files.push({ name: path.relative(root, fullPath), path: fullPath, createdAt });
       }
     }
   }
   await visit(root);
-  return files;
+  return files.sort(compareDocumentsByCreation);
+}
+
+function compareDocumentsByCreation(left, right) {
+  const leftTime = Number.isFinite(Number(left.createdAt)) ? Number(left.createdAt) : Number.MAX_SAFE_INTEGER;
+  const rightTime = Number.isFinite(Number(right.createdAt)) ? Number(right.createdAt) : Number.MAX_SAFE_INTEGER;
+  return leftTime - rightTime
+    || String(left.name).localeCompare(String(right.name), "zh-CN", { numeric: true })
+    || String(left.path).localeCompare(String(right.path));
 }
 
 async function readWorkspaceDocuments(root) {
@@ -267,4 +277,4 @@ function runSidecar(executable, payload) {
   });
 }
 
-module.exports = { createWorkspaceManager, importImage, listDocuments, loadDocumentAssets, markdownImagePaths, readWorkspaceDocuments, relocateDocumentAssets, sanitizeSegment, validateWorkspace };
+module.exports = { compareDocumentsByCreation, createWorkspaceManager, importImage, listDocuments, loadDocumentAssets, markdownImagePaths, readWorkspaceDocuments, relocateDocumentAssets, sanitizeSegment, validateWorkspace };

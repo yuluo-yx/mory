@@ -9,7 +9,7 @@ help:
 	@echo "  make install                安装 package-lock.json 锁定的依赖"
 	@echo "  make verify                 执行语法检查、单元测试和 Electron 端到端测试"
 	@echo "  make storage                生成当前平台的存储插件侧车"
-	@echo "  make package-macos          验证并生成当前架构的 macOS Mory.app"
+	@echo "  make package-macos          验证并生成当前架构的 macOS DMG、ZIP 与校验文件"
 	@echo "  make package-windows-x64    验证并生成 Windows x64 安装版和便携版"
 	@echo "  make package-windows-arm64  验证并生成 Windows ARM64 安装版和便携版"
 	@echo "  make package-windows        验证并生成两种 Windows 架构的全部制品"
@@ -52,14 +52,19 @@ test-macos:
 	$(NPM) run test:mac-web
 	$(NPM) run test:mac-typing
 	$(NPM) run test:mac-ime
+	$(NPM) run test:mac-graph
 	$(NPM) run test:mac-drag
+	$(NPM) run test:mac-workspace-watcher
 
 package-macos: verify
 	$(NPM) run build:mac
 	$(NPM) run test:mac-web
 	$(NPM) run test:mac-typing
 	$(NPM) run test:mac-ime
+	$(NPM) run test:mac-graph
 	$(NPM) run test:mac-drag
+	$(NPM) run test:mac-workspace-watcher
+	$(NPM) run dist:mac
 
 package-windows-x64: verify storage-windows-x64
 	$(NPM) run pack:win

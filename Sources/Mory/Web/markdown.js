@@ -71,7 +71,8 @@ function fenceTitle(value) {
 }
 
 export function markdownToHTML(markdown) {
-  const lines = String(markdown ?? "").replace(/\r\n?/g, "\n").split("\n");
+  // UTF-8 BOM 只可能位于文稿开头；去除它，避免首个块无法匹配 Markdown 标记。
+  const lines = String(markdown ?? "").replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n").split("\n");
   const html = [];
   let index = 0;
 

@@ -3,6 +3,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { createWorkspaceManager, importImage, listDocuments, loadDocumentAssets, readWorkspaceDocuments, relocateDocumentAssets } = require("./workspaces.cjs");
 const { createThemeManager } = require("./themes.cjs");
+const { createWorkspaceWatcher } = require("./workspace-watcher.cjs");
 
 let mainWindow;
 let currentFilePath = null;
@@ -13,6 +14,10 @@ let pendingDocument = null;
 let workspaceManager;
 let themeManager;
 let interfaceLocale = "zh-CN";
+const workspaceWatcher = createWorkspaceWatcher({
+  onChange: () => refreshWorkspace(),
+  onError: error => console.error("工作区文件监听失败：", error)
+});
 
 const menuEnglish = {
   "文件": "File", "新建": "New", "打开…": "Open…", "打开文件夹…": "Open Folder…", "保存": "Save", "另存为…": "Save As…", "导出": "Export", "退出": "Quit",
@@ -132,9 +137,9 @@ async function saveAs() {
 async function refreshWorkspace() {
   const root = workspaceManager.activeRoot();
   await fs.mkdir(root, { recursive: true });
+  workspaceWatcher.start(root);
   const files = await listDocuments(root);
-  await sendJSON("window.Mory.setFiles", files);
-  await sendJSON("window.Mory.setWorkspaceState", workspaceManager.state());
+  await sendJSON("window.Mory.setWorkspaceSnapshot", { state: workspaceManager.state(), files });
 }
 
 async function handleWorkspaceRequest(method, args = {}) {
@@ -167,6 +172,29 @@ async function handleWorkspaceRequest(method, args = {}) {
       const state = await workspaceManager.remove(String(args.id || ""));
       await refreshWorkspace();
       return state;
+    }
+    case "deleteDocument": {
+      const filePath = String(args.path || "");
+      if (!filePath) throw new Error("文稿路径为空。");
+      const name = String(args.name || path.basename(filePath));
+      const english = interfaceLocale === "en";
+      const confirmation = await dialog.showMessageBox(mainWindow, {
+        type: "warning",
+        title: english ? "Delete document" : "删除文稿",
+        message: english ? `Move “${name}” to the Recycle Bin?` : `要将“${name}”移到废纸篓吗？`,
+        detail: english ? "The document can be restored from the system Recycle Bin." : "可以从系统废纸篓中恢复该文稿。",
+        buttons: english ? ["Move to Recycle Bin", "Cancel"] : ["移到废纸篓", "取消"],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true
+      });
+      if (confirmation.response !== 0) return { canceled: true };
+      try {
+        await shell.trashItem(filePath);
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+      return { deleted: true };
     }
     case "syncWorkspace": {
       const action = args.action === "push" ? "push" : "pull";
@@ -410,3 +438,5 @@ app.whenReady().then(async () => {
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
+
+app.on("before-quit", () => workspaceWatcher.stop());

@@ -168,27 +168,41 @@ final class WorkspaceManager: @unchecked Sendable {
         return state()
     }
 
-    func documents() throws -> [[String: String]] {
-        let keys: [URLResourceKey] = [.isRegularFileKey, .isDirectoryKey, .isHiddenKey]
+    func documents() throws -> [[String: Any]] {
+        let keys: [URLResourceKey] = [.isRegularFileKey, .isDirectoryKey, .isHiddenKey, .creationDateKey, .contentModificationDateKey]
         guard let enumerator = fileManager.enumerator(at: activeRoot, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]) else { return [] }
         let extensions = Set(["md", "markdown", "mmd", "mdown", "mkd", "txt", "text"])
-        var result: [[String: String]] = []
+        var result: [[String: Any]] = []
         for case let url as URL in enumerator where extensions.contains(url.pathExtension.lowercased()) {
             let values = try url.resourceValues(forKeys: Set(keys))
             if values.isRegularFile == true {
                 let relative = url.path.replacingOccurrences(of: activeRoot.path + "/", with: "")
-                result.append(["name": relative, "path": url.path])
+                // creationDate 在 APFS、NTFS 等桌面文件系统可用；缺失时用元数据变更时间保持确定顺序。
+                let createdAt = (values.creationDate ?? values.contentModificationDate ?? .distantFuture).timeIntervalSince1970 * 1_000
+                result.append(["name": relative, "path": url.path, "createdAt": createdAt])
             }
         }
-        return result.sorted { ($0["name"] ?? "").localizedStandardCompare($1["name"] ?? "") == .orderedAscending }
+        return result.sorted {
+            let leftTime = $0["createdAt"] as? Double ?? .greatestFiniteMagnitude
+            let rightTime = $1["createdAt"] as? Double ?? .greatestFiniteMagnitude
+            if leftTime != rightTime { return leftTime < rightTime }
+            let leftName = $0["name"] as? String ?? ""
+            let rightName = $1["name"] as? String ?? ""
+            let nameOrder = leftName.localizedStandardCompare(rightName)
+            if nameOrder != .orderedSame { return nameOrder == .orderedAscending }
+            return ($0["path"] as? String ?? "") < ($1["path"] as? String ?? "")
+        }
     }
 
-    func documentContents() throws -> [[String: String]] {
+    func documentContents() throws -> [[String: Any]] {
         try documents().compactMap { document in
-            guard let path = document["path"], let attributes = try? fileManager.attributesOfItem(atPath: path),
+            guard let path = document["path"] as? String, let attributes = try? fileManager.attributesOfItem(atPath: path),
                   ((attributes[.size] as? NSNumber)?.intValue ?? 0) <= 2 * 1024 * 1024,
                   let markdown = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
-            return ["name": document["name"] ?? URL(fileURLWithPath: path).lastPathComponent, "path": path, "markdown": markdown]
+            var content = document
+            content["name"] = document["name"] as? String ?? URL(fileURLWithPath: path).lastPathComponent
+            content["markdown"] = markdown
+            return content
         }
     }
 

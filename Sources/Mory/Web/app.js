@@ -60,6 +60,8 @@ const state = {
   locale: "zh-CN",
   graph: { nodes: [], edges: [] },
   graphSimulation: null,
+  graphZoom: null,
+  graphZoomScale: 1,
   selectedGraphNodeId: "",
   workspaces: [],
   activeWorkspaceId: "",
@@ -72,16 +74,19 @@ let mermaidSequence = 0;
 let mermaidQueue = Promise.resolve();
 let windowDragPointer = null;
 let windowDragFrame = 0;
+let viewportTypographyFrame = 0;
 let pendingCodeExit = null;
 let recentCompositionCommit = null;
 let activeComposition = null;
 let hostRequestSequence = 0;
 let workspaceKnowledgeRequest = 0;
+let markdownNormalizationFrame = 0;
 const pendingHostRequests = new Map();
 const caretMarker = "\u200b";
 const renderCaretMarker = "\ue000";
 const doubleEnterWindow = 650;
 const builtInThemes = ["yuluo-css", "github", "whitey", "newsprint", "pixyll", "gothic", "night"];
+const appearanceMedia = window.matchMedia("(prefers-color-scheme: dark)");
 const englishText = {
   "文件": "Files", "大纲": "Outline", "工作区": "Workspace", "文档还没有标题": "No headings yet",
   "本地工作区": "Local workspace", "未命名": "Untitled", "未命名.md": "Untitled.md", "已保存": "Saved", "未保存": "Unsaved",
@@ -91,7 +96,7 @@ const englishText = {
   "知识图谱": "Knowledge graph", "源代码模式（⌘/）": "Source mode (⌘/)", "导出文档": "Export document",
   "专注模式": "Focus mode", "打字机模式": "Typewriter mode", "正在读取工作区…": "Reading workspace…", "筛选文稿": "Filter notes", "刷新": "Refresh",
   "当前工作区还没有可显示的文稿": "There are no notes to display in this workspace", "当前文稿": "Current note", "工作区文稿": "Workspace note", "文稿链接关系图": "Note connection graph",
-  "正向": "Outgoing", "反向": "Backlink", "单击查看关系 · 双击打开": "Click for connections · Double-click to open", "选择文稿": "Select a note", "收起关系": "Hide connections",
+  "正向": "Outgoing", "反向": "Backlink", "滚轮缩放 · 单击查看关系 · 双击打开": "Wheel to zoom · Click for connections · Double-click to open", "图谱缩放比例": "Graph zoom level", "选择文稿": "Select a note", "收起关系": "Hide connections",
   "链接到": "Links to", "被链接": "Linked from", "没有正向链接": "No outgoing links", "没有反向链接": "No backlinks", "反向链接": "Backlinks",
   "当前文稿的反向链接": "Backlinks for the current note", "篇文稿引用当前文稿": "notes link to this note", "没有文稿引用当前文稿": "No notes link to this note",
   "文件结果": "File results", "按文件名搜索": "Search by filename", "偏好设置": "Preferences", "工作区与存储": "Workspace & storage",
@@ -107,6 +112,8 @@ const englishText = {
   "格式": "Format", "导出主题": "Export theme", "使用当前主题": "Use current theme", "纸张": "Paper", "图片宽度": "Image width", "保留主题背景": "Keep theme background",
   "PDF 与图片包含当前主题的纸张颜色": "Include theme paper color in PDF and images", "HTML、PDF 不需要 Pandoc": "HTML and PDF do not require Pandoc", "选择位置并导出": "Choose location and export",
   "开始写作…": "Start writing…", "新建文档（⌘N）": "New document (⌘N)", "切换或配置工作区": "Switch or configure workspace", "显示／隐藏侧边栏": "Show/hide sidebar",
+  "已切换文档": "Document switched", "关闭文档": "Close document", "删除文档": "Delete document", "移除草稿": "Remove draft", "文档已关闭": "Document closed", "文档已移到废纸篓": "Document moved to Trash", "删除文档失败": "Failed to delete document", "草稿已移除": "Draft removed", "当前草稿": "Current draft",
+  "磁盘文件已删除": "deleted from disk", "文件已从磁盘删除，未保存内容已保留为草稿": "The file was deleted from disk; unsaved content was kept as a draft",
   "本地": "Local", "工作目录": "Working folder", "使用“选择本地目录”填写": "Use “Choose local folder”", "仓库": "Repository", "分支": "Branch",
   "API 地址": "API endpoint", "仓库内目录": "Repository path", "S3 兼容服务地址": "S3-compatible endpoint", "服务器": "Server", "端口": "Port",
   "用户名": "Username", "密码": "Password", "私钥或私钥路径": "Private key or path", "默认 ~/.ssh/known_hosts": "Default: ~/.ssh/known_hosts",
@@ -117,6 +124,20 @@ const staticLocaleAttributes = new WeakMap();
 
 function locale() { return state.locale === "en" ? "en" : "zh-CN"; }
 function localized(chinese) { return locale() === "en" ? (englishText[chinese] || chinese) : chinese; }
+
+function applyAppearanceTheme(theme, { persist = true } = {}) {
+  const next = ["system", "light", "dark"].includes(theme) ? theme : "system";
+  document.documentElement.dataset.theme = next === "system" ? "" : next;
+  document.documentElement.dataset.appearance = next === "system" ? (appearanceMedia.matches ? "dark" : "light") : next;
+  $("#theme-select").value = next;
+  if (persist) localStorage.setItem("mory.theme", next);
+}
+
+const refreshSystemAppearance = () => {
+  if ((localStorage.getItem("mory.theme") || "system") === "system") applyAppearanceTheme("system", { persist: false });
+};
+if (typeof appearanceMedia.addEventListener === "function") appearanceMedia.addEventListener("change", refreshSystemAppearance);
+else appearanceMedia.addListener?.(refreshSystemAppearance);
 
 function applyLocale(next = state.locale) {
   state.locale = next === "en" ? "en" : "zh-CN";
@@ -182,12 +203,12 @@ function resolveHostRequest(payload = {}) {
   else pending.resolve(payload.result);
 }
 
-function toast(message) {
+function toast(message, duration = 1500) {
   const element = $("#toast");
   element.textContent = message;
   element.classList.add("is-visible");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => element.classList.remove("is-visible"), 1500);
+  toastTimer = setTimeout(() => element.classList.remove("is-visible"), duration);
 }
 
 function activeDocument() {
@@ -212,13 +233,13 @@ function renderDocument(document, announce = false) {
   write.innerHTML = markdownToHTML(state.markdown) || "<p><br></p>";
   applyDocumentAssets(write, document);
   highlightCodeBlocks(write);
-  $("#save-state").textContent = state.dirty ? "未保存" : "已保存";
+  $("#save-state").textContent = localized(state.dirty ? "未保存" : "已保存");
   $("#save-state").classList.toggle("is-visible", state.dirty);
   updateDerivedState();
   renderFiles();
   void renderMermaidDiagrams(write, state.documentTheme);
   updateDocumentBacklinks();
-  if (announce) toast("已切换文档");
+  if (announce) toast(localized("已切换文档"));
 }
 
 function notifyDocumentSelected(document) {
@@ -241,7 +262,7 @@ function activateDocument(documentId, { announce = false, notifyHost = true } = 
   requestAnimationFrame(() => (state.sourceMode ? sourceEditor : write).focus());
 }
 
-function createUntitledDocument(markdown = "", { announce = true, notifyHost = true } = {}) {
+function createUntitledDocument(markdown = "", { announce = true, notifyHost = true, workspacePlaceholder = false } = {}) {
   state.untitledSequence += 1;
   const document = {
     id: nextDocumentId(),
@@ -249,7 +270,9 @@ function createUntitledDocument(markdown = "", { announce = true, notifyHost = t
     path: "",
     markdown: String(markdown ?? ""),
     dirty: false,
-    assets: {}
+    createdAt: Date.now(),
+    assets: {},
+    workspacePlaceholder
   };
   state.documents.push(document);
   activateDocument(document.id, { announce, notifyHost });
@@ -267,6 +290,8 @@ function openDocument(payload = {}) {
   const path = typeof payload.path === "string" ? payload.path : "";
   const markdown = String(payload.markdown ?? "");
   const name = String(payload.name || path.split(/[\\/]/).pop() || "未命名.md");
+  const workspaceFile = state.files.find(file => file.path === path);
+  const createdAt = Number(payload.createdAt ?? workspaceFile?.createdAt ?? Date.now());
   let document = path ? state.documents.find(item => item.path === path) : null;
   if (document) {
     document.name = name;
@@ -274,7 +299,7 @@ function openDocument(payload = {}) {
     document.dirty = false;
     document.assets = payload.assets && typeof payload.assets === "object" ? payload.assets : document.assets || {};
   } else {
-    document = { id: nextDocumentId(), name, path, markdown, dirty: false, assets: payload.assets && typeof payload.assets === "object" ? payload.assets : {} };
+    document = { id: nextDocumentId(), name, path, markdown, dirty: false, createdAt, assets: payload.assets && typeof payload.assets === "object" ? payload.assets : {} };
     state.documents.push(document);
   }
   activateDocument(document.id, { announce: true, notifyHost: true });
@@ -663,6 +688,33 @@ function handleWriteInput(event) {
   const converted = renderMarkdownBlockAtCaret();
   if (!converted) removeCaretMarkers();
   syncFromWrite();
+  scheduleMarkdownNormalization();
+}
+
+function normalizeInactiveRawHeadings(activeBlock = currentWriteBlock()) {
+  let changed = false;
+  for (const block of [...write.children]) {
+    if (block === activeBlock || !rawHeadingMatch(block)) continue;
+    const template = document.createElement("template");
+    template.innerHTML = markdownToHTML(block.textContent || "");
+    const heading = template.content.firstElementChild;
+    if (!heading?.matches("h1, h2, h3, h4, h5, h6")) continue;
+    block.replaceWith(heading);
+    changed = true;
+  }
+  return changed;
+}
+
+function scheduleMarkdownNormalization() {
+  if (markdownNormalizationFrame || state.sourceMode || activeComposition) return;
+  if (![...write.children].some(block => rawHeadingMatch(block))) return;
+  markdownNormalizationFrame = requestAnimationFrame(() => {
+    markdownNormalizationFrame = 0;
+    if (state.sourceMode || activeComposition) return;
+    const converted = renderMarkdownBlockAtCaret();
+    const normalizedInactive = normalizeInactiveRawHeadings(currentWriteBlock());
+    if (converted || normalizedInactive) syncFromWrite();
+  });
 }
 
 function syncFromSource(render = false) {
@@ -686,7 +738,7 @@ function markChanged() {
     document.dirty = true;
   }
   if (becameDirty) renderFiles();
-  $("#save-state").textContent = "未保存";
+  $("#save-state").textContent = localized("未保存");
   $("#save-state").classList.add("is-visible");
   clearTimeout(changeTimer);
   changeTimer = setTimeout(() => {
@@ -734,11 +786,21 @@ function updateOutline() {
 }
 
 function visibleFileEntries() {
-  const openPaths = new Set(state.documents.map(document => document.path).filter(Boolean));
-  return [
-    ...state.documents.map(document => ({ ...document, documentId: document.id, open: true })),
-    ...state.files.filter(file => !openPaths.has(file.path)).map(file => ({ ...file, documentId: "", markdown: "", dirty: false, open: false }))
-  ];
+  const drafts = state.documents
+    .filter(document => !document.path)
+    .map(document => ({ ...document, documentId: document.id, open: true }));
+  const openByPath = new Map(state.documents.filter(document => document.path).map(document => [document.path, document]));
+  const workspacePaths = new Set(state.files.map(file => file.path));
+  const workspaceEntries = state.files.map(file => {
+    const document = openByPath.get(file.path);
+    return document
+      ? { ...file, ...document, createdAt: file.createdAt, documentId: document.id, open: true }
+      : { ...file, documentId: "", markdown: "", dirty: false, open: false };
+  });
+  const externalDocuments = state.documents
+    .filter(document => document.path && !workspacePaths.has(document.path))
+    .map(document => ({ ...document, documentId: document.id, open: true }));
+  return [...drafts, ...workspaceEntries, ...externalDocuments];
 }
 
 function closeDocument(documentId) {
@@ -746,7 +808,7 @@ function closeDocument(documentId) {
   if (index < 0) return;
 
   const [removed] = state.documents.splice(index, 1);
-  const message = removed.path ? "文档已关闭" : "草稿已移除";
+  const message = localized(removed.path ? "文档已关闭" : "草稿已移除");
   if (removed.id !== state.activeDocumentId) {
     renderFiles();
     toast(message);
@@ -763,6 +825,35 @@ function closeDocument(documentId) {
   toast(message);
 }
 
+function removeDeletedDocument(file) {
+  const index = state.documents.findIndex(document => document.id === file.documentId || document.path === file.path);
+  const removed = index >= 0 ? state.documents.splice(index, 1)[0] : null;
+  const removedActive = removed?.id === state.activeDocumentId;
+  state.files = state.files.filter(document => document.path !== file.path);
+
+  if (removedActive) {
+    state.activeDocumentId = null;
+    if (state.files[0]?.path) bridge({ type: "openFile", path: state.files[0].path });
+    else if (state.documents.length) activateDocument(state.documents[0].id, { announce: false, notifyHost: true });
+    else {
+      state.untitledSequence = 0;
+      createUntitledDocument("", { announce: false, notifyHost: true, workspacePlaceholder: true });
+    }
+  }
+  renderFiles();
+}
+
+async function deleteDocument(file) {
+  try {
+    const result = await hostRequest("deleteDocument", { path: file.path, name: file.name });
+    if (!result?.deleted) return;
+    removeDeletedDocument(file);
+    toast(localized("文档已移到废纸篓"));
+  } catch (error) {
+    toast(`${localized("删除文档失败")}：${error.message}`, 3200);
+  }
+}
+
 function renderFiles() {
   const list = $("#file-list");
   list.innerHTML = "";
@@ -774,25 +865,28 @@ function renderFiles() {
     button.className = `file-item${file.documentId === state.activeDocumentId ? " is-active" : ""}`;
     button.dataset.path = file.path;
     if (file.documentId) button.dataset.documentId = file.documentId;
-    button.innerHTML = `<span class="file-symbol">${file.path ? "M" : "M↓"}</span><span class="file-name"></span><span class="file-dirty" aria-label="未保存"></span>`;
+    button.innerHTML = `<span class="file-symbol">${file.path ? "M" : "M↓"}</span><span class="file-name"></span><span class="file-dirty"></span>`;
     button.querySelector(".file-name").textContent = file.name;
+    button.querySelector(".file-dirty").setAttribute("aria-label", localized("未保存"));
     button.querySelector(".file-dirty").hidden = !file.dirty;
     button.addEventListener("click", () => {
       if (file.documentId) activateDocument(file.documentId, { announce: true, notifyHost: true });
       else if (file.path) bridge({ type: "openFile", path: file.path });
     });
     row.append(button);
-    if (file.documentId) {
+    if (file.documentId || file.path) {
       const close = document.createElement("button");
-      const label = file.path ? "关闭文档" : "移除草稿";
+      const label = localized(file.path ? "删除文档" : "移除草稿");
       close.className = "file-close";
-      close.dataset.documentId = file.documentId;
+      if (file.documentId) close.dataset.documentId = file.documentId;
+      if (file.path) close.dataset.path = file.path;
       close.title = label;
       close.setAttribute("aria-label", label);
       close.innerHTML = '<svg aria-hidden="true"><use href="#i-close"/></svg>';
       close.addEventListener("click", event => {
         event.stopPropagation();
-        closeDocument(file.documentId);
+        if (file.path) void deleteDocument(file);
+        else closeDocument(file.documentId);
       });
       row.append(close);
     }
@@ -812,7 +906,7 @@ function renderQuickResults(files = visibleFileEntries(), query = "") {
     const name = document.createElement("span");
     name.textContent = file.name;
     const path = document.createElement("small");
-    path.textContent = file.path || "当前草稿";
+    path.textContent = file.path || localized("当前草稿");
     button.append(name, path);
     button.addEventListener("click", () => {
       if (file.documentId) activateDocument(file.documentId, { announce: true, notifyHost: true });
@@ -1040,6 +1134,90 @@ function setWorkspaceState(payload = {}) {
   renderWorkspaceSettings();
 }
 
+function discardWorkspacePlaceholders() {
+  const placeholders = state.documents.filter(document => document.workspacePlaceholder && !document.path && !document.dirty);
+  if (!placeholders.length) return false;
+  const placeholderIds = new Set(placeholders.map(document => document.id));
+  const activeWasPlaceholder = placeholderIds.has(state.activeDocumentId);
+  state.documents = state.documents.filter(document => !placeholderIds.has(document.id));
+  if (activeWasPlaceholder) state.activeDocumentId = null;
+  return activeWasPlaceholder;
+}
+
+function deletedDraftName(name) {
+  const filename = String(name || localized("未命名.md"));
+  const dot = filename.lastIndexOf(".");
+  const suffix = localized("磁盘文件已删除");
+  return dot > 0
+    ? `${filename.slice(0, dot)}（${suffix}）${filename.slice(dot)}`
+    : `${filename}（${suffix}）`;
+}
+
+function reconcileDeletedWorkspaceDocuments(previousFiles, nextFiles) {
+  const previousPaths = new Set(previousFiles.map(file => file.path).filter(Boolean));
+  const nextPaths = new Set(nextFiles.map(file => file.path).filter(Boolean));
+  const deletedPaths = new Set([...previousPaths].filter(path => !nextPaths.has(path)));
+  if (!deletedPaths.size) return false;
+
+  let activeDeleted = false;
+  let activeDraft = null;
+  state.documents = state.documents.filter(document => {
+    if (!document.path || !deletedPaths.has(document.path)) return true;
+    if (document.dirty) {
+      document.path = "";
+      document.name = deletedDraftName(document.name);
+      document.workspacePlaceholder = false;
+      if (document.id === state.activeDocumentId) activeDraft = document;
+      return true;
+    }
+    if (document.id === state.activeDocumentId) activeDeleted = true;
+    return false;
+  });
+
+  if (activeDeleted) state.activeDocumentId = null;
+  if (activeDraft) {
+    notifyDocumentSelected(activeDraft);
+    toast(localized("文件已从磁盘删除，未保存内容已保留为草稿"), 3200);
+  }
+  return activeDeleted;
+}
+
+function setWorkspaceFiles(files = [], { openFirst = false } = {}) {
+  const previousFiles = state.files;
+  state.files = Array.isArray(files) ? [...files].sort(compareWorkspaceFiles) : [];
+  const activeDeleted = reconcileDeletedWorkspaceDocuments(previousFiles, state.files);
+  const activePlaceholderRemoved = state.files.length ? discardWorkspacePlaceholders() : false;
+  const firstFile = state.files.length && (activeDeleted || (openFirst && activePlaceholderRemoved))
+    ? state.files[0]
+    : null;
+  if (!firstFile && !activeDocument()) {
+    const fallback = state.documents[0];
+    if (fallback) activateDocument(fallback.id, { announce: false, notifyHost: true });
+    else if (!state.files.length) createUntitledDocument("", {
+      announce: false,
+      notifyHost: true,
+      workspacePlaceholder: true
+    });
+  }
+  renderFiles();
+  void refreshWorkspaceKnowledge();
+  if (firstFile?.path) bridge({ type: "openFile", path: firstFile.path });
+}
+
+function compareWorkspaceFiles(left, right) {
+  const leftTime = Number.isFinite(Number(left.createdAt)) ? Number(left.createdAt) : Number.MAX_SAFE_INTEGER;
+  const rightTime = Number.isFinite(Number(right.createdAt)) ? Number(right.createdAt) : Number.MAX_SAFE_INTEGER;
+  return leftTime - rightTime
+    || String(left.name).localeCompare(String(right.name), "zh-CN", { numeric: true })
+    || String(left.path).localeCompare(String(right.path));
+}
+
+function setWorkspaceSnapshot(payload = {}) {
+  setWorkspaceState(payload.state || {});
+  // 非空工作区直接打开排序后的首篇文稿；空工作区仍保留系统创建的占位草稿。
+  setWorkspaceFiles(payload.files || [], { openFirst: true });
+}
+
 function resetWorkspaceSession() {
   state.documents = [];
   state.files = [];
@@ -1049,7 +1227,7 @@ function resetWorkspaceSession() {
   updateDocumentBacklinks();
   toggleKnowledgeGraph(false);
   state.untitledSequence = 0;
-  createUntitledDocument("", { announce: false, notifyHost: true });
+  createUntitledDocument("", { announce: false, notifyHost: true, workspacePlaceholder: true });
 }
 
 function renderWorkspaceSettings() {
@@ -1321,6 +1499,24 @@ function graphNodeRadius(node) {
   return Math.min(15, 6.5 + Math.sqrt(node.degree) * 2.2);
 }
 
+function handleGraphWheel(event) {
+  if (!state.graphZoom || !$("#knowledge-graph").classList.contains("is-open")) return;
+  const svgNode = $("#graph-svg");
+  if (!svgNode || !window.d3) return;
+  event.preventDefault();
+  event.stopPropagation();
+  // 与 d3-zoom 的官方 defaultWheelDelta 保持一致，兼容像素、行、页面和捏合事件。
+  const delta = -event.deltaY
+    * (event.deltaMode === 1 ? .05 : event.deltaMode ? 1 : .002)
+    * (event.ctrlKey ? 10 : 1);
+  state.graphZoom.scaleBy(
+    window.d3.select(svgNode),
+    Math.pow(2, delta),
+    window.d3.pointer(event, svgNode),
+    event
+  );
+}
+
 function renderKnowledgeGraph(graph = state.graph) {
   state.graphSimulation?.stop();
   const svg = window.d3?.select?.("#graph-svg");
@@ -1335,13 +1531,22 @@ function renderKnowledgeGraph(graph = state.graph) {
   const bounds = $("#graph-canvas").getBoundingClientRect();
   const width = Math.max(420, bounds.width || 680);
   const height = Math.max(300, bounds.height || 480);
-  const root = svg.append("g");
+  const root = svg.append("g").attr("id", "graph-stage");
   svg.attr("viewBox", `0 0 ${width} ${height}`);
   const marker = svg.append("defs").append("marker")
     .attr("id", "graph-arrowhead").attr("viewBox", "0 -4 8 8").attr("refX", 7).attr("refY", 0)
     .attr("markerWidth", 6).attr("markerHeight", 6).attr("orient", "auto").attr("markerUnits", "userSpaceOnUse");
   marker.append("path").attr("d", "M0,-3.2L7,0L0,3.2Z").attr("fill", "context-stroke");
-  svg.call(window.d3.zoom().scaleExtent([.35, 3.5]).on("zoom", event => root.attr("transform", event.transform)));
+  const zoom = window.d3.zoom().scaleExtent([.35, 3.5]).on("zoom", event => {
+    state.graphZoomScale = event.transform.k;
+    root.attr("transform", event.transform);
+    $("#graph-zoom").value = `${Math.round(event.transform.k * 100)}%`;
+  });
+  state.graphZoom = zoom;
+  state.graphZoomScale = 1;
+  $("#graph-zoom").value = "100%";
+  // 平移仍使用 D3；滚轮由外层 HTML 画布捕获，避免 WKWebView 的 SVG 命中差异。
+  svg.call(zoom).on("wheel.zoom", null);
   const nodes = graph.nodes.map(node => ({ ...node }));
   const links = graph.edges.map(edge => ({ ...edge }));
   const current = activeDocument();
@@ -1612,9 +1817,32 @@ function setDocumentTheme(theme) {
   $("#user-document-theme").textContent = custom?.css || "";
   $("#document-theme-select").value = next;
   localStorage.setItem("mory.documentTheme", next);
+  requestAnimationFrame(applyEditorZoom);
   readThemeCSS(next);
   void renderMermaidDiagrams(write, next);
 }
+
+function applyEditorZoom() {
+  write.style.removeProperty("font-size");
+  sourceEditor.style.removeProperty("font-size");
+  if (state.zoom !== 1) {
+    const writeBase = Number.parseFloat(getComputedStyle(write).fontSize) || 17;
+    const sourceBase = Number.parseFloat(getComputedStyle(sourceEditor).fontSize) || 14;
+    write.style.fontSize = `${writeBase * state.zoom}px`;
+    sourceEditor.style.fontSize = `${sourceBase * state.zoom}px`;
+  }
+  document.documentElement.style.setProperty("--interface-scale", String(state.zoom));
+  document.documentElement.style.setProperty("--status-font-size", `${10 * state.zoom}px`);
+  document.documentElement.style.setProperty("--status-height", `${16 + 11 * state.zoom}px`);
+}
+
+window.addEventListener("resize", () => {
+  cancelAnimationFrame(viewportTypographyFrame);
+  viewportTypographyFrame = requestAnimationFrame(() => {
+    viewportTypographyFrame = 0;
+    applyEditorZoom();
+  });
+});
 
 async function exportDocument(options = {}) {
   const theme = options.theme && options.theme !== "current" ? options.theme : state.documentTheme;
@@ -2001,13 +2229,25 @@ document.addEventListener("selectionchange", () => {
 sourceEditor.addEventListener("input", () => syncFromSource(false));
 sourceEditor.addEventListener("keydown", handleEditorShortcut);
 
-$(".titlebar").addEventListener("pointerdown", event => {
+function handleWindowDragStart(event) {
   if (!nativeMacHost || event.button !== 0 || event.target.closest("button, input, select, a, [contenteditable='true']")) return;
   event.preventDefault();
   windowDragPointer = event.pointerId;
   event.currentTarget.setPointerCapture?.(event.pointerId);
   bridge({ type: "windowDragStart", screenX: event.screenX, screenY: event.screenY });
-});
+}
+
+function handleWindowTitlebarDoubleClick(event) {
+  if (!nativeMacHost || event.button !== 0 || event.target.closest("button, input, select, a, [contenteditable='true']")) return;
+  event.preventDefault();
+  bridge({ type: "windowTitlebarDoubleClick" });
+}
+
+// 原生 macOS 窗口的正文标题栏与侧栏顶部都应遵循同一套拖动、双击缩放行为。
+for (const region of $$(".titlebar, .traffic-space")) {
+  region.addEventListener("pointerdown", handleWindowDragStart);
+  region.addEventListener("dblclick", handleWindowTitlebarDoubleClick);
+}
 document.addEventListener("pointermove", event => {
   if (event.pointerId !== windowDragPointer) return;
   cancelAnimationFrame(windowDragFrame);
@@ -2019,9 +2259,9 @@ document.addEventListener("pointerup", event => {
   windowDragPointer = null;
   bridge({ type: "windowDragEnd" });
 });
-
 $("#source-toggle").addEventListener("click", () => toggleSource());
 $("#graph-button").addEventListener("click", () => toggleKnowledgeGraph());
+$("#graph-canvas").addEventListener("wheel", handleGraphWheel, { passive: false });
 $("#graph-close").addEventListener("click", () => toggleKnowledgeGraph(false));
 $("#graph-relations-close").addEventListener("click", clearKnowledgeSelection);
 $("#graph-refresh").addEventListener("click", () => void refreshKnowledgeGraph());
@@ -2107,11 +2347,10 @@ $("#replace-one").addEventListener("click", replaceOne);
 $("#replace-all").addEventListener("click", replaceAll);
 
 $("#theme-select").addEventListener("change", event => {
-  const theme = event.target.value;
-  document.documentElement.dataset.theme = theme === "system" ? "" : theme;
-  localStorage.setItem("mory.theme", theme);
+  applyAppearanceTheme(event.target.value);
 });
 $("#document-theme-select").addEventListener("change", event => setDocumentTheme(event.target.value));
+$("#document-theme").addEventListener("load", applyEditorZoom);
 $("#theme-import").addEventListener("click", async () => {
   try {
     const result = await hostRequest("importTheme");
@@ -2163,11 +2402,10 @@ function restorePreferences() {
     ? "yuluo-css"
     : (savedDocumentTheme || "yuluo-css");
   localStorage.setItem("mory.documentThemeDefaultVersion", "yuluo-css-v1");
-  $("#theme-select").value = theme;
   $("#width-select").value = width;
   $("#status-toggle").checked = showStatus;
   $("#spell-toggle").checked = spellcheck;
-  document.documentElement.dataset.theme = theme === "system" ? "" : theme;
+  applyAppearanceTheme(theme, { persist: false });
   document.documentElement.style.setProperty("--editor-width", `${width}px`);
   $("#statusbar").hidden = !showStatus;
   write.spellcheck = spellcheck;
@@ -2183,7 +2421,8 @@ window.Mory = {
   closeDocument,
   normalizeMarkdown: renderMarkdownDocumentAtCaret,
   getMarkdown: () => state.sourceMode ? sourceEditor.value : editorToMarkdown(write),
-  setFiles: files => { state.files = files; renderFiles(); void refreshWorkspaceKnowledge(); },
+  setFiles: setWorkspaceFiles,
+  setWorkspaceSnapshot,
   setWorkspaceDocuments: documents => {
     state.workspaceDocuments = Array.isArray(documents) ? documents : [];
     rebuildWorkspaceKnowledge();
@@ -2203,11 +2442,13 @@ window.Mory = {
     rebuildWorkspaceKnowledge();
     if (document && typeof payload?.markdown === "string" && payload.markdown !== state.markdown) renderDocument(document);
     renderFiles();
-    $("#save-state").textContent = "已保存";
+    $("#save-state").textContent = localized("已保存");
     setTimeout(() => $("#save-state").classList.remove("is-visible"), 900);
-    toast("已保存");
+    toast(localized("已保存"));
   },
-  didExport: format => toast(`已导出 ${String(format).toUpperCase()}`),
+  exportStarted: format => toast(locale() === "en" ? `Exporting ${String(format).toUpperCase()}…` : `正在导出 ${String(format).toUpperCase()}…`, 5000),
+  exportBusy: () => toast(locale() === "en" ? "An export is already in progress" : "已有导出任务正在进行"),
+  didExport: format => toast(locale() === "en" ? `Exported ${String(format).toUpperCase()}` : `已导出 ${String(format).toUpperCase()}`),
   exportHTML: () => exportDocument({ theme: "current", background: true }),
   exportDocument,
   resolveHostRequest,
@@ -2223,14 +2464,17 @@ window.Mory = {
   showFind,
   zoom: direction => {
     state.zoom = direction === 0 ? 1 : Math.min(1.8, Math.max(.7, state.zoom + direction * .1));
-    write.style.fontSize = `${17 * state.zoom}px`;
-    sourceEditor.style.fontSize = `${14 * state.zoom}px`;
+    applyEditorZoom();
     toast(`${Math.round(state.zoom * 100)}%`);
   }
 };
 
 restorePreferences();
 const browserDraft = (window.webkit || window.moryNative) ? null : localStorage.getItem("mory.draft");
-createUntitledDocument(browserDraft || defaultMarkdown, { announce: false, notifyHost: false });
+createUntitledDocument(browserDraft || defaultMarkdown, {
+  announce: false,
+  notifyHost: false,
+  workspacePlaceholder: !browserDraft
+});
 bridge({ type: "ready" });
 void refreshCustomThemes();

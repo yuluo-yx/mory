@@ -15,6 +15,10 @@ test("渲染标题、段落和内联格式", () => {
   assert.match(html, /<code>code<\/code>/);
 });
 
+test("带 UTF-8 BOM 的文稿仍渲染首行标题", () => {
+  assert.equal(markdownToHTML("\uFEFF# 首行标题\n\n正文"), "<h1>首行标题</h1>\n<p>正文</p>");
+});
+
 test("渲染链接、图片并阻止脚本协议", () => {
   const html = inlineMarkdown("[安全](https://example.com) ![图](img/a.png) [危险](javascript:alert)");
   assert.match(html, /href="https:\/\/example.com"/);

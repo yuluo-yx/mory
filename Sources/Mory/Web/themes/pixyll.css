@@ -2,7 +2,7 @@
 [data-doc-theme="pixyll"] .write {
   color: #444;
   font-family: "Iowan Old Style", Georgia, "Songti SC", serif;
-  font-size: 17px;
+  font-size: clamp(17px, .95vw, 20px);
   line-height: 1.75;
 }
 [data-doc-theme="pixyll"] .write h1,
@@ -15,4 +15,3 @@
 [data-doc-theme="pixyll"] .write pre,
 [data-doc-theme="pixyll"] .write th { background: #f8eeea; }
 [data-doc-theme="pixyll"] .write blockquote { border-color: #e5aaa6; color: #796c67; }
-

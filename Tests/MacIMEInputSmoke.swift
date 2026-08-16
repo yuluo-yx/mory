@@ -15,7 +15,6 @@ final class MacIMEInputSmoke: NSObject, NSApplicationDelegate, WKNavigationDeleg
     private var window: NSWindow!
     private var webView: WKWebView!
     private let strokes = [
-        Stroke(keyCode: 49),
         Stroke(keyCode: 45),
         Stroke(keyCode: 34),
         Stroke(keyCode: 4),
@@ -83,12 +82,18 @@ final class MacIMEInputSmoke: NSObject, NSApplicationDelegate, WKNavigationDeleg
           const paragraph = write.querySelector('p');
           paragraph.textContent = '#';
           const range = document.createRange();
-          range.selectNodeContents(paragraph);
-          range.collapse(false);
+          const text = paragraph.firstChild;
+          range.setStart(text, text.data.length);
+          range.collapse(true);
           getSelection().removeAllRanges();
           getSelection().addRange(range);
           write.focus();
-          return true;
+          // 与用户键入空格相同地经过编辑器 keydown 管线，先即时建立空 H1，
+          // 再把后续中文正文交给系统简体拼音。
+          paragraph.dispatchEvent(new KeyboardEvent('keydown', {
+            key: ' ', code: 'Space', bubbles: true, cancelable: true
+          }));
+          return Boolean(write.querySelector(':scope > h1'));
         })()
         """
         webView.evaluateJavaScript(script) { [weak self] _, error in
@@ -102,8 +107,23 @@ final class MacIMEInputSmoke: NSObject, NSApplicationDelegate, WKNavigationDeleg
             window.makeFirstResponder(webView)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                 print("真实输入法宿主：active=\(NSApplication.shared.isActive)，key=\(self.window.isKeyWindow)，firstResponder=\(String(describing: self.window.firstResponder))")
-                self.sendStroke(at: 0)
+                self.clearPendingComposition()
             }
+        }
+    }
+
+    private func clearPendingComposition() {
+        for keyDown in [true, false] {
+            guard let event = CGEvent(
+                keyboardEventSource: nil,
+                virtualKey: 53,
+                keyDown: keyDown
+            ) else { continue }
+            event.flags = []
+            event.post(tap: .cghidEventTap)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            self?.sendStroke(at: 0)
         }
     }
 
@@ -122,7 +142,7 @@ final class MacIMEInputSmoke: NSObject, NSApplicationDelegate, WKNavigationDeleg
             event.flags = []
             event.post(tap: .cghidEventTap)
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.09) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
             self?.sendStroke(at: index + 1)
         }
     }

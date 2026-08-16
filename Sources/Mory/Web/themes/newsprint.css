@@ -2,7 +2,7 @@
 [data-doc-theme="newsprint"] .write {
   color: #2d2b27;
   font-family: "Iowan Old Style", "Songti SC", Georgia, serif;
-  font-size: 18px;
+  font-size: clamp(18px, 1vw, 21px);
   line-height: 1.78;
 }
 [data-doc-theme="newsprint"] .write h1,
@@ -18,4 +18,3 @@
 [data-doc-theme="newsprint"] .write blockquote { border-color: #9d9587; color: #6d685f; font-style: italic; }
 [data-doc-theme="newsprint"] .write th,
 [data-doc-theme="newsprint"] .write td { border-color: #c9c1b3; }
-

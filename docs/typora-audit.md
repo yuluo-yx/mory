@@ -16,7 +16,7 @@
 | 4 | `/Applications/Typora.app/Contents/Resources/TypeMark/style/themes/` | 每套主题对应一个 CSS 文件 | 七套内置主题分别存放在 `Sources/Mory/Web/themes/` |
 | 5 | `/Applications/Typora.app/Contents/Resources/TypeMark/Docs/Custom Themes.md` | 主题目录支持基础主题、`base.user.css` 和主题专属覆盖文件 | Mory 支持用户主题目录、CSS 导入、刷新和相对资源内联；编辑与导出共用同一份用户 CSS |
 | 6 | `/Applications/Typora.app/Contents/Resources/TypeMark/appsrc/main.js` | `theme_css` 动态切换主题；导出时收集基础 CSS、主题 CSS 和用户 CSS | Mory 动态切换 `document-theme`，导出时读取并内联主题 CSS |
-| 7 | 同上，`exportPDF` 和 `printToPDF` 调用附近 | PDF 先生成主题化 HTML，再交给宿主打印后端 | Electron 使用 `printToPDF`；WKWebView 使用无界面打印操作 |
+| 7 | 同上，`exportPDF` 和 `printToPDF` 调用附近 | PDF 先生成主题化 HTML，再交给宿主导出后端 | Electron 使用 `printToPDF`；macOS 使用 `WKWebView.createPDF` 后台分页 |
 | 8 | 同上，`exportToImage` 调用附近 | 图片导出创建独立页面，测量总高度，再截图并组合 | Mory 创建离屏页面、按宽度重排、测量高度并输出 PNG 或 JPEG |
 | 9 | `/Applications/Typora.app/Contents/Resources/TypeMark/Docs/Install and Use Pandoc.md` | HTML 和 PDF 不需要 Pandoc；其他高级格式依赖 Pandoc 2.0 或更高版本 | 当前 HTML、PDF 和图片导出均不依赖 Pandoc |
 | 10 | `/Applications/Typora.app/Contents/Resources/TypeMark/Docs/Markdown Reference.md` | 输入围栏并按回车创建独立代码块，可在围栏后提供语言 | Mory 把围栏转换为独立 `pre` 块，并在 Markdown 往返时保留语言 |
@@ -38,7 +38,7 @@ Markdown 文本
     ↓
 主题化 HTML
     ├── 直接写入 HTML
-    ├── 宿主打印为 PDF
+    ├── 宿主异步生成并分页为 PDF
     └── 离屏页面截图为 PNG/JPEG
 ```
 
@@ -52,6 +52,7 @@ Markdown 文本
 - 双回车退出和可选代码名称是按用户需求独立实现的交互扩展，不声称来自 Typora 的内部代码。
 - Mory 允许不兼容替换，无旧数据迁移要求。Markdown 文件仍是直接读写的 UTF-8 文本。
 - Mory 的主题 CSS 在构建时内嵌到离线运行包。该实现避免 WKWebView 从 `file://` 页面读取跨源样式表时抛出 JavaScript `SecurityError`，并保持“主题化 HTML 交给宿主导出”的职责边界。
+- Typora 主程序字符串包含 `runOperationModalForWindow:delegate:didRunSelector:contextInfo:` 和 `printOperationDidRun:success:contextInfo:`，说明其打印链路采用完成回调而不是同步阻塞。Mory 保留相同的异步职责边界，但本机验证发现离屏 WKWebView 的 `runModal` 完成回调可能不返回，因此改用 WebKit 官方异步 `createPDF`，再通过后台 Core Graphics 任务按纸张切页。主线程只负责 WebKit 调用与完成通知，不执行分页或文件写入。
 
 ## 验证证据
 
@@ -63,5 +64,5 @@ Markdown 文本
 - Electron 41 项交互回归连续两轮通过，渲染进程错误为 0；其中包含输入法提交后零等待 Enter。
 - macOS 原生 `NSEvent → WKWebView` 测试实际输入两个连续中文标题，并验证代码块双回车退出。
 - Electron 端到端测试成功生成 HTML、PNG 和 PDF，代码名称完成 Markdown 与导出往返。
-- macOS 构建、WKWebView 冒烟、原生键盘和窗口拖动测试通过。
+- macOS 构建、WKWebView 多页 PDF/PNG/JPEG 冒烟、原生键盘和窗口拖动测试通过。
 - Windows x64 与 ARM64 的 NSIS 安装版和便携版均已生成。

@@ -1,5 +1,5 @@
 [data-doc-theme="night"] .editor-scroll { background: #1f2328; }
-[data-doc-theme="night"] .write { color: #d7dce2; font-family: "Avenir Next", "PingFang SC", sans-serif; font-size: 16px; line-height: 1.75; }
+[data-doc-theme="night"] .write { color: #d7dce2; font-family: "Avenir Next", "PingFang SC", sans-serif; font-size: clamp(16px, .92vw, 19px); line-height: 1.75; }
 [data-doc-theme="night"] .write h1,
 [data-doc-theme="night"] .write h2,
 [data-doc-theme="night"] .write h3,

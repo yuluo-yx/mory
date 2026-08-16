@@ -2,21 +2,34 @@ import AppKit
 import WebKit
 
 @MainActor
+@main
 final class MacWebSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKScriptMessageHandler {
     private var window: NSWindow!
     private var webView: WKWebView!
     private var exportWebView: WKWebView?
     private var errors: [String] = []
+    private var started = false
 
     static func main() {
         let application = NSApplication.shared
         let delegate = MacWebSmoke()
         application.delegate = delegate
-        application.setActivationPolicy(.prohibited)
+        application.setActivationPolicy(.accessory)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
+            delegate.finish(failure: "macOS 导出冒烟测试 30 秒内未完成")
+        }
+        application.finishLaunching()
+        delegate.start()
         application.run()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        start()
+    }
+
+    private func start() {
+        guard !started else { return }
+        started = true
         let controller = WKUserContentController()
         controller.add(self, name: "smoke")
         controller.add(self, name: "mory")
@@ -111,7 +124,13 @@ final class MacWebSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             Task { @MainActor in
                 do {
                     let exportValue = try await webView.callAsyncJavaScript(
-                        "return await window.Mory.exportDocument(options)",
+                        """
+                        const sections = Array.from({ length: 48 }, (_, index) =>
+                          `## Section ${index + 1}\\n\\nThis is a multi-page PDF export regression paragraph with **theme styling**.`
+                        );
+                        window.Mory.loadMarkdown(`# Export regression\\n\\n${sections.join('\\n\\n')}`);
+                        return await window.Mory.exportDocument(options);
+                        """,
                         arguments: ["options": ["format": "html", "theme": "current", "paper": "A4", "width": 900, "background": true]],
                         in: nil,
                         contentWorld: .page
@@ -135,39 +154,68 @@ final class MacWebSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     private func verifyRenderedFormats(_ renderer: WKWebView) {
-        let configuration = WKPDFConfiguration()
-        renderer.createPDF(configuration: configuration) { [weak self] result in
+        renderer.evaluateJavaScript("Math.max(document.documentElement.scrollHeight, document.body.scrollHeight)") { [weak self] value, error in
             guard let self else { return }
-            do {
-                let pdf = try result.get()
-                guard pdf.starts(with: Data("%PDF".utf8)) else {
-                    self.finish(failure: "macOS PDF 数据签名无效")
-                    return
-                }
-                renderer.evaluateJavaScript("Math.max(document.documentElement.scrollHeight, document.body.scrollHeight)") { value, error in
-                    if let error { self.finish(failure: "测量导出页面失败：\(error.localizedDescription)"); return }
-                    let height = max(300, CGFloat((value as? NSNumber)?.doubleValue ?? 0))
-                    renderer.frame = NSRect(x: 0, y: 0, width: 900, height: height)
-                    let snapshot = WKSnapshotConfiguration()
-                    snapshot.rect = renderer.bounds
-                    renderer.takeSnapshot(with: snapshot) { image, error in
-                        if let error { self.finish(failure: "macOS 图片导出失败：\(error.localizedDescription)"); return }
-                        guard let tiff = image?.tiffRepresentation,
-                              let bitmap = NSBitmapImageRep(data: tiff),
-                              let png = bitmap.representation(using: .png, properties: [:]),
-                              let jpeg = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.92]),
-                              png.starts(with: Data([0x89, 0x50, 0x4e, 0x47])),
-                              jpeg.starts(with: Data([0xff, 0xd8])) else {
-                            self.finish(failure: "macOS PNG/JPEG 数据签名无效")
-                            return
+            if let error { finish(failure: "测量导出页面失败：\(error.localizedDescription)"); return }
+            let height = max(300, CGFloat((value as? NSNumber)?.doubleValue ?? 0))
+            renderer.frame = NSRect(x: 0, y: 0, width: 900, height: height)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                guard let self else { return }
+                let configuration = WKPDFConfiguration()
+                configuration.rect = renderer.bounds
+                renderer.createPDF(configuration: configuration) { [weak self] result in
+                    guard let self else { return }
+                    Task { @MainActor in
+                        do {
+                            let sourcePDF = try result.get()
+                            let output = FileManager.default.temporaryDirectory
+                                .appendingPathComponent("mory-mac-paginated-\(ProcessInfo.processInfo.processIdentifier).pdf")
+                            try await Task.detached(priority: .userInitiated) {
+                                try PDFPaginator.write(
+                                    sourcePDF,
+                                    to: output,
+                                    paperSize: CGSize(width: 595.28, height: 841.89)
+                                )
+                            }.value
+                            guard let paginated = try? Data(contentsOf: output),
+                                  paginated.starts(with: Data("%PDF".utf8)),
+                                  let document = CGPDFDocument(output as CFURL),
+                                  document.numberOfPages > 1 else {
+                                self.finish(failure: "macOS 后台 PDF 分页结果无效")
+                                return
+                            }
+                            try? FileManager.default.removeItem(at: output)
+                            self.verifyImages(
+                                renderer,
+                                pdfSize: paginated.count,
+                                pageCount: document.numberOfPages
+                            )
+                        } catch {
+                            self.finish(failure: "macOS 异步 PDF 导出失败：\(error.localizedDescription)")
                         }
-                        print("macOS PDF/PNG/JPEG 导出通过：PDF \(pdf.count)，PNG \(png.count)，JPEG \(jpeg.count) 字节")
-                        NSApplication.shared.terminate(nil)
                     }
                 }
-            } catch {
-                self.finish(failure: "macOS PDF 导出失败：\(error.localizedDescription)")
             }
+        }
+    }
+
+    private func verifyImages(_ renderer: WKWebView, pdfSize: Int, pageCount: Int) {
+        let snapshot = WKSnapshotConfiguration()
+        snapshot.rect = renderer.bounds
+        renderer.takeSnapshot(with: snapshot) { [weak self] image, error in
+            guard let self else { return }
+            if let error { finish(failure: "macOS 图片导出失败：\(error.localizedDescription)"); return }
+            guard let tiff = image?.tiffRepresentation,
+                  let bitmap = NSBitmapImageRep(data: tiff),
+                  let png = bitmap.representation(using: .png, properties: [:]),
+                  let jpeg = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.92]),
+                  png.starts(with: Data([0x89, 0x50, 0x4e, 0x47])),
+                  jpeg.starts(with: Data([0xff, 0xd8])) else {
+                finish(failure: "macOS PNG/JPEG 数据签名无效")
+                return
+            }
+            print("macOS 异步 PDF/PNG/JPEG 导出通过：PDF \(pdfSize) 字节、\(pageCount) 页，PNG \(png.count)，JPEG \(jpeg.count) 字节")
+            NSApplication.shared.terminate(nil)
         }
     }
 
@@ -181,8 +229,4 @@ final class MacWebSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         fputs("\(failure)\n", stderr)
         Darwin.exit(1)
     }
-}
-
-MainActor.assumeIsolated {
-    MacWebSmoke.main()
 }

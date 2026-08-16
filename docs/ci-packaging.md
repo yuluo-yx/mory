@@ -28,11 +28,11 @@ make package-windows-arm64
 make package-windows
 ```
 
-`package-macos` 生成当前 macOS 构建机架构的 `Mory.app`。`package-windows` 同时生成 x64 和 ARM64 的安装版与便携版。
+`package-macos` 生成当前 macOS 构建机架构的 `Mory.app`、DMG、ZIP 与 SHA-256 校验文件。可分发制品位于 `dist/releases/`。`package-windows` 同时生成 x64 和 ARM64 的安装版与便携版。
 
 ## GitHub Actions
 
-工作流文件为 `.github/workflows/build-binaries.yml`。工作流支持手动触发、`main` 分支推送和拉取请求，并执行以下任务：
+工作流文件为 `.github/workflows/build-binaries.yml`，Actions 页面显示名为 `Build Desktop Artifacts`。workflow、job、step 与 artifact 的可见名称统一使用英文。工作流支持手动触发、`main` 分支推送和拉取请求，并执行以下任务：
 
 - `macos-15` 生成 ARM64 应用包。
 - `macos-15-intel` 生成 x64 应用包。

@@ -6,6 +6,14 @@ Mory 把工作目录作为工作区的核心。文稿、图片和其他附件都
 
 本地工作区直接读写用户选择的目录。远端工作区使用本地镜像目录编辑，再通过存储插件执行“拉取”或“推送”。编辑器只调用统一的工作区接口，不感知 GitHub、对象存储或 SFTP 的网络细节。
 
+桌面宿主刷新工作区时，会把当前工作区状态和递归扫描得到的文稿列表作为一条原子快照发送给编辑器。选择新目录后，该目录会立即成为活动工作区，侧栏在同一次刷新中显示其中的 Markdown 文稿，避免状态切换清空刚收到的文件列表。
+
+桌面宿主会递归监听活动工作目录。macOS 原生版使用 FSEvents；Windows 和 Electron 版使用 Node.js 官方 `fs.watch` 递归监听。新增、重命名或删除文件后，宿主先防抖，再重新扫描目录并发送原子快照。用户不需要重新打开工作区。
+
+编辑器收到快照后会对账已打开文稿。磁盘中已删除的已保存文稿会从侧栏和编辑会话移除；如果删除的是当前文稿，编辑器会自动打开排序后的第一篇。存在未保存修改时，Mory 不丢弃内容，而是把文稿转为带“磁盘文件已删除”标记的未保存草稿。保存该草稿时需要重新选择路径。
+
+侧栏中的已保存文稿按文件创建时间从早到晚排列；创建时间相同则按相对路径自然排序。打开、编辑或切换文稿只更新对应行的状态，不会把它移动到列表顶部。未保存草稿固定显示在已保存文稿之前。
+
 存储插件不是 WebAssembly。Go 代码会编译成独立的 `mory-storage` 侧车程序。Windows 使用 `mory-storage.exe`。Web 编辑器通过宿主桥发出请求，Electron 或 Swift 宿主再启动侧车程序。宿主通过标准输入写入 JSON，并从标准输出读取 JSON 结果。该结构避免把 Go 代码和存储凭证放入 JavaScript 页面。
 
 ```text
@@ -139,3 +147,17 @@ GitHub 同步按用户操作触发，不在后台轮询。重复推送未变化�
 采用 `google/go-github` v89.0.0。该版本提供 Git Blob、Tree、Commit、Reference 和速率限制错误模型，与项目的 Go 1.25 模块基线兼容。GitHub 官方 Git Database API 文档明确支持“创建树、创建提交、更新引用”的批量提交链路，因此用它替换逐文件 Contents API 写入。
 
 最后验证日期：2026-08-16。
+
+## Typora 文件监听调研记录
+
+访问日期：2026-08-16。
+
+本机 Typora 0.11.18 是原生 AppKit 文档应用。`Info.plist` 中的文档类为 `Document`，主程序链接 CoreServices。对通用 Mach-O 符号表执行只读检查后，确认主程序引用以下 FSEvents 接口：
+
+- `FSEventStreamCreate`
+- `FSEventStreamScheduleWithRunLoop`
+- `FSEventStreamStart`
+- `FSEventStreamStop`
+- `FSEventStreamUnscheduleFromRunLoop`
+
+Mory 采用同类系统能力实现目录同步，但未复制 Typora 的专有代码。macOS 使用现代 `FSEventStreamSetDispatchQueue` 接入主队列；Windows 使用 Node.js 官方递归文件监听器。两个宿主最终都生成同一格式的工作区快照。

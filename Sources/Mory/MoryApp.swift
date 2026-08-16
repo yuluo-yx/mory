@@ -10,6 +10,7 @@ private final class ExportRenderer: NSObject, WKNavigationDelegate {
     private let paper: String
     private let webView: WKWebView
     private let completion: (Result<Void, Error>) -> Void
+    private var completed = false
 
     init(format: String, destination: URL, imageWidth: CGFloat, paper: String, completion: @escaping (Result<Void, Error>) -> Void) {
         self.format = format
@@ -28,43 +29,25 @@ private final class ExportRenderer: NSObject, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        completion(.failure(error))
+        finish(.failure(error))
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        completion(.failure(error))
+        finish(.failure(error))
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         if format == "pdf" {
-            let printInfo = NSPrintInfo()
-            printInfo.paperSize = paperSize(for: paper)
-            printInfo.topMargin = 28
-            printInfo.bottomMargin = 28
-            printInfo.leftMargin = 32
-            printInfo.rightMargin = 32
-            printInfo.horizontalPagination = .fit
-            printInfo.verticalPagination = .automatic
-            printInfo.jobDisposition = .save
-            let savingURLKey = NSPrintInfo.AttributeKey(rawValue: "NSPrintJobSavingURL")
-            printInfo.dictionary()[savingURLKey] = destination
-            let operation = webView.printOperation(with: printInfo)
-            operation.showsPrintPanel = false
-            operation.showsProgressPanel = false
-            if operation.run() {
-                completion(.success(()))
-            } else {
-                completion(.failure(NSError(domain: "Mory.Export", code: 4, userInfo: [NSLocalizedDescriptionKey: "PDF 打印任务失败。"])) )
-            }
+            capturePDF()
             return
         }
 
         webView.evaluateJavaScript("Math.max(document.documentElement.scrollHeight, document.body.scrollHeight)") { [weak self] value, error in
             guard let self else { return }
-            if let error { completion(.failure(error)); return }
+            if let error { finish(.failure(error)); return }
             let height = CGFloat((value as? NSNumber)?.doubleValue ?? 0)
             guard height > 0, height <= 28_000 else {
-                completion(.failure(NSError(domain: "Mory.Export", code: 1, userInfo: [NSLocalizedDescriptionKey: "文档超过 28000 像素，请降低图片宽度或改用 PDF 导出。"]))); return
+                finish(.failure(NSError(domain: "Mory.Export", code: 1, userInfo: [NSLocalizedDescriptionKey: "文档超过 28000 像素，请降低图片宽度或改用 PDF 导出。"]))); return
             }
             webView.frame = NSRect(x: 0, y: 0, width: imageWidth, height: height)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
@@ -73,27 +56,66 @@ private final class ExportRenderer: NSObject, WKNavigationDelegate {
         }
     }
 
+    private func finish(_ result: Result<Void, Error>) {
+        guard !completed else { return }
+        completed = true
+        webView.navigationDelegate = nil
+        completion(result)
+    }
+
+    private func capturePDF() {
+        webView.evaluateJavaScript("Math.max(document.documentElement.scrollHeight, document.body.scrollHeight)") { [weak self] value, error in
+            guard let self else { return }
+            if let error { finish(.failure(error)); return }
+            let height = max(1, CGFloat((value as? NSNumber)?.doubleValue ?? 0))
+            webView.frame = NSRect(x: 0, y: 0, width: imageWidth, height: height)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                guard let self else { return }
+                let configuration = WKPDFConfiguration()
+                configuration.rect = NSRect(x: 0, y: 0, width: imageWidth, height: height)
+                webView.createPDF(configuration: configuration) { [weak self] result in
+                    guard let self else { return }
+                    let destination = self.destination
+                    let paperSize = self.paperSize(for: self.paper)
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        do {
+                            let data = try result.get()
+                            try await Task.detached(priority: .userInitiated) {
+                                try PDFPaginator.write(data, to: destination, paperSize: paperSize)
+                            }.value
+                            self.finish(.success(()))
+                        } catch {
+                            self.finish(.failure(error))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private func captureImage(height: CGFloat) {
         let configuration = WKSnapshotConfiguration()
         configuration.rect = NSRect(x: 0, y: 0, width: imageWidth, height: height)
         configuration.afterScreenUpdates = true
-        webView.takeSnapshot(with: configuration) { [format, destination, completion] image, error in
-            if let error { completion(.failure(error)); return }
+        webView.takeSnapshot(with: configuration) { [weak self] image, error in
+            guard let self else { return }
+            if let error { finish(.failure(error)); return }
             guard let image,
                   let tiff = image.tiffRepresentation,
                   let bitmap = NSBitmapImageRep(data: tiff) else {
-                completion(.failure(NSError(domain: "Mory.Export", code: 2, userInfo: [NSLocalizedDescriptionKey: "无法生成图片数据。"]))); return
+                finish(.failure(NSError(domain: "Mory.Export", code: 2, userInfo: [NSLocalizedDescriptionKey: "无法生成图片数据。"]))); return
             }
             let fileType: NSBitmapImageRep.FileType = format == "jpeg" ? .jpeg : .png
             let properties: [NSBitmapImageRep.PropertyKey: Any] = format == "jpeg" ? [.compressionFactor: 0.92] : [:]
             guard let data = bitmap.representation(using: fileType, properties: properties) else {
-                completion(.failure(NSError(domain: "Mory.Export", code: 3, userInfo: [NSLocalizedDescriptionKey: "无法编码图片。"]))); return
+                finish(.failure(NSError(domain: "Mory.Export", code: 3, userInfo: [NSLocalizedDescriptionKey: "无法编码图片。"]))); return
             }
             do {
                 try data.write(to: destination, options: .atomic)
-                completion(.success(()))
+                finish(.success(()))
             } catch {
-                completion(.failure(error))
+                finish(.failure(error))
             }
         }
     }
@@ -115,10 +137,12 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     private var currentMarkdown = ""
     private var currentDocumentName = "未命名.md"
     private var workspaceManager: WorkspaceManager!
+    private var workspaceWatcher: WorkspaceWatcher!
     private var themeManager: ThemeManager!
     private var editorReady = false
     private var pendingDocument: [String: Any]?
     private var exportRenderers: [ExportRenderer] = []
+    private var isExporting = false
     private var dragStartPointer: NSPoint?
     private var dragStartWindowOrigin: NSPoint?
     private var interfaceLocale = "zh-CN"
@@ -141,6 +165,10 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         do {
             workspaceManager = try WorkspaceManager()
             themeManager = try ThemeManager()
+            workspaceWatcher = WorkspaceWatcher { [weak self] in
+                Task { @MainActor in self?.refreshWorkspace() }
+            }
+            workspaceWatcher.start(at: workspaceManager.activeRoot)
         } catch {
             presentError("无法初始化工作区：\(error.localizedDescription)")
             NSApp.terminate(nil)
@@ -152,6 +180,10 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        workspaceWatcher?.stop()
     }
 
     func application(_ sender: NSApplication, openFiles filenames: [String]) {
@@ -230,13 +262,68 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
                 let actual = window.frame.origin
                 let passed = abs(actual.x - origin.x - 36) < 0.5 && abs(actual.y - origin.y - 18) < 0.5
                 if passed {
-                    print("macOS 窗口拖动冒烟通过：dx=36, dy=18")
-                    NSApplication.shared.terminate(nil)
+                    self.runWindowZoomSmoke()
                 } else {
                     fputs("macOS 窗口拖动冒烟失败：origin=\(origin), actual=\(actual)\n", stderr)
                     Darwin.exit(1)
                 }
             }
+        }
+    }
+
+    private func runWindowZoomSmoke() {
+        let restoredFrame = window.frame
+        doubleClickSidebarTitlebar { [weak self] in
+            guard let self else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+                guard let self else { return }
+                let zoomedFrame = window.frame
+                guard window.isZoomed, zoomedFrame.width > restoredFrame.width || zoomedFrame.height > restoredFrame.height else {
+                    fputs("macOS 左侧顶部双击放大冒烟失败：before=\(restoredFrame), after=\(zoomedFrame)\n", stderr)
+                    Darwin.exit(1)
+                }
+                doubleClickSidebarTitlebar { [weak self] in
+                    guard let self else { return }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+                        guard let self else { return }
+                        let actual = window.frame
+                        let restored = !window.isZoomed
+                            && abs(actual.origin.x - restoredFrame.origin.x) < 1
+                            && abs(actual.origin.y - restoredFrame.origin.y) < 1
+                            && abs(actual.width - restoredFrame.width) < 1
+                            && abs(actual.height - restoredFrame.height) < 1
+                        if restored {
+                            print("macOS 窗口拖动与左侧顶部双击放大/还原冒烟通过")
+                            NSApplication.shared.terminate(nil)
+                        } else {
+                            fputs("macOS 左侧顶部双击还原冒烟失败：expected=\(restoredFrame), actual=\(actual)\n", stderr)
+                            Darwin.exit(1)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func doubleClickSidebarTitlebar(completion: @escaping () -> Void) {
+        // 从真实 DOM 入口触发，防止宿主消息测试绕过侧栏事件绑定而产生假阳性。
+        let script = """
+        (() => {
+          const region = document.querySelector('.traffic-space');
+          if (!region) throw new Error('找不到侧栏顶部拖动区域');
+          return region.dispatchEvent(new MouseEvent('dblclick', {
+            bubbles: true,
+            cancelable: true,
+            button: 0
+          }));
+        })();
+        """
+        webView.evaluateJavaScript(script) { _, error in
+            if let error {
+                fputs("macOS 左侧顶部双击 DOM 冒烟失败：\(error.localizedDescription)\n", stderr)
+                Darwin.exit(1)
+            }
+            completion()
         }
     }
 
@@ -430,12 +517,18 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     }
 
     private func exportDocument(options: [String: Any]) {
+        guard !isExporting else {
+            runJavaScript("window.Mory.exportBusy()")
+            return
+        }
         let format = options["format"] as? String ?? "html"
         let fileExtension = format == "jpeg" ? "jpg" : format
         let panel = NSSavePanel()
         panel.allowedContentTypes = [UTType(filenameExtension: fileExtension) ?? .data]
         panel.nameFieldStringValue = (currentFileURL?.deletingPathExtension().lastPathComponent ?? "未命名") + ".\(fileExtension)"
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        isExporting = true
+        runJavaScript("window.Mory.exportStarted('\(format)')")
 
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -448,10 +541,12 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
                     contentWorld: .page
                 )
             } catch {
+                isExporting = false
                 presentError("无法生成导出文档：\(error.localizedDescription)")
                 return
             }
             guard let html = value as? String else {
+                isExporting = false
                 presentError("无法生成导出文档")
                 return
             }
@@ -459,8 +554,10 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
             if format == "html" {
                 do {
                     try html.write(to: url, atomically: true, encoding: .utf8)
+                    isExporting = false
                     runJavaScript("window.Mory.didExport('html')")
                 } catch {
+                    isExporting = false
                     presentError("无法导出 HTML：\(error.localizedDescription)")
                 }
                 return
@@ -471,6 +568,7 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
             renderer = ExportRenderer(format: format, destination: url, imageWidth: width, paper: options["paper"] as? String ?? "A4") { [weak self] result in
                 guard let self else { return }
                 exportRenderers.removeAll { $0 === renderer }
+                isExporting = false
                 switch result {
                 case .success:
                     runJavaScript("window.Mory.didExport('\(format)')")
@@ -517,8 +615,11 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
 
     private func refreshWorkspace() {
         do {
-            sendJSON(function: "window.Mory.setFiles", value: try workspaceManager.documents())
-            sendJSON(function: "window.Mory.setWorkspaceState", value: workspaceManager.state())
+            workspaceWatcher?.start(at: workspaceManager.activeRoot)
+            sendJSON(function: "window.Mory.setWorkspaceSnapshot", value: [
+                "state": workspaceManager.state(),
+                "files": try workspaceManager.documents()
+            ])
         } catch {
             presentError("无法读取工作区：\(error.localizedDescription)")
         }
@@ -563,6 +664,31 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
             case "removeWorkspace":
                 answerHostRequest(id: id, result: try workspaceManager.remove(arguments["id"] as? String ?? ""))
                 refreshWorkspace()
+            case "deleteDocument":
+                guard let path = arguments["path"] as? String, !path.isEmpty else {
+                    throw workspaceError("文稿路径为空。")
+                }
+                let name = arguments["name"] as? String ?? URL(fileURLWithPath: path).lastPathComponent
+                let alert = NSAlert()
+                alert.alertStyle = .warning
+                alert.messageText = interfaceLocale == "en"
+                    ? "Move “\(name)” to Trash?"
+                    : "要将“\(name)”移到废纸篓吗？"
+                alert.informativeText = interfaceLocale == "en"
+                    ? "The document can be restored from the system Trash."
+                    : "可以从系统废纸篓中恢复该文稿。"
+                alert.addButton(withTitle: interfaceLocale == "en" ? "Move to Trash" : "移到废纸篓")
+                alert.addButton(withTitle: interfaceLocale == "en" ? "Cancel" : "取消")
+                guard alert.runModal() == .alertFirstButtonReturn else {
+                    answerHostRequest(id: id, result: ["canceled": true])
+                    return
+                }
+                let source = URL(fileURLWithPath: path)
+                if FileManager.default.fileExists(atPath: source.path) {
+                    var resultingURL: NSURL?
+                    try FileManager.default.trashItem(at: source, resultingItemURL: &resultingURL)
+                }
+                answerHostRequest(id: id, result: ["deleted": true])
             case "importImage":
                 answerHostRequest(id: id, result: try workspaceManager.importImage(arguments: arguments))
             case "workspaceDocuments":
@@ -660,6 +786,10 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         case "windowDragEnd":
             dragStartPointer = nil
             dragStartWindowOrigin = nil
+        case "windowTitlebarDoubleClick":
+            dragStartPointer = nil
+            dragStartWindowOrigin = nil
+            window.performZoom(nil)
         default:
             break
         }

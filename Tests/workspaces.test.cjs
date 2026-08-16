@@ -6,6 +6,7 @@ const test = require("node:test");
 const { createThemeManager, themeID } = require("../Electron/themes.cjs");
 
 const {
+  compareDocumentsByCreation,
   createWorkspaceManager,
   importImage,
   listDocuments,
@@ -104,13 +105,31 @@ test("递归列出文稿并忽略资源目录中的非文稿", async t => {
   await fs.mkdir(path.join(root, "专题", "文章"), { recursive: true });
   await fs.writeFile(path.join(root, "专题", "文章.md"), "# 文章");
   await fs.writeFile(path.join(root, "专题", "文章", "image.png"), "image");
-  assert.deepEqual(await listDocuments(root), [{ name: path.join("专题", "文章.md"), path: path.join(root, "专题", "文章.md") }]);
+  const documents = await listDocuments(root);
+  assert.equal(documents.length, 1);
+  assert.deepEqual({ name: documents[0].name, path: documents[0].path }, { name: path.join("专题", "文章.md"), path: path.join(root, "专题", "文章.md") });
+  assert.ok(Number.isFinite(documents[0].createdAt));
+});
+
+test("文稿按创建时间升序排列并以名称稳定消除并列", () => {
+  const documents = [
+    { name: "12.md", path: "/12.md", createdAt: 30 },
+    { name: "02.md", path: "/02.md", createdAt: 10 },
+    { name: "01.md", path: "/01.md", createdAt: 10 }
+  ];
+  assert.deepEqual(documents.sort(compareDocumentsByCreation).map(item => item.name), ["01.md", "02.md", "12.md"]);
 });
 
 test("知识图谱数据读取工作区文稿内容", async t => {
   const root = await fixture(t);
   await fs.writeFile(path.join(root, "入口.md"), "# 入口\n[[目标]]");
-  assert.deepEqual(await readWorkspaceDocuments(root), [{ name: "入口.md", path: path.join(root, "入口.md"), markdown: "# 入口\n[[目标]]" }]);
+  const documents = await readWorkspaceDocuments(root);
+  assert.equal(documents.length, 1);
+  assert.deepEqual(
+    { name: documents[0].name, path: documents[0].path, markdown: documents[0].markdown },
+    { name: "入口.md", path: path.join(root, "入口.md"), markdown: "# 入口\n[[目标]]" }
+  );
+  assert.ok(Number.isFinite(documents[0].createdAt));
 });
 
 test("Markdown 图片路径与文件名清理保持稳定", () => {

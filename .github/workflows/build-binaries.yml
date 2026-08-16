@@ -1,4 +1,4 @@
-name: 构建桌面端制品
+name: Build Desktop Artifacts
 
 on:
   workflow_dispatch:
@@ -28,25 +28,25 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 35
     steps:
-      - name: 检出代码
+      - name: Check out repository
         uses: actions/checkout@v6
-      - name: 设置 Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
-      - name: 设置 Go
+      - name: Set up Go
         uses: actions/setup-go@v6
         with:
           go-version: "1.25.x"
           cache: true
-      - name: 安装依赖
+      - name: Install dependencies
         run: make install
-      - name: 验证并打包
+      - name: Validate and package
         run: make ci-macos
-      - name: 归档应用包
+      - name: Archive application bundle
         run: tar -czf "dist/Mory-macos-${{ matrix.arch }}.tar.gz" -C dist/macos Mory.app
-      - name: 上传 macOS 制品
+      - name: Upload macOS artifact
         uses: actions/upload-artifact@v7
         with:
           name: Mory-macos-${{ matrix.arch }}
@@ -55,30 +55,30 @@ jobs:
           retention-days: 14
 
   windows:
-    name: Windows x64 与 ARM64
+    name: Windows x64 and ARM64
     runs-on: windows-2025
     timeout-minutes: 45
     steps:
-      - name: 检出代码
+      - name: Check out repository
         uses: actions/checkout@v6
-      - name: 设置 Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
-      - name: 设置 Go
+      - name: Set up Go
         uses: actions/setup-go@v6
         with:
           go-version: "1.25.x"
           cache: true
-      - name: 安装 GNU Make
+      - name: Install GNU Make
         shell: powershell
         run: choco install make --yes --no-progress
-      - name: 安装依赖
+      - name: Install dependencies
         run: make install
-      - name: 验证并打包
+      - name: Validate and package
         run: make ci-windows
-      - name: 上传 Windows 制品
+      - name: Upload Windows artifact
         uses: actions/upload-artifact@v7
         with:
           name: Mory-windows-x64-arm64
