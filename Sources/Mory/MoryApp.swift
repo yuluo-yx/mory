@@ -206,6 +206,9 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
 
     private func runWindowDragSmokeIfRequested() {
         guard ProcessInfo.processInfo.environment["MORY_DRAG_SMOKE"] == "1" else { return }
+        // 托管运行器会把居中的窗口贴近屏幕上缘。先下移窗口，为向上拖动预留空间。
+        let initial = window.frame.origin
+        window.setFrameOrigin(NSPoint(x: initial.x, y: initial.y - 40))
         let origin = window.frame.origin
         let script = """
         window.webkit.messageHandlers.mory.postMessage({type:'windowDragStart',screenX:100,screenY:100});
