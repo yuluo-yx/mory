@@ -9,15 +9,13 @@ import (
 	"time"
 )
 
-func TestListDocumentsSortsByCreationAndNaturalName(t *testing.T) {
+func TestListDocumentsReadsContentAndSkipsHiddenDirectories(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
-	older := time.Unix(1_700_000_000, 0)
-	newer := older.Add(time.Hour)
-	writeAt(t, filepath.Join(root, "10-note.md"), "# ten", older)
-	writeAt(t, filepath.Join(root, "2-note.md"), "# two", older)
-	writeAt(t, filepath.Join(root, "later.md"), "# later", newer)
-	writeAt(t, filepath.Join(root, ".git", "ignored.md"), "# ignored", older)
+	writeAt(t, filepath.Join(root, "10-note.md"), "# ten", time.Now())
+	writeAt(t, filepath.Join(root, "2-note.md"), "# two", time.Now())
+	writeAt(t, filepath.Join(root, "later.md"), "# later", time.Now())
+	writeAt(t, filepath.Join(root, ".git", "ignored.md"), "# ignored", time.Now())
 
 	documents, err := listDocuments(root, true)
 	if err != nil {
@@ -26,11 +24,24 @@ func TestListDocumentsSortsByCreationAndNaturalName(t *testing.T) {
 	if len(documents) != 3 {
 		t.Fatalf("文稿数量 = %d，期望 3", len(documents))
 	}
+	for _, document := range documents {
+		if document.Name == "2-note.md" && document.Markdown == "# two" {
+			return
+		}
+	}
+	t.Fatalf("文稿内容未读取：%#v", documents)
+}
+
+func TestSortDocumentsByCreationAndNaturalName(t *testing.T) {
+	t.Parallel()
+	documents := []Document{
+		{Name: "later.md", CreatedAt: 2},
+		{Name: "10-note.md", CreatedAt: 1},
+		{Name: "2-note.md", CreatedAt: 1},
+	}
+	sortDocuments(documents)
 	if documents[0].Name != "2-note.md" || documents[1].Name != "10-note.md" || documents[2].Name != "later.md" {
 		t.Fatalf("排序结果错误：%#v", documents)
-	}
-	if documents[0].Markdown != "# two" {
-		t.Fatalf("文稿内容未读取：%q", documents[0].Markdown)
 	}
 }
 

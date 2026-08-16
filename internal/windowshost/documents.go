@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"mime"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -92,13 +91,17 @@ func listDocuments(root string, includeMarkdown bool) ([]Document, error) {
 	if err != nil {
 		return nil, fmt.Errorf("扫描工作区文稿：%w", err)
 	}
+	sortDocuments(documents)
+	return documents, nil
+}
+
+func sortDocuments(documents []Document) {
 	sort.SliceStable(documents, func(i, j int) bool {
 		if documents[i].CreatedAt != documents[j].CreatedAt {
 			return documents[i].CreatedAt < documents[j].CreatedAt
 		}
 		return naturalLess(documents[i].Name, documents[j].Name)
 	})
-	return documents, nil
 }
 
 func listDirectories(root string) ([]Directory, error) {
@@ -396,11 +399,7 @@ func hasRemoteScheme(reference string) bool {
 }
 
 func dataURL(path string, data []byte) string {
-	mimeType := mime.TypeByExtension(strings.ToLower(filepath.Ext(path)))
-	if mimeType == "" {
-		mimeType = "application/octet-stream"
-	}
-	return "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(data)
+	return "data:" + mimeTypeForPath(path) + ";base64," + base64.StdEncoding.EncodeToString(data)
 }
 
 func naturalLess(left, right string) bool {

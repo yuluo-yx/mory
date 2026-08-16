@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"mime"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -180,10 +179,7 @@ func inlineThemeAssets(css, directory string) (string, error) {
 			inlineErr = errors.New("主题资源总大小不能超过 5 MB")
 			return value
 		}
-		mimeType := mime.TypeByExtension(strings.ToLower(filepath.Ext(resolved)))
-		if mimeType == "" {
-			mimeType = "application/octet-stream"
-		}
+		mimeType := mimeTypeForPath(resolved)
 		return `url("data:` + mimeType + `;base64,` + base64.StdEncoding.EncodeToString(data) + `")`
 	})
 	return result, inlineErr
