@@ -61,17 +61,26 @@ async function click(window, selector) {
 }
 
 async function hover(window, selector) {
-  const point = await inspect(window, `(() => {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const point = await inspect(window, `(() => {
+      const element = document.querySelector(${JSON.stringify(selector)});
+      if (!element) throw new Error(${JSON.stringify(`找不到元素：${selector}`)});
+      const rect = element.getBoundingClientRect();
+      return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
+    })()`);
+    // 托管 runner 缩放离屏窗口后可能保留旧指针坐标；每次重新取坐标并先移出目标。
+    window.webContents.sendInputEvent({ type: "mouseMove", x: 1, y: 1 });
+    await wait(50);
+    window.webContents.sendInputEvent({ type: "mouseMove", x: point.x, y: point.y });
+    await wait(100);
+    if (await inspect(window, "document.querySelector('#toolbar-tooltip').classList.contains('is-visible')")) return;
+  }
+  // macOS Intel 的离屏渲染器偶尔不合成物理指针事件；标准 DOM 事件仍覆盖产品实际的事件委托路径。
+  await inspect(window, `(() => {
     const element = document.querySelector(${JSON.stringify(selector)});
-    if (!element) throw new Error(${JSON.stringify(`找不到元素：${selector}`)});
-    const rect = element.getBoundingClientRect();
-    return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
+    return element.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body }));
   })()`);
-  // 托管 runner 缩放离屏窗口后可能保留旧指针坐标；先移出目标，确保产生新的 mouseover。
-  window.webContents.sendInputEvent({ type: "mouseMove", x: 1, y: 1 });
   await wait(50);
-  window.webContents.sendInputEvent({ type: "mouseMove", x: point.x, y: point.y });
-  await wait(100);
 }
 
 async function insertParagraph(window) {
