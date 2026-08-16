@@ -23,7 +23,7 @@ async function inspect(window, expression) {
 }
 
 async function click(window, selector) {
-  const target = await inspect(window, `(() => {
+  let target = await inspect(window, `(() => {
     const element = document.querySelector(${JSON.stringify(selector)});
     if (!element) throw new Error(${JSON.stringify(`找不到元素：${selector}`)});
     element.scrollIntoView({ block: "center", inline: "center" });
@@ -31,16 +31,29 @@ async function click(window, selector) {
     const x = Math.round(rect.left + rect.width / 2);
     const y = Math.round(rect.top + rect.height / 2);
     const hit = document.elementFromPoint(x, y);
-    return { x, y, expected: element.id || element.dataset.command || element.className, hit: hit?.id || hit?.dataset?.command || hit?.className || hit?.tagName };
+    return { x, y, hit: hit?.id || hit?.dataset?.command || hit?.className || hit?.tagName };
   })()`);
-  window.webContents.sendInputEvent({ type: "mouseMove", x: target.x, y: target.y });
-  await wait(40);
-  const hit = await inspect(window, `(() => {
-    const expected = document.querySelector(${JSON.stringify(selector)});
-    const actual = document.elementFromPoint(${target.x}, ${target.y});
-    return Boolean(expected && actual && (expected === actual || expected.contains(actual)));
-  })()`);
-  if (!hit) throw new Error(`点击目标被遮挡：${selector}；初始命中 ${target.hit}`);
+  let hittable = false;
+  for (let attempt = 0; attempt < 3 && !hittable; attempt += 1) {
+    window.webContents.sendInputEvent({ type: "mouseMove", x: target.x, y: target.y });
+    await wait(60);
+    target = await inspect(window, `(() => {
+      const expected = document.querySelector(${JSON.stringify(selector)});
+      if (!expected) throw new Error(${JSON.stringify(`找不到元素：${selector}`)});
+      const rect = expected.getBoundingClientRect();
+      const x = Math.round(rect.left + rect.width / 2);
+      const y = Math.round(rect.top + rect.height / 2);
+      const actual = document.elementFromPoint(x, y);
+      return {
+        x,
+        y,
+        hittable: Boolean(actual && (expected === actual || expected.contains(actual))),
+        hit: actual?.id || actual?.dataset?.command || actual?.className || actual?.tagName
+      };
+    })()`);
+    hittable = target.hittable;
+  }
+  if (!hittable) throw new Error(`点击目标被遮挡：${selector}；最终命中 ${target.hit}`);
   window.webContents.sendInputEvent({ type: "mouseDown", x: target.x, y: target.y, button: "left", clickCount: 1 });
   window.webContents.sendInputEvent({ type: "mouseUp", x: target.x, y: target.y, button: "left", clickCount: 1 });
   await wait(selector === "#sidebar-toggle" ? 280 : 80);
