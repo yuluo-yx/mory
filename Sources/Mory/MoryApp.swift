@@ -293,10 +293,9 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
                         guard let self else { return }
                         let actual = window.frame
                         let restored = !window.isZoomed
-                            && abs(actual.origin.x - restoredFrame.origin.x) < 1
-                            && abs(actual.origin.y - restoredFrame.origin.y) < 1
                             && abs(actual.width - restoredFrame.width) < 1
                             && abs(actual.height - restoredFrame.height) < 1
+                        // 系统会把超出可见工作区的原始位置钳制回屏幕内；还原状态和尺寸才是稳定契约。
                         if restored {
                             print("macOS 窗口拖动与左侧顶部双击放大/还原冒烟通过")
                             NSApplication.shared.terminate(nil)

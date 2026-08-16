@@ -142,7 +142,7 @@ final class MacTypingSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegat
           html: document.querySelector('#write').innerHTML,
           markdown: window.Mory.getMarkdown(),
           preCount: document.querySelectorAll('#write > pre').length,
-          code: document.querySelector('#write > pre code')?.textContent || '',
+          code: document.querySelector('#write > pre code')?.innerText || '',
           hasParagraphAfterCode: Boolean(document.querySelector('#write > pre + p')),
           activeTag: getSelection()?.anchorNode?.parentElement?.closest('#write > *')?.tagName || ''
         })
