@@ -9,6 +9,7 @@ const IMAGE_MIME = new Map([
   ["image/png", ".png"], ["image/jpeg", ".jpg"], ["image/gif", ".gif"],
   ["image/webp", ".webp"], ["image/svg+xml", ".svg"], ["image/bmp", ".bmp"]
 ]);
+const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp"]);
 const SECRET_FIELDS = ["token", "accessKeySecret", "sessionToken", "password", "privateKey"];
 
 function createWorkspaceManager({ userDataPath, sidecarPath, defaultRoot = path.join(os.homedir(), "Documents", "Mory") }) {
@@ -21,7 +22,12 @@ function createWorkspaceManager({ userDataPath, sidecarPath, defaultRoot = path.
     await fs.mkdir(cacheRoot, { recursive: true });
     try {
       const stored = JSON.parse(await fs.readFile(configPath, "utf8"));
-      workspaces = Array.isArray(stored.workspaces) ? stored.workspaces : [];
+      workspaces = Array.isArray(stored.workspaces) ? stored.workspaces.map(workspace => ({
+        ...workspace,
+        isImplicit: typeof workspace.isImplicit === "boolean"
+          ? workspace.isImplicit
+          : workspace.provider === "local" && workspace.name === "本地工作区" && path.resolve(workspace.localPath || "") === path.resolve(defaultRoot)
+      })) : [];
       activeId = typeof stored.activeId === "string" ? stored.activeId : "";
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
@@ -29,7 +35,7 @@ function createWorkspaceManager({ userDataPath, sidecarPath, defaultRoot = path.
     if (!workspaces.length) {
       const localPath = defaultRoot;
       await fs.mkdir(localPath, { recursive: true });
-      workspaces = [{ id: crypto.randomUUID(), name: "本地工作区", provider: "local", localPath }];
+      workspaces = [{ id: crypto.randomUUID(), name: "本地工作区", provider: "local", localPath, isImplicit: true }];
       activeId = workspaces[0].id;
       await persist();
     }
@@ -73,7 +79,7 @@ function createWorkspaceManager({ userDataPath, sidecarPath, defaultRoot = path.
     const existing = workspaces.find(workspace => workspace.id === input.id);
     const id = existing?.id || crypto.randomUUID();
     const provider = String(input.provider || "local");
-    const workspace = { ...(existing || {}), ...input, id, provider };
+    const workspace = { ...(existing || {}), ...input, id, provider, isImplicit: false };
     for (const field of SECRET_FIELDS) {
       if (!input[field] && existing?.[field]) workspace[field] = existing[field];
     }
@@ -146,12 +152,86 @@ async function listDocuments(root) {
         const stat = await fs.stat(fullPath);
         const birthtime = Number(stat.birthtimeMs);
         const createdAt = Number.isFinite(birthtime) && birthtime > 0 ? birthtime : Number(stat.ctimeMs);
-        files.push({ name: path.relative(root, fullPath), path: fullPath, createdAt });
+        files.push({ name: path.relative(root, fullPath), path: fullPath, createdAt, images: await listDocumentImages(fullPath) });
       }
     }
   }
   await visit(root);
   return files.sort(compareDocumentsByCreation);
+}
+
+async function listDocumentImages(documentPath) {
+  const directory = path.join(path.dirname(documentPath), sanitizeSegment(path.basename(documentPath, path.extname(documentPath))));
+  const images = [];
+  async function visit(current) {
+    let entries;
+    try { entries = await fs.readdir(current, { withFileTypes: true }); }
+    catch (error) { if (error.code === "ENOENT") return; throw error; }
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue;
+      const fullPath = path.join(current, entry.name);
+      if (entry.isDirectory()) await visit(fullPath);
+      else if (entry.isFile() && IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+        images.push({
+          name: path.relative(directory, fullPath).replaceAll("\\", "/"),
+          path: fullPath,
+          relative: path.relative(path.dirname(documentPath), fullPath).replaceAll("\\", "/")
+        });
+      }
+    }
+  }
+  await visit(directory);
+  return images.sort((left, right) => left.name.localeCompare(right.name, "zh-CN", { numeric: true }));
+}
+
+async function readDocumentImage(root, imagePath) {
+  const resolvedRoot = path.resolve(root);
+  const resolved = path.resolve(String(imagePath || ""));
+  const local = path.relative(resolvedRoot, resolved);
+  if (!local || local === ".." || local.startsWith(`..${path.sep}`) || path.isAbsolute(local)) throw new Error("图片必须位于当前工作区内。");
+  if (!IMAGE_EXTENSIONS.has(path.extname(resolved).toLowerCase())) throw new Error("不支持的图片格式。");
+  const data = await fs.readFile(resolved);
+  if (data.length > 50 * 1024 * 1024) throw new Error("图片超过 50 MB。");
+  return { name: path.basename(resolved), path: resolved, dataURL: `data:${mimeForPath(resolved)};base64,${data.toString("base64")}` };
+}
+
+async function listDirectories(root) {
+  const directories = [];
+  async function visit(directory) {
+    const entries = await fs.readdir(directory, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name === ".git" || entry.name === ".mory" || entry.name.startsWith(".")) continue;
+      const fullPath = path.join(directory, entry.name);
+      const stat = await fs.stat(fullPath);
+      const birthtime = Number(stat.birthtimeMs);
+      const createdAt = Number.isFinite(birthtime) && birthtime > 0 ? birthtime : Number(stat.ctimeMs);
+      directories.push({ name: path.relative(root, fullPath), path: fullPath, createdAt });
+      await visit(fullPath);
+    }
+  }
+  await visit(root);
+  return directories.sort((left, right) => String(left.name).localeCompare(String(right.name), "zh-CN", { numeric: true }));
+}
+
+function resolveWorkspaceDirectory(root, relativePath) {
+  const value = String(relativePath || "").trim().replaceAll("\\", "/");
+  if (!value || path.isAbsolute(value)) throw new Error("请输入工作区内的相对目录。");
+  const segments = value.split("/");
+  if (segments.some(segment => !segment || segment === "." || segment === "..")) throw new Error("目录路径不能包含空层级、. 或 ..。");
+  const resolvedRoot = path.resolve(root);
+  const resolved = path.resolve(resolvedRoot, ...segments);
+  const local = path.relative(resolvedRoot, resolved);
+  if (!local || local === ".." || local.startsWith(`..${path.sep}`) || path.isAbsolute(local)) throw new Error("目录必须位于当前工作区内。");
+  return { resolved, relative: local };
+}
+
+async function createWorkspaceDirectory(root, relativePath) {
+  const { resolved, relative } = resolveWorkspaceDirectory(root, relativePath);
+  await fs.mkdir(resolved, { recursive: true });
+  const stat = await fs.stat(resolved);
+  const birthtime = Number(stat.birthtimeMs);
+  const createdAt = Number.isFinite(birthtime) && birthtime > 0 ? birthtime : Number(stat.ctimeMs);
+  return { name: relative, path: resolved, createdAt };
 }
 
 function compareDocumentsByCreation(left, right) {
@@ -277,4 +357,4 @@ function runSidecar(executable, payload) {
   });
 }
 
-module.exports = { compareDocumentsByCreation, createWorkspaceManager, importImage, listDocuments, loadDocumentAssets, markdownImagePaths, readWorkspaceDocuments, relocateDocumentAssets, sanitizeSegment, validateWorkspace };
+module.exports = { compareDocumentsByCreation, createWorkspaceDirectory, createWorkspaceManager, importImage, listDirectories, listDocumentImages, listDocuments, loadDocumentAssets, markdownImagePaths, readDocumentImage, readWorkspaceDocuments, relocateDocumentAssets, resolveWorkspaceDirectory, sanitizeSegment, validateWorkspace };

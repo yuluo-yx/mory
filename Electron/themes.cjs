@@ -45,10 +45,26 @@ async function inlineThemeAssets(css, directory) {
 }
 
 function createThemeManager({ userDataPath }) {
-  const directory = path.join(userDataPath, "themes");
+  const defaultDirectory = path.join(userDataPath, "themes");
+  const settingsPath = path.join(userDataPath, "theme-settings.json");
+  let directory = defaultDirectory;
+  let initialized = false;
+
+  async function initialize() {
+    if (initialized) return directory;
+    try {
+      const saved = JSON.parse(await fs.readFile(settingsPath, "utf8"));
+      if (typeof saved.directory === "string" && path.isAbsolute(saved.directory)) directory = path.resolve(saved.directory);
+    } catch (error) {
+      if (error.code !== "ENOENT" && !(error instanceof SyntaxError)) throw error;
+    }
+    await fs.mkdir(directory, { recursive: true });
+    initialized = true;
+    return directory;
+  }
 
   async function list() {
-    await fs.mkdir(directory, { recursive: true });
+    await initialize();
     const entries = (await fs.readdir(directory, { withFileTypes: true }))
       .filter(entry => entry.isFile() && path.extname(entry.name).toLocaleLowerCase() === ".css")
       .sort((left, right) => left.name.localeCompare(right.name, "zh-CN", { numeric: true }));
@@ -64,6 +80,7 @@ function createThemeManager({ userDataPath }) {
   }
 
   async function importFile(source) {
+    await initialize();
     if (path.extname(source).toLocaleLowerCase() !== ".css") throw new Error("请选择 CSS 主题文件。");
     const stat = await fs.stat(source);
     if (!stat.isFile() || stat.size > MAX_THEME_BYTES) throw new Error("主题文件无效或超过 1 MB。");
@@ -73,7 +90,18 @@ function createThemeManager({ userDataPath }) {
     return list();
   }
 
-  return { directory, importFile, list };
+  async function setDirectory(value) {
+    if (typeof value !== "string" || !value.trim()) throw new Error("请选择有效的主题目录。");
+    const next = path.resolve(value);
+    await fs.mkdir(next, { recursive: true });
+    await fs.mkdir(userDataPath, { recursive: true });
+    directory = next;
+    initialized = true;
+    await fs.writeFile(settingsPath, `${JSON.stringify({ directory }, null, 2)}\n`, "utf8");
+    return { directory, themes: await list() };
+  }
+
+  return { get directory() { return directory; }, importFile, initialize, list, setDirectory };
 }
 
 module.exports = { createThemeManager, inlineThemeAssets, themeID };

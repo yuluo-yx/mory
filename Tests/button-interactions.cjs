@@ -154,11 +154,23 @@ app.whenReady().then(async () => {
         request(method, args) {
           window.__lastHostRequest = { method, args };
           if (method === 'deleteDocument') return Promise.resolve(window.__deleteDocumentResult || { deleted: true });
+          if (method === 'createDirectory') return Promise.resolve({ name: args.relativePath, path: '/virtual/' + args.relativePath, createdAt: Date.now() });
+          if (method === 'documentAssets') return Promise.resolve({ '文章/late.svg': 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjwvc3ZnPg==' });
+          if (method === 'documentImage') return Promise.resolve({ dataURL: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjwvc3ZnPg==' });
+          if (method === 'readDocument') return Promise.resolve({ name: args.path.split('/').at(-1), path: args.path, markdown: '# 第一篇', assets: {} });
+          if (method === 'revealFile') return Promise.resolve({ revealed: true });
+          if (method === 'chooseThemeFolder') return Promise.resolve({ directory: '/themes', themes: [{ id: 'user-folder-test', name: '目录主题', css: '#write{word-spacing:2px}' }] });
           return Promise.reject(new Error('测试宿主未实现该请求'));
         }
       };
       return true;
     })()`);
+
+    await click(window, "#new-folder-button");
+    await expect(window, "新建目录入口显示内联路径输入", "!document.querySelector('#new-folder-form').hidden && document.activeElement === document.querySelector('#new-folder-input')");
+    await window.webContents.insertText("资料/项目 A");
+    await click(window, "#new-folder-form button[type='submit']");
+    await expectEventually(window, "当前工作区可创建并显示嵌套目录", "window.__lastHostRequest.method === 'createDirectory' && window.__lastHostRequest.args.relativePath === '资料/项目 A' && document.querySelector('.folder-item[title=\"资料/项目 A\"] .folder-name').textContent === '项目 A' && document.querySelector('#new-folder-form').hidden");
 
     const pastedMarkdown = '# 粘贴标题\n\n**粘贴加粗**\n\n```go\nfmt.Println("paste")\n```';
     await inspect(window, `(() => {
@@ -207,12 +219,25 @@ app.whenReady().then(async () => {
     await expect(window, "空工作区保留未命名占位文稿", "[...document.querySelectorAll('#file-list .file-name')].map(item => item.textContent).join('|') === '未命名.md' && document.querySelector('.file-item.is-active')");
     await inspect(window, `window.Mory.setWorkspaceSnapshot({
       state: { activeId: 'workspace-opened', workspaces: [{ id: 'workspace-opened', name: '已打开目录', provider: 'local', localPath: '/opened' }] },
-      files: [{ name: '子目录/第二篇.md', path: '/opened/子目录/第二篇.md', createdAt: 20 }, { name: '第一篇.md', path: '/opened/第一篇.md', createdAt: 10 }]
+      files: [{ name: '子目录/第二篇.md', path: '/opened/子目录/第二篇.md', createdAt: 20 }, { name: '第一篇.md', path: '/opened/第一篇.md', createdAt: 10, images: [{ name: '封面.svg', path: '/opened/第一篇/封面.svg', relative: '第一篇/封面.svg' }] }]
     })`);
     await expect(window, "非空工作区移除占位文稿并请求打开排序首篇", "document.querySelector('#folder-name').textContent === '已打开目录' && [...document.querySelectorAll('#file-list .file-name')].map(item => item.textContent).join('|') === '第一篇.md|子目录/第二篇.md' && window.__autoOpenedWorkspacePath === '/opened/第一篇.md'");
     await inspect(window, `window.Mory.openDocument({ name: '第一篇.md', path: '/opened/第一篇.md', markdown: '# 第一篇' })`);
     await expect(window, "工作区排序首篇自动成为当前文稿", "document.querySelector('.file-item.is-active .file-name').textContent === '第一篇.md' && document.querySelector('#write h1').textContent === '第一篇'");
     await expect(window, "工作区文稿按创建时间升序排列", "[...document.querySelectorAll('#file-list .file-name')].map(item => item.textContent).join('|') === '第一篇.md|子目录/第二篇.md'");
+    await click(window, ".file-row:has(.file-item[data-path='/opened/第一篇.md']) .file-expander");
+    await expect(window, "文稿行可展开所属图片", "document.querySelector('.file-assets .file-asset span')?.textContent === '封面.svg'");
+    await click(window, ".file-assets .file-asset");
+    await expectEventually(window, "点击所属图片立即载入预览", "document.querySelector('#image-preview').classList.contains('is-open') && document.querySelector('#image-preview-content').src.startsWith('data:image/svg+xml;base64,')");
+    await click(window, "#image-preview-close");
+    await inspect(window, `document.querySelector(".file-item[data-path='/opened/第一篇.md']").dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 160, clientY: 180 }))`);
+    await expect(window, "文稿右键菜单提供打开、定位、导出和删除", "document.querySelector('#file-context-menu').classList.contains('is-open') && document.querySelectorAll('#file-context-menu [data-file-action]').length === 4");
+    await click(window, "#file-context-menu [data-file-action='reveal']");
+    await expectEventually(window, "右键菜单可在系统文件管理器定位文稿", "window.__lastHostRequest.method === 'revealFile' && window.__lastHostRequest.args.path === '/opened/第一篇.md'");
+    await inspect(window, `document.querySelector(".file-item[data-path='/opened/第一篇.md']").dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 160, clientY: 180 }))`);
+    await click(window, "#file-context-menu [data-file-action='export']");
+    await expectEventually(window, "右键菜单可直接进入当前文稿导出", "document.querySelector('#export-dialog').classList.contains('is-open')");
+    await click(window, "#export-close");
     await inspect(window, `window.Mory.openDocument({ name: '子目录/第二篇.md', path: '/opened/子目录/第二篇.md', markdown: '# 第二篇' })`);
     await expect(window, "打开文稿不会改变文件列表位置", "[...document.querySelectorAll('#file-list .file-name')].map(item => item.textContent).join('|') === '第一篇.md|子目录/第二篇.md'");
     await inspect(window, `window.Mory.setWorkspaceSnapshot({
@@ -239,6 +264,35 @@ app.whenReady().then(async () => {
     await expect(window, "源码按钮可点击", "document.querySelector('.workspace').classList.contains('source-mode')");
     await click(window, "#source-toggle");
     await expect(window, "预览模式可恢复", "!document.querySelector('.workspace').classList.contains('source-mode')");
+
+    await inspect(window, `(() => {
+      window.Mory.didSave({ path: '/virtual/文章.md', name: '文章.md', assets: { '文章/image.svg': 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjwvc3ZnPg==' } });
+      const write = document.querySelector('#write');
+      write.innerHTML = '<p>![image](文章/image.svg)</p>';
+      const text = write.querySelector('p').firstChild;
+      const range = document.createRange();
+      range.setStart(text, text.nodeValue.length);
+      range.collapse(true);
+      const selection = getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      window.Mory.normalizeMarkdown();
+    })()`);
+    await expect(window, "即时 Markdown 重排同步绑定工作区图片资源", "document.querySelector('#write img')?.src.startsWith('data:image/svg+xml;base64,')");
+    await inspect(window, `(() => {
+      const write = document.querySelector('#write');
+      write.innerHTML = '<p>![late](文章/late.svg)</p>';
+      const text = write.querySelector('p').firstChild;
+      const range = document.createRange();
+      range.setStart(text, text.nodeValue.length);
+      range.collapse(true);
+      const selection = getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      window.Mory.normalizeMarkdown();
+    })()`);
+    await expectEventually(window, "新输入的相对图片路径会按需加载而非等待重开", "window.__lastHostRequest.method === 'documentAssets' && document.querySelector('#write img')?.src.startsWith('data:image/svg+xml;base64,')");
+    await inspect(window, "window.Mory.didSave({ path: '', name: '未命名.md' })");
 
     await inspect(window, `window.Mory.setWorkspaceDocuments([
       { name: '入口.md', path: '/virtual/入口.md', markdown: '# 入口\\n[[专题/设计]]' },
@@ -300,6 +354,8 @@ app.whenReady().then(async () => {
     await expect(window, "用户 CSS 主题即时应用", "document.documentElement.dataset.docTheme === 'user-paper-test' && document.querySelector('#user-document-theme').textContent.includes('letter-spacing')");
     await expect(window, "用户主题进入导出选择", "document.querySelector('#export-theme option[value=\"user-paper-test\"]')");
     await expect(window, "用户主题写入导出 HTML", "window.Mory.exportDocument({ theme: 'current' }).then(html => html.includes('#write{letter-spacing:1px}'))");
+    await click(window, "#theme-choose-folder");
+    await expectEventually(window, "设置可更改用户主题目录并立即刷新主题", "window.__lastHostRequest.method === 'chooseThemeFolder' && document.querySelector('#document-theme-select option[value=\"user-folder-test\"]')");
     await inspect(window, "(() => { const select = document.querySelector('#language-select'); select.value = 'en'; select.dispatchEvent(new Event('change', { bubbles: true })); })()");
     await expect(window, "设置可即时切换英文", "document.documentElement.lang === 'en' && document.querySelector('#preferences h2').textContent === 'Preferences' && document.querySelector('#graph-button').getAttribute('aria-label') === 'Knowledge graph' && document.querySelector('#backlink-count').textContent === 'Backlinks 2'");
     await inspect(window, `window.Mory.openDocument({ name: 'English.md', path: '/virtual/English.md', markdown: '# English' })`);
@@ -365,7 +421,6 @@ app.whenReady().then(async () => {
     await click(window, ".tab[data-panel='outline']");
     await expect(window, "未保存标题实时进入大纲", "document.querySelector('#outline-count').textContent === '1 项' && document.querySelector('#outline-list .outline-item')?.textContent === '未保存标题'");
     await click(window, ".tab[data-panel='files']");
-
     await inspect(window, `(() => {
       const heading = document.querySelector('#write > h2');
       const range = document.createRange();
@@ -381,6 +436,8 @@ app.whenReady().then(async () => {
     await wait(30);
     await window.webContents.insertText("正文内容");
     await expect(window, "标题换行后恢复正文", "document.querySelector('#write > h2')?.textContent === '未保存标题' && document.querySelector('#write > p')?.textContent === '正文内容'");
+    await inspect(window, "window.Mory.newDocument(); window.Mory.loadMarkdown('# 草稿标题')");
+    await expectEventually(window, "一级标题实时替代未命名草稿的侧栏名称", "document.querySelector('.file-item.is-active .file-name')?.textContent === '草稿标题.md'");
 
     await inspect(window, `(() => {
       window.Mory.loadMarkdown('# 中文输入标题');

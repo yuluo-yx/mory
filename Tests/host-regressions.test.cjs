@@ -44,6 +44,47 @@ test("macOS 与 Windows 都通过系统废纸篓删除文稿", () => {
   assert.match(web, /localized\("文档已移到废纸篓"\)/);
 });
 
+test("macOS 与 Windows 都支持受限于当前工作区的目录创建和图片按需加载", () => {
+  const electronHost = fs.readFileSync(path.join(root, "Electron", "main.cjs"), "utf8");
+  const electronWorkspace = fs.readFileSync(path.join(root, "Electron", "workspaces.cjs"), "utf8");
+  const macOSHost = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
+  const macOSWorkspace = fs.readFileSync(path.join(root, "Sources", "Mory", "WorkspaceManager.swift"), "utf8");
+  const web = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "app.js"), "utf8");
+  assert.match(electronHost, /case "createDirectory"/);
+  assert.match(electronHost, /case "documentAssets"/);
+  assert.match(electronWorkspace, /function resolveWorkspaceDirectory/);
+  assert.match(electronWorkspace, /local\.startsWith\(`\.\./);
+  assert.match(macOSHost, /case "createDirectory"/);
+  assert.match(macOSHost, /case "documentAssets"/);
+  assert.match(macOSWorkspace, /func createDirectory\(relativePath:/);
+  assert.match(macOSWorkspace, /destination\.path\.hasPrefix\(rootPath \+ "\/"\)/);
+  assert.match(web, /hostRequest\("createDirectory"/);
+  assert.match(web, /hostRequest\("documentAssets"/);
+});
+
+test("macOS 与 Windows 保存草稿时优先写入当前工作区", () => {
+  const electron = fs.readFileSync(path.join(root, "Electron", "main.cjs"), "utf8");
+  const macOS = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
+  assert.match(electron, /workspaceManager\?\.active\(\)\?\.isImplicit !== true/);
+  assert.match(electron, /availableDocumentPath\(workspaceManager\.activeRoot\(\), suggestedDocumentName\(markdown\)\)/);
+  assert.match(electron, /else await saveAs\(\)/);
+  assert.match(macOS, /workspaceManager\.active\.isImplicit != true else \{ saveDocumentAs\(\); return \}/);
+  assert.match(macOS, /availableDocumentURL\(markdown: markdown\)/);
+});
+
+test("文稿右键操作、图片预览与主题目录选择由两个桌面宿主共同提供", () => {
+  const electron = fs.readFileSync(path.join(root, "Electron", "main.cjs"), "utf8");
+  const macOS = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
+  const web = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "app.js"), "utf8");
+  for (const method of ["readDocument", "revealFile", "documentImage", "chooseThemeFolder"]) {
+    assert.match(electron, new RegExp(`case "${method}"`));
+    assert.match(macOS, new RegExp(`case "${method}"`));
+  }
+  assert.match(web, /showFileContextMenu/);
+  assert.match(web, /previewDocumentImage/);
+  assert.match(web, /firstLevelHeading/);
+});
+
 test("macOS PDF 导出使用 WebKit 异步生成并在后台分页", () => {
   const source = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
   const paginator = fs.readFileSync(path.join(root, "Sources", "Mory", "PDFPaginator.swift"), "utf8");

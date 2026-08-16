@@ -4,12 +4,25 @@ import Foundation
 
 final class ThemeManager {
     private let fileManager = FileManager.default
-    let directory: URL
+    private let directoryDefaultsKey = "MoryThemeDirectory"
+    private(set) var directory: URL
 
     init() throws {
         let support = try fileManager.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-        directory = support.appendingPathComponent("Mory/themes", isDirectory: true)
+        if let saved = UserDefaults.standard.string(forKey: directoryDefaultsKey), !saved.isEmpty {
+            directory = URL(fileURLWithPath: saved, isDirectory: true).standardizedFileURL
+        } else {
+            directory = support.appendingPathComponent("Mory/themes", isDirectory: true)
+        }
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+    }
+
+    func setDirectory(_ value: URL) throws -> [[String: String]] {
+        let next = value.standardizedFileURL
+        try fileManager.createDirectory(at: next, withIntermediateDirectories: true)
+        directory = next
+        UserDefaults.standard.set(next.path, forKey: directoryDefaultsKey)
+        return try list()
     }
 
     func list() throws -> [[String: String]] {

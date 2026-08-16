@@ -345,7 +345,7 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     private func localizeMenu(_ menu: NSMenu) {
         guard interfaceLocale == "en" else { return }
         let translations = [
-            "关于 Mory": "About Mory", "偏好设置…": "Preferences…", "退出 Mory": "Quit Mory", "文件": "File", "新建": "New",
+            "关于 Mory": "About Mory", "偏好设置…": "Preferences…", "退出 Mory": "Quit Mory", "文件": "File", "新建": "New", "新建目录": "New Folder",
             "打开…": "Open…", "打开文件夹…": "Open Folder…", "保存": "Save", "另存为…": "Save As…", "导出…": "Export…",
             "编辑": "Edit", "撤销": "Undo", "重做": "Redo", "剪切": "Cut", "复制": "Copy", "粘贴": "Paste", "全选": "Select All",
             "查找和替换": "Find and Replace", "格式": "Format", "加粗": "Bold", "斜体": "Italic", "删除线": "Strikethrough", "行内代码": "Inline Code",
@@ -376,6 +376,8 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         main.addItem(fileItem)
         let fileMenu = NSMenu(title: "文件")
         fileMenu.addItem(withTitle: "新建", action: #selector(newDocument), keyEquivalent: "n")
+        let newFolderItem = fileMenu.addItem(withTitle: "新建目录", action: #selector(newFolder), keyEquivalent: "n")
+        newFolderItem.keyEquivalentModifierMask = [.command, .shift]
         fileMenu.addItem(withTitle: "打开…", action: #selector(openDocument), keyEquivalent: "o")
         fileMenu.addItem(withTitle: "打开文件夹…", action: #selector(openFolder), keyEquivalent: "O").keyEquivalentModifierMask = [.command, .shift]
         fileMenu.addItem(.separator())
@@ -441,6 +443,10 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         runJavaScript("window.Mory.newDocument()")
     }
 
+    @objc private func newFolder() {
+        runJavaScript("window.Mory.newFolder()")
+    }
+
     @objc private func openDocument() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.plainText, UTType(filenameExtension: "md") ?? .plainText]
@@ -464,11 +470,20 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     }
 
     @objc private func saveDocument() {
-        guard let url = currentFileURL else {
-            saveDocumentAs()
+        if let url = currentFileURL {
+            writeDocument(to: url)
             return
         }
-        writeDocument(to: url)
+        guard workspaceManager != nil, workspaceManager.active.isImplicit != true else { saveDocumentAs(); return }
+        fetchMarkdown { [weak self] markdown in
+            guard let self else { return }
+            do {
+                let url = try availableDocumentURL(markdown: markdown)
+                persistDocument(markdown: markdown, to: url)
+            } catch {
+                presentError("无法保存文件：\(error.localizedDescription)")
+            }
+        }
     }
 
     @objc private func saveDocumentAs() {
@@ -482,27 +497,52 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
 
     private func writeDocument(to url: URL) {
         fetchMarkdown { [weak self] markdown in
-            guard let self else { return }
-            do {
-                let updatedMarkdown = try workspaceManager.relocateAssets(markdown: markdown, oldURL: currentFileURL, oldName: currentDocumentName, newURL: url)
-                try updatedMarkdown.write(to: url, atomically: true, encoding: .utf8)
-                currentMarkdown = updatedMarkdown
-                currentFileURL = url
-                currentDocumentName = url.lastPathComponent
-                window.representedURL = url
-                window.title = url.lastPathComponent
-                window.isDocumentEdited = false
-                sendJSON(function: "window.Mory.didSave", value: [
-                    "path": url.path,
-                    "name": url.lastPathComponent,
-                    "markdown": updatedMarkdown,
-                    "assets": workspaceManager.assets(for: url, markdown: updatedMarkdown)
-                ])
-                refreshWorkspace()
-            } catch {
-                presentError("无法保存文件：\(error.localizedDescription)")
-            }
+            self?.persistDocument(markdown: markdown, to: url)
         }
+    }
+
+    private func persistDocument(markdown: String, to url: URL) {
+        do {
+            let updatedMarkdown = try workspaceManager.relocateAssets(markdown: markdown, oldURL: currentFileURL, oldName: currentDocumentName, newURL: url)
+            try updatedMarkdown.write(to: url, atomically: true, encoding: .utf8)
+            currentMarkdown = updatedMarkdown
+            currentFileURL = url
+            currentDocumentName = url.lastPathComponent
+            window.representedURL = url
+            window.title = url.lastPathComponent
+            window.isDocumentEdited = false
+            sendJSON(function: "window.Mory.didSave", value: [
+                "path": url.path,
+                "name": url.lastPathComponent,
+                "markdown": updatedMarkdown,
+                "assets": workspaceManager.assets(for: url, markdown: updatedMarkdown)
+            ])
+            refreshWorkspace()
+        } catch {
+            presentError("无法保存文件：\(error.localizedDescription)")
+        }
+    }
+
+    private func availableDocumentURL(markdown: String) throws -> URL {
+        let expression = try NSRegularExpression(pattern: #"(?m)^#\s+(.+?)\s*#*\s*$"#)
+        let source = markdown as NSString
+        let heading = expression.firstMatch(in: markdown, range: NSRange(location: 0, length: source.length))
+            .flatMap { $0.range(at: 1).location == NSNotFound ? nil : source.substring(with: $0.range(at: 1)) }
+            .map { $0.replacingOccurrences(of: #"[*_`~]"#, with: "", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines) }
+        let fallback = URL(fileURLWithPath: currentDocumentName).deletingPathExtension().lastPathComponent
+        let candidateName = heading.flatMap { $0.isEmpty ? nil : $0 } ?? fallback
+        let withoutControlCharacters = candidateName.unicodeScalars
+            .filter { !CharacterSet.controlCharacters.contains($0) }
+            .map(String.init).joined()
+        let base = withoutControlCharacters.replacingOccurrences(of: #"[<>:\"/\\|?*]"#, with: "-", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ".")))
+        let safeBase = base.isEmpty ? "未命名" : base
+        for serial in 1...Int.max {
+            let name = serial == 1 ? "\(safeBase).md" : "\(safeBase) \(serial).md"
+            let candidate = workspaceManager.activeRoot.appendingPathComponent(name)
+            if !FileManager.default.fileExists(atPath: candidate.path) { return candidate }
+        }
+        throw workspaceError("无法生成可用的文稿文件名。")
     }
 
     @objc private func openFolder() {
@@ -625,7 +665,8 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
             workspaceWatcher?.start(at: workspaceManager.activeRoot)
             sendJSON(function: "window.Mory.setWorkspaceSnapshot", value: [
                 "state": workspaceManager.state(),
-                "files": try workspaceManager.documents()
+                "files": try workspaceManager.documents(),
+                "directories": try workspaceManager.directories()
             ])
         } catch {
             presentError("无法读取工作区：\(error.localizedDescription)")
@@ -696,8 +737,25 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
                     try FileManager.default.trashItem(at: source, resultingItemURL: &resultingURL)
                 }
                 answerHostRequest(id: id, result: ["deleted": true])
+            case "createDirectory":
+                let directory = try workspaceManager.createDirectory(relativePath: arguments["relativePath"] as? String ?? "")
+                answerHostRequest(id: id, result: directory)
+                refreshWorkspace()
             case "importImage":
                 answerHostRequest(id: id, result: try workspaceManager.importImage(arguments: arguments))
+            case "documentAssets":
+                let markdown = arguments["markdown"] as? String ?? ""
+                let assets = currentFileURL.map { workspaceManager.assets(for: $0, markdown: markdown) } ?? [:]
+                answerHostRequest(id: id, result: assets)
+            case "documentImage":
+                answerHostRequest(id: id, result: try workspaceManager.image(at: arguments["path"] as? String ?? ""))
+            case "readDocument":
+                answerHostRequest(id: id, result: try workspaceManager.document(at: arguments["path"] as? String ?? ""))
+            case "revealFile":
+                let path = arguments["path"] as? String ?? ""
+                _ = try workspaceManager.document(at: path)
+                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+                answerHostRequest(id: id, result: ["revealed": true])
             case "workspaceDocuments":
                 answerHostRequest(id: id, result: try workspaceManager.documentContents())
             case "listThemes":
@@ -716,6 +774,17 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
             case "openThemeFolder":
                 NSWorkspace.shared.open(themeManager.directory)
                 answerHostRequest(id: id, result: ["opened": true])
+            case "chooseThemeFolder":
+                let panel = NSOpenPanel()
+                panel.canChooseFiles = false
+                panel.canChooseDirectories = true
+                panel.canCreateDirectories = true
+                panel.directoryURL = themeManager.directory
+                guard panel.runModal() == .OK, let directory = panel.url else {
+                    answerHostRequest(id: id, result: ["canceled": true])
+                    return
+                }
+                answerHostRequest(id: id, result: ["directory": directory.path, "themes": try themeManager.setDirectory(directory)])
             case "syncWorkspace":
                 let action = arguments["action"] as? String == "push" ? "push" : "pull"
                 let manager = workspaceManager!

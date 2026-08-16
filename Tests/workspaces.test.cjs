@@ -7,13 +7,17 @@ const { createThemeManager, themeID } = require("../Electron/themes.cjs");
 
 const {
   compareDocumentsByCreation,
+  createWorkspaceDirectory,
   createWorkspaceManager,
   importImage,
+  listDirectories,
   listDocuments,
   loadDocumentAssets,
   markdownImagePaths,
   readWorkspaceDocuments,
+  readDocumentImage,
   relocateDocumentAssets,
+  resolveWorkspaceDirectory,
   sanitizeSegment,
   validateWorkspace
 } = require("../Electron/workspaces.cjs");
@@ -31,7 +35,10 @@ test("首次启动创建默认本地工作区", async t => {
   const state = await manager.initialize();
   assert.equal(state.workspaces.length, 1);
   assert.equal(state.workspaces[0].provider, "local");
+  assert.equal(state.workspaces[0].isImplicit, true);
   assert.equal(manager.activeRoot(), local);
+  const configured = await manager.save({ ...state.workspaces[0], name: "明确选择", localPath: local });
+  assert.equal(configured.workspaces[0].isImplicit, false);
 });
 
 test("不同工作区保留独立凭证但不向渲染层回传秘密", async t => {
@@ -109,6 +116,20 @@ test("递归列出文稿并忽略资源目录中的非文稿", async t => {
   assert.equal(documents.length, 1);
   assert.deepEqual({ name: documents[0].name, path: documents[0].path }, { name: path.join("专题", "文章.md"), path: path.join(root, "专题", "文章.md") });
   assert.ok(Number.isFinite(documents[0].createdAt));
+  assert.deepEqual(documents[0].images.map(image => image.relative), [path.join("文章", "image.png")]);
+  const preview = await readDocumentImage(root, documents[0].images[0].path);
+  assert.match(preview.dataURL, /^data:image\/png;base64,/);
+  await assert.rejects(() => readDocumentImage(root, path.join(root, "专题", "文章.md")), /图片格式/);
+});
+
+test("工作区支持创建嵌套目录并阻止路径越界", async t => {
+  const root = await fixture(t);
+  const created = await createWorkspaceDirectory(root, "资料/项目 A");
+  assert.equal(created.name, path.join("资料", "项目 A"));
+  assert.equal((await fs.stat(created.path)).isDirectory(), true);
+  assert.deepEqual((await listDirectories(root)).map(item => item.name), ["资料", path.join("资料", "项目 A")]);
+  assert.throws(() => resolveWorkspaceDirectory(root, "../外部"), /不能包含|必须位于/);
+  assert.throws(() => resolveWorkspaceDirectory(root, path.resolve(root, "绝对路径")), /相对目录/);
 });
 
 test("文稿按创建时间升序排列并以名称稳定消除并列", () => {
@@ -149,4 +170,18 @@ test("用户主题导入后保持稳定标识并内联相对资源", async t => 
   assert.equal(themes[0].id, themeID("纸张.css"));
   assert.equal(refreshed[0].name, "纸张");
   assert.match(refreshed[0].css, /data:image\/svg\+xml;base64,/);
+});
+
+test("用户主题目录可更改并在重启后恢复", async t => {
+  const root = await fixture(t);
+  const userDataPath = path.join(root, "config");
+  const selectedDirectory = path.join(root, "自定义主题");
+  let manager = createThemeManager({ userDataPath });
+  const changed = await manager.setDirectory(selectedDirectory);
+  assert.equal(changed.directory, selectedDirectory);
+  await fs.writeFile(path.join(selectedDirectory, "custom.css"), "#write{color:teal}");
+  manager = createThemeManager({ userDataPath });
+  await manager.initialize();
+  assert.equal(manager.directory, selectedDirectory);
+  assert.equal((await manager.list())[0].name, "custom");
 });

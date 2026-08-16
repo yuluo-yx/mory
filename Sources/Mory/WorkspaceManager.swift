@@ -22,6 +22,7 @@ struct WorkspaceConfig: Codable {
     var privateKey: String?
     var knownHosts: String?
     var remotePath: String?
+    var isImplicit: Bool?
 
     init(dictionary: [String: Any], existing: WorkspaceConfig? = nil) {
         id = dictionary["id"] as? String ?? existing?.id ?? UUID().uuidString
@@ -45,6 +46,7 @@ struct WorkspaceConfig: Codable {
         privateKey = dictionary["privateKey"] as? String ?? existing?.privateKey
         knownHosts = dictionary["knownHosts"] as? String ?? existing?.knownHosts
         remotePath = dictionary["remotePath"] as? String ?? existing?.remotePath
+        isImplicit = dictionary["isImplicit"] as? Bool ?? existing?.isImplicit
     }
 
     func validate() throws {
@@ -83,7 +85,7 @@ struct WorkspaceConfig: Codable {
     }
 
     func dictionary(includeSecrets: Bool = true) -> [String: Any] {
-        var result: [String: Any] = ["id": id, "name": name, "provider": provider]
+        var result: [String: Any] = ["id": id, "name": name, "provider": provider, "isImplicit": isImplicit == true]
         let values: [(String, Any?)] = [
             ("localPath", localPath), ("endpoint", endpoint), ("region", region), ("bucket", bucket),
             ("prefix", prefix), ("accessKeyId", accessKeyId), ("repository", repository), ("branch", branch),
@@ -137,7 +139,9 @@ final class WorkspaceManager: @unchecked Sendable {
     @discardableResult
     func save(_ dictionary: [String: Any]) throws -> [String: Any] {
         let existing = (dictionary["id"] as? String).flatMap { id in workspaces.first { $0.id == id } }
-        var workspace = WorkspaceConfig(dictionary: dictionary, existing: existing)
+        var value = dictionary
+        value["isImplicit"] = false
+        var workspace = WorkspaceConfig(dictionary: value, existing: existing)
         if workspace.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             workspace.name = workspace.provider == "local" ? "本地工作区" : workspace.provider.uppercased()
         }
@@ -179,7 +183,7 @@ final class WorkspaceManager: @unchecked Sendable {
                 let relative = url.path.replacingOccurrences(of: activeRoot.path + "/", with: "")
                 // creationDate 在 APFS、NTFS 等桌面文件系统可用；缺失时用元数据变更时间保持确定顺序。
                 let createdAt = (values.creationDate ?? values.contentModificationDate ?? .distantFuture).timeIntervalSince1970 * 1_000
-                result.append(["name": relative, "path": url.path, "createdAt": createdAt])
+                result.append(["name": relative, "path": url.path, "createdAt": createdAt, "images": documentImages(for: url)])
             }
         }
         return result.sorted {
@@ -194,6 +198,39 @@ final class WorkspaceManager: @unchecked Sendable {
         }
     }
 
+    func directories() throws -> [[String: Any]] {
+        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isHiddenKey, .creationDateKey, .contentModificationDateKey]
+        guard let enumerator = fileManager.enumerator(at: activeRoot, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles]) else { return [] }
+        var result: [[String: Any]] = []
+        for case let url as URL in enumerator {
+            let values = try url.resourceValues(forKeys: keys)
+            guard values.isDirectory == true else { continue }
+            let relative = url.path.replacingOccurrences(of: activeRoot.path + "/", with: "")
+            let createdAt = (values.creationDate ?? values.contentModificationDate ?? .distantFuture).timeIntervalSince1970 * 1_000
+            result.append(["name": relative, "path": url.path, "createdAt": createdAt])
+        }
+        return result.sorted {
+            ($0["name"] as? String ?? "").localizedStandardCompare($1["name"] as? String ?? "") == .orderedAscending
+        }
+    }
+
+    func createDirectory(relativePath: String) throws -> [String: Any] {
+        let value = relativePath.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "\\", with: "/")
+        let segments = value.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        guard !value.isEmpty, !value.hasPrefix("/"), !segments.contains(where: { $0.isEmpty || $0 == "." || $0 == ".." }) else {
+            throw workspaceError("请输入工作区内不含空层级、. 或 .. 的相对目录。")
+        }
+        let destination = segments.reduce(activeRoot) { url, segment in
+            url.appendingPathComponent(segment, isDirectory: true)
+        }.standardizedFileURL
+        let rootPath = activeRoot.standardizedFileURL.path
+        guard destination.path.hasPrefix(rootPath + "/") else { throw workspaceError("目录必须位于当前工作区内。") }
+        try fileManager.createDirectory(at: destination, withIntermediateDirectories: true)
+        let values = try destination.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
+        let createdAt = (values.creationDate ?? values.contentModificationDate ?? Date()).timeIntervalSince1970 * 1_000
+        return ["name": segments.joined(separator: "/"), "path": destination.path, "createdAt": createdAt]
+    }
+
     func documentContents() throws -> [[String: Any]] {
         try documents().compactMap { document in
             guard let path = document["path"] as? String, let attributes = try? fileManager.attributesOfItem(atPath: path),
@@ -204,6 +241,42 @@ final class WorkspaceManager: @unchecked Sendable {
             content["markdown"] = markdown
             return content
         }
+    }
+
+    func document(at path: String) throws -> [String: Any] {
+        let url = try workspaceFileURL(path: path, kind: "文稿")
+        let markdown = try String(contentsOf: url, encoding: .utf8)
+        return ["name": url.lastPathComponent, "path": url.path, "markdown": markdown, "assets": assets(for: url, markdown: markdown)]
+    }
+
+    func image(at path: String) throws -> [String: String] {
+        let url = try workspaceFileURL(path: path, kind: "图片")
+        let supported = Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"])
+        guard supported.contains(url.pathExtension.lowercased()) else { throw workspaceError("不支持的图片格式。") }
+        let data = try Data(contentsOf: url)
+        guard data.count <= 50 * 1024 * 1024 else { throw workspaceError("图片超过 50 MB。") }
+        return ["name": url.lastPathComponent, "path": url.path, "dataURL": "data:\(mimeType(for: url));base64,\(data.base64EncodedString())"]
+    }
+
+    private func workspaceFileURL(path: String, kind: String) throws -> URL {
+        let url = URL(fileURLWithPath: path).standardizedFileURL
+        let rootPath = activeRoot.standardizedFileURL.path
+        guard url.path.hasPrefix(rootPath + "/") else { throw workspaceError("\(kind)必须位于当前工作区内。") }
+        return url
+    }
+
+    private func documentImages(for documentURL: URL) -> [[String: String]] {
+        let directory = documentURL.deletingLastPathComponent().appendingPathComponent(sanitize(documentURL.deletingPathExtension().lastPathComponent), isDirectory: true)
+        let supported = Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"])
+        guard let enumerator = fileManager.enumerator(at: directory, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) else { return [] }
+        var images: [[String: String]] = []
+        for case let url as URL in enumerator where supported.contains(url.pathExtension.lowercased()) {
+            guard (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { continue }
+            let name = url.path.replacingOccurrences(of: directory.path + "/", with: "")
+            let relative = url.path.replacingOccurrences(of: documentURL.deletingLastPathComponent().path + "/", with: "")
+            images.append(["name": name, "path": url.path, "relative": relative])
+        }
+        return images.sorted { ($0["name"] ?? "").localizedStandardCompare($1["name"] ?? "") == .orderedAscending }
     }
 
     func importImage(arguments: [String: Any]) throws -> [String: String] {
@@ -299,12 +372,22 @@ final class WorkspaceManager: @unchecked Sendable {
     private func load() throws {
         if let data = try? Data(contentsOf: configURL), let store = try? JSONDecoder().decode(WorkspaceStore.self, from: data), !store.workspaces.isEmpty {
             workspaces = store.workspaces
+            let documents = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first ?? URL(fileURLWithPath: NSHomeDirectory())
+            let defaultRoot = documents.appendingPathComponent("Mory", isDirectory: true).standardizedFileURL
+            workspaces = workspaces.map { item in
+                var workspace = item
+                if workspace.isImplicit == nil {
+                    let localURL = workspace.localPath.map { URL(fileURLWithPath: $0, isDirectory: true).standardizedFileURL }
+                    workspace.isImplicit = workspace.provider == "local" && workspace.name == "本地工作区" && localURL == defaultRoot
+                }
+                return workspace
+            }
             activeId = workspaces.contains { $0.id == store.activeId } ? store.activeId : workspaces[0].id
         } else {
             let documents = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first ?? URL(fileURLWithPath: NSHomeDirectory())
             let root = documents.appendingPathComponent("Mory", isDirectory: true)
             try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
-            let workspace = WorkspaceConfig(dictionary: ["name": "本地工作区", "provider": "local", "localPath": root.path])
+            let workspace = WorkspaceConfig(dictionary: ["name": "本地工作区", "provider": "local", "localPath": root.path, "isImplicit": true])
             workspaces = [workspace]
             activeId = workspace.id
             try persist()

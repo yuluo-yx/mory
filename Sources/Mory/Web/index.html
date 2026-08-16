@@ -16,6 +16,7 @@
     <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="18" r="1"/></symbol>
     <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 4v16M4 12h16"/></symbol>
+    <symbol id="i-folder-plus" viewBox="0 0 24 24"><path d="M3.5 6.5h6l2 2h9v10.5h-17z"/><path d="M12 11v5M9.5 13.5h5"/></symbol>
     <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></symbol>
     <symbol id="i-code" viewBox="0 0 24 24"><path d="m8.5 6-6 6 6 6M15.5 6l6 6-6 6M13.5 3l-3 18"/></symbol>
     <symbol id="i-export" viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 17v3h14v-3"/></symbol>
@@ -23,6 +24,7 @@
     <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.2 13.5a7.8 7.8 0 0 0 0-3l2-1.5-2-3.4-2.4 1A8.5 8.5 0 0 0 14.2 5L14 2.5h-4L9.8 5a8.5 8.5 0 0 0-2.6 1.5l-2.4-1-2 3.4 2 1.5a7.8 7.8 0 0 0 0 3l-2 1.5 2 3.4 2.4-1A8.5 8.5 0 0 0 9.8 19l.2 2.5h4l.2-2.5a8.5 8.5 0 0 0 2.6-1.5l2.4 1 2-3.4z"/></symbol>
     <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
     <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m8 10 4 4 4-4"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m5 17 4.5-4 3 2.5 2.5-2 4 3.5"/></symbol>
     <symbol id="i-sync" viewBox="0 0 24 24"><path d="M20 7h-6V1"/><path d="M20 7a9 9 0 0 0-15.5-2M4 17h6v6"/><path d="M4 17a9 9 0 0 0 15.5 2"/></symbol>
     <symbol id="i-graph" viewBox="0 0 24 24"><circle cx="6" cy="7" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="15" cy="18" r="2.4"/><circle cx="5" cy="17" r="2.4"/><path d="m8.3 6.8 7.3-.6M7.2 9l6.6 7.1M16.9 8.2l-1.3 7.4M7.4 17.2l5.2.5"/></symbol>
   </svg>
@@ -38,7 +40,14 @@
       <section id="files-panel" class="side-panel is-active" aria-label="文件">
         <div class="panel-head">
           <span id="folder-name">工作区</span>
+          <button class="panel-action" id="new-folder-button" title="新建目录" aria-label="新建目录"><svg><use href="#i-folder-plus"/></svg></button>
         </div>
+        <form id="new-folder-form" class="new-folder-form" hidden>
+          <svg aria-hidden="true"><use href="#i-files"/></svg>
+          <input id="new-folder-input" placeholder="目录名称或路径" aria-label="目录名称或路径" autocomplete="off" spellcheck="false">
+          <button type="submit" title="创建目录" aria-label="创建目录">✓</button>
+          <button type="button" id="new-folder-cancel" title="取消" aria-label="取消"><svg><use href="#i-close"/></svg></button>
+        </form>
         <div id="file-list" class="file-list">
           <button class="file-item is-active" data-path="">
             <span class="file-symbol">M↓</span>
@@ -147,6 +156,21 @@
     </section>
   </main>
 
+  <div id="file-context-menu" class="context-menu" role="menu" aria-hidden="true">
+    <button type="button" data-file-action="open" role="menuitem">打开文稿</button>
+    <button type="button" data-file-action="reveal" role="menuitem">在文件管理器中显示</button>
+    <button type="button" data-file-action="export" role="menuitem">导出…</button>
+    <span></span>
+    <button type="button" data-file-action="delete" class="is-danger" role="menuitem">删除文稿</button>
+  </div>
+
+  <div id="image-preview" class="modal-backdrop image-preview" aria-hidden="true">
+    <section class="image-preview-card" role="dialog" aria-modal="true" aria-label="图片预览">
+      <header><strong id="image-preview-name">图片预览</strong><button id="image-preview-close" aria-label="关闭"><svg><use href="#i-close"/></svg></button></header>
+      <div><img id="image-preview-content" alt=""></div>
+    </section>
+  </div>
+
   <div id="quick-open" class="modal-backdrop" aria-hidden="true">
     <section class="quick-open-card" role="dialog" aria-modal="true" aria-label="快速打开">
       <div class="quick-open-input"><svg><use href="#i-search"/></svg><input id="quick-open-input" placeholder="按文件名搜索" autocomplete="off"><kbd>esc</kbd></div>
@@ -181,7 +205,7 @@
         <div class="setting-row"><div><strong>界面语言</strong><p>切换 Mory 的菜单与操作文字</p></div><select id="language-select"><option value="zh-CN">简体中文</option><option value="en">English</option></select></div>
         <div class="setting-row"><div><strong>外观</strong><p>选择编辑器使用的颜色主题</p></div><select id="theme-select"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></div>
         <div class="setting-row"><div><strong>文档主题</strong><p>独立 CSS 控制正文渲染和导出样式</p></div><select id="document-theme-select"><option value="yuluo-css">Yuluo CSS</option><option value="github">GitHub</option><option value="whitey">Whitey</option><option value="newsprint">Newsprint</option><option value="pixyll">Pixyll</option><option value="gothic">Gothic</option><option value="night">Night</option></select></div>
-        <div class="setting-row theme-manager-row"><div><strong>用户主题</strong><p id="custom-theme-summary">导入 CSS，或把主题与资源放入主题目录</p></div><div class="theme-actions"><button id="theme-import" class="quiet-button">导入 CSS</button><button id="theme-folder" class="quiet-button">主题目录</button><button id="theme-refresh" class="quiet-button">刷新</button></div></div>
+        <div class="setting-row theme-manager-row"><div><strong>用户主题</strong><p id="custom-theme-summary">导入 CSS，或把主题与资源放入主题目录</p></div><div class="theme-actions"><button id="theme-import" class="quiet-button">导入 CSS</button><button id="theme-choose-folder" class="quiet-button">更改目录</button><button id="theme-folder" class="quiet-button">打开目录</button><button id="theme-refresh" class="quiet-button">刷新</button></div></div>
         <div class="setting-row"><div><strong>编辑器宽度</strong><p>控制正文最大行宽</p></div><select id="width-select"><option value="700">窄</option><option value="820" selected>标准</option><option value="980">宽</option></select></div>
         <div class="setting-row"><div><strong>显示状态栏</strong><p>展示行数、字数与模式开关</p></div><label class="switch"><input id="status-toggle" type="checkbox" checked><span></span></label></div>
         <div class="setting-row"><div><strong>拼写检查</strong><p>使用系统拼写检查能力</p></div><label class="switch"><input id="spell-toggle" type="checkbox" checked><span></span></label></div>

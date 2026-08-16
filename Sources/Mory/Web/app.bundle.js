@@ -435,6 +435,8 @@ const state = {
   markdown: "",
   documents: [],
   files: [],
+  directories: [],
+  expandedImagePaths: new Set(),
   workspaceDocuments: [],
   activeDocumentId: null,
   documentSerial: 0,
@@ -472,6 +474,9 @@ let activeComposition = null;
 let hostRequestSequence = 0;
 let workspaceKnowledgeRequest = 0;
 let markdownNormalizationFrame = 0;
+let documentAssetTimer = 0;
+let documentAssetRequest = 0;
+let contextFile = null;
 const pendingHostRequests = new Map();
 const caretMarker = "\u200b";
 const renderCaretMarker = "\ue000";
@@ -498,11 +503,12 @@ const englishText = {
   "外观": "Appearance", "选择编辑器使用的颜色主题": "Choose the editor color scheme", "跟随系统": "System", "浅色": "Light", "深色": "Dark",
   "文档主题": "Document theme", "独立 CSS 控制正文渲染和导出样式": "CSS controls editor rendering and exports", "用户主题": "Custom themes",
   "导入 CSS，或把主题与资源放入主题目录": "Import CSS, or place themes and assets in the theme folder", "导入 CSS": "Import CSS", "主题目录": "Theme folder",
+  "更改目录": "Change folder", "打开目录": "Open folder", "主题目录已更新": "Theme folder updated",
   "编辑器宽度": "Editor width", "控制正文最大行宽": "Control maximum text width", "窄": "Narrow", "标准": "Standard", "宽": "Wide",
   "显示状态栏": "Show status bar", "展示行数、字数与模式开关": "Show counts and mode controls", "拼写检查": "Spell check", "使用系统拼写检查能力": "Use the system spell checker",
   "格式": "Format", "导出主题": "Export theme", "使用当前主题": "Use current theme", "纸张": "Paper", "图片宽度": "Image width", "保留主题背景": "Keep theme background",
   "PDF 与图片包含当前主题的纸张颜色": "Include theme paper color in PDF and images", "HTML、PDF 不需要 Pandoc": "HTML and PDF do not require Pandoc", "选择位置并导出": "Choose location and export",
-  "开始写作…": "Start writing…", "新建文档（⌘N）": "New document (⌘N)", "切换或配置工作区": "Switch or configure workspace", "显示／隐藏侧边栏": "Show/hide sidebar",
+  "开始写作…": "Start writing…", "新建文档（⌘N）": "New document (⌘N)", "新建目录": "New folder", "目录名称或路径": "Folder name or path", "创建目录": "Create folder", "目录已创建": "Folder created", "创建目录失败": "Failed to create folder", "取消": "Cancel", "打开文稿": "Open document", "在文件管理器中显示": "Show in file manager", "导出…": "Export…", "图片预览": "Image preview", "图片加载失败": "Failed to load image", "展开图片": "Expand images", "收起图片": "Collapse images", "切换或配置工作区": "Switch or configure workspace", "显示／隐藏侧边栏": "Show/hide sidebar",
   "已切换文档": "Document switched", "关闭文档": "Close document", "删除文档": "Delete document", "移除草稿": "Remove draft", "文档已关闭": "Document closed", "文档已移到废纸篓": "Document moved to Trash", "删除文档失败": "Failed to delete document", "草稿已移除": "Draft removed", "当前草稿": "Current draft",
   "磁盘文件已删除": "deleted from disk", "文件已从磁盘删除，未保存内容已保留为草稿": "The file was deleted from disk; unsaved content was kept as a draft",
   "本地": "Local", "工作目录": "Working folder", "使用“选择本地目录”填写": "Use “Choose local folder”", "仓库": "Repository", "分支": "Branch",
@@ -615,8 +621,28 @@ function untitledName(sequence) {
   return sequence === 1 ? "未命名.md" : `未命名 ${sequence}.md`;
 }
 
+function firstLevelHeading(markdown) {
+  let fence = "";
+  for (const line of String(markdown || "").replace(/\r\n?/g, "\n").split("\n")) {
+    const marker = line.match(/^\s*(```|~~~)/)?.[1] || "";
+    if (marker) { fence = fence ? (fence === marker ? "" : fence) : marker; continue; }
+    if (fence) continue;
+    const heading = line.match(/^#\s+(.+?)\s*#*\s*$/)?.[1]?.replace(/[*_`~]/g, "").trim();
+    if (heading) return heading;
+  }
+  return "";
+}
+
+function documentDisplayName(document) {
+  if (!document || document.path) return document?.name || localized("未命名.md");
+  const heading = firstLevelHeading(document.markdown);
+  return heading ? (heading.toLocaleLowerCase().endsWith(".md") ? heading : `${heading}.md`) : document.name;
+}
+
 function renderDocument(document, announce = false) {
   clearTimeout(changeTimer);
+  clearTimeout(documentAssetTimer);
+  documentAssetRequest += 1;
   state.markdown = document.markdown;
   state.dirty = document.dirty;
   state.titleTouched = false;
@@ -637,7 +663,7 @@ function notifyDocumentSelected(document) {
   bridge({
     type: "documentSelected",
     documentId: document.id,
-    name: document.name,
+    name: documentDisplayName(document),
     path: document.path || "",
     markdown: document.markdown,
     dirty: document.dirty
@@ -696,14 +722,41 @@ function openDocument(payload = {}) {
   activateDocument(document.id, { announce: true, notifyHost: true });
 }
 
-function applyDocumentAssets(root, document = activeDocument()) {
+function isLocalDocumentImage(source) {
+  return Boolean(source) && !/^(?:data:|https?:|file:|\/)/i.test(source);
+}
+
+function scheduleDocumentAssetRefresh(document) {
+  if (!document?.path || (!window.moryNative && !nativeMacHost)) return;
+  clearTimeout(documentAssetTimer);
+  const request = ++documentAssetRequest;
+  documentAssetTimer = setTimeout(async () => {
+    try {
+      const markdown = document === activeDocument() ? editorToMarkdown(write) : document.markdown;
+      const assets = await hostRequest("documentAssets", { markdown });
+      if (request !== documentAssetRequest || document !== activeDocument() || !assets || typeof assets !== "object") return;
+      document.assets = { ...(document.assets || {}), ...assets };
+      applyDocumentAssets(write, document, { refreshMissing: false });
+    } catch {
+      // 输入尚未完成或图片暂不存在时保持原始地址，后续编辑会再次触发解析。
+    }
+  }, 90);
+}
+
+function applyDocumentAssets(root, document = activeDocument(), { refreshMissing = true } = {}) {
   const assets = document?.assets || {};
+  let missingLocalAsset = false;
   root.querySelectorAll("img[src]").forEach(image => {
-    let source = image.getAttribute("src") || "";
-    try { source = decodeURI(source); } catch { /* 保留无法解码的原始路径。 */ }
-    const normalized = source.replaceAll("\\", "/");
-    if (assets[normalized]) image.src = assets[normalized];
+    const raw = image.getAttribute("src") || "";
+    let decoded = raw;
+    try { decoded = decodeURI(raw); } catch { /* 保留无法解码的原始路径。 */ }
+    const candidates = [raw, decoded]
+      .map(source => source.replaceAll("\\", "/").replace(/^\.\//, ""));
+    const asset = candidates.map(source => assets[source]).find(Boolean);
+    if (asset) image.src = asset;
+    else if (candidates.some(isLocalDocumentImage)) missingLocalAsset = true;
   });
+  if (refreshMissing && missingLocalAsset) scheduleDocumentAssetRefresh(document);
 }
 
 function syncFromWrite() {
@@ -1003,6 +1056,7 @@ function renderMarkdownBlockAtCaret() {
   template.innerHTML = html || "<p><br></p>";
   block.replaceWith(template.content);
   restoreRenderCaret();
+  applyDocumentAssets(write);
   return true;
 }
 
@@ -1026,6 +1080,7 @@ function renderMarkdownDocumentAtCaret() {
     selection?.removeAllRanges();
     selection?.addRange(caret);
   }
+  applyDocumentAssets(write);
   highlightCodeBlocks(write);
   void renderMermaidDiagrams(write, state.documentTheme);
   return true;
@@ -1114,6 +1169,7 @@ function syncFromSource(render = false) {
   if (document) document.markdown = state.markdown;
   if (render) {
     write.innerHTML = markdownToHTML(state.markdown) || "<p><br></p>";
+    applyDocumentAssets(write);
     highlightCodeBlocks(write);
     void renderMermaidDiagrams(write, state.documentTheme);
   }
@@ -1139,7 +1195,7 @@ function markChanged() {
     bridge({
       type: "changed",
       documentId: document?.id || "",
-      name: document?.name || "未命名.md",
+      name: documentDisplayName(document),
       path: document?.path || "",
       markdown: state.markdown
     });
@@ -1153,10 +1209,11 @@ function updateDerivedState() {
   updateOutline();
 
   if (!state.titleTouched) {
-    const title = state.markdown.match(/^#\s+(.+)$/m)?.[1]?.replace(/[*_`~]/g, "").trim() || localized("未命名");
+    const title = firstLevelHeading(state.markdown) || localized("未命名");
     $("#document-title").value = title;
-      bridge({ type: "title", value: title, dirty: state.dirty });
+    bridge({ type: "title", value: title, dirty: state.dirty });
   }
+  if (!activeDocument()?.path) renderFiles();
 }
 
 function updateOutline() {
@@ -1245,25 +1302,154 @@ async function deleteDocument(file) {
   }
 }
 
+function compareWorkspaceDirectories(left, right) {
+  return String(left.name).localeCompare(String(right.name), "zh-CN", { numeric: true })
+    || String(left.path).localeCompare(String(right.path));
+}
+
+function toggleNewFolderForm(force) {
+  const form = $("#new-folder-form");
+  const open = typeof force === "boolean" ? force : form.hidden;
+  form.hidden = !open;
+  $("#new-folder-button").classList.toggle("is-active", open);
+  if (open) {
+    $("#new-folder-input").value = "";
+    requestAnimationFrame(() => $("#new-folder-input").focus());
+  }
+}
+
+async function createWorkspaceFolder(relativePath) {
+  try {
+    const directory = await hostRequest("createDirectory", { relativePath });
+    if (!directory?.path) return;
+    state.directories = [...state.directories.filter(item => item.path !== directory.path), directory].sort(compareWorkspaceDirectories);
+    renderFiles();
+    toggleNewFolderForm(false);
+    toast(localized("目录已创建"));
+  } catch (error) {
+    toast(`${localized("创建目录失败")}：${error.message}`, 3200);
+    $("#new-folder-input").focus();
+  }
+}
+
+function closeFileContextMenu() {
+  contextFile = null;
+  const menu = $("#file-context-menu");
+  menu.classList.remove("is-open");
+  menu.setAttribute("aria-hidden", "true");
+}
+
+function showFileContextMenu(file, event) {
+  if (!file.path) return;
+  event.preventDefault();
+  event.stopPropagation();
+  contextFile = file;
+  const menu = $("#file-context-menu");
+  menu.classList.add("is-open");
+  menu.setAttribute("aria-hidden", "false");
+  const bounds = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - bounds.width - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(event.clientY, window.innerHeight - bounds.height - 8))}px`;
+  menu.querySelector("button")?.focus({ preventScroll: true });
+}
+
+async function openWorkspaceFile(file) {
+  if (file.documentId) {
+    activateDocument(file.documentId, { announce: true, notifyHost: true });
+    return activeDocument();
+  }
+  const payload = await hostRequest("readDocument", { path: file.path });
+  openDocument(payload);
+  return activeDocument();
+}
+
+async function handleFileContextAction(action) {
+  const file = contextFile;
+  closeFileContextMenu();
+  if (!file) return;
+  try {
+    if (action === "open") await openWorkspaceFile(file);
+    if (action === "reveal") await hostRequest("revealFile", { path: file.path });
+    if (action === "export") {
+      await openWorkspaceFile(file);
+      toggleExportDialog(true);
+    }
+    if (action === "delete") await deleteDocument(file);
+  } catch (error) {
+    toast(error.message, 3200);
+  }
+}
+
+function closeImagePreview() {
+  const preview = $("#image-preview");
+  preview.classList.remove("is-open");
+  preview.setAttribute("aria-hidden", "true");
+  $("#image-preview-content").removeAttribute("src");
+}
+
+async function previewDocumentImage(image) {
+  try {
+    const result = await hostRequest("documentImage", { path: image.path });
+    if (!result?.dataURL) throw new Error(localized("图片加载失败"));
+    $("#image-preview-name").textContent = image.name || localized("图片预览");
+    $("#image-preview-content").src = result.dataURL;
+    $("#image-preview-content").alt = image.name || localized("图片预览");
+    const preview = $("#image-preview");
+    preview.classList.add("is-open");
+    preview.setAttribute("aria-hidden", "false");
+  } catch (error) {
+    toast(`${localized("图片加载失败")}：${error.message}`, 3200);
+  }
+}
+
 function renderFiles() {
   const list = $("#file-list");
   list.innerHTML = "";
+  state.directories.forEach(directory => {
+    const row = document.createElement("div");
+    row.className = "folder-item";
+    const parts = String(directory.name || "").replaceAll("\\", "/").split("/").filter(Boolean);
+    row.style.setProperty("--folder-depth", String(Math.max(0, parts.length - 1)));
+    row.title = String(directory.name || "");
+    row.innerHTML = '<svg aria-hidden="true"><use href="#i-files"/></svg><span class="folder-name"></span>';
+    row.querySelector(".folder-name").textContent = parts.at(-1) || directory.name;
+    list.append(row);
+  });
   const entries = visibleFileEntries();
   entries.forEach(file => {
     const row = document.createElement("div");
     row.className = "file-row";
+    const images = Array.isArray(file.images) ? file.images : [];
+    const imagesExpanded = Boolean(file.path && state.expandedImagePaths.has(file.path));
+    if (images.length) {
+      row.classList.add("has-images");
+      const expander = document.createElement("button");
+      expander.className = "file-expander";
+      expander.setAttribute("aria-expanded", String(imagesExpanded));
+      expander.setAttribute("aria-label", localized(imagesExpanded ? "收起图片" : "展开图片"));
+      expander.title = localized(imagesExpanded ? "收起图片" : "展开图片");
+      expander.innerHTML = '<svg aria-hidden="true"><use href="#i-chevron"/></svg>';
+      expander.addEventListener("click", event => {
+        event.stopPropagation();
+        if (imagesExpanded) state.expandedImagePaths.delete(file.path);
+        else state.expandedImagePaths.add(file.path);
+        renderFiles();
+      });
+      row.append(expander);
+    }
     const button = document.createElement("button");
     button.className = `file-item${file.documentId === state.activeDocumentId ? " is-active" : ""}`;
     button.dataset.path = file.path;
     if (file.documentId) button.dataset.documentId = file.documentId;
     button.innerHTML = `<span class="file-symbol">${file.path ? "M" : "M↓"}</span><span class="file-name"></span><span class="file-dirty"></span>`;
-    button.querySelector(".file-name").textContent = file.name;
+    button.querySelector(".file-name").textContent = documentDisplayName(file);
     button.querySelector(".file-dirty").setAttribute("aria-label", localized("未保存"));
     button.querySelector(".file-dirty").hidden = !file.dirty;
     button.addEventListener("click", () => {
       if (file.documentId) activateDocument(file.documentId, { announce: true, notifyHost: true });
       else if (file.path) bridge({ type: "openFile", path: file.path });
     });
+    button.addEventListener("contextmenu", event => showFileContextMenu(file, event));
     row.append(button);
     if (file.documentId || file.path) {
       const close = document.createElement("button");
@@ -1282,20 +1468,34 @@ function renderFiles() {
       row.append(close);
     }
     list.append(row);
+    if (imagesExpanded) {
+      const assets = document.createElement("div");
+      assets.className = "file-assets";
+      images.forEach(image => {
+        const asset = document.createElement("button");
+        asset.className = "file-asset";
+        asset.title = image.relative || image.name;
+        asset.innerHTML = '<svg aria-hidden="true"><use href="#i-image"/></svg><span></span>';
+        asset.querySelector("span").textContent = image.name;
+        asset.addEventListener("click", () => void previewDocumentImage(image));
+        assets.append(asset);
+      });
+      list.append(assets);
+    }
   });
   renderQuickResults(entries);
 }
 
 function renderQuickResults(files = visibleFileEntries(), query = "") {
   const normalized = query.trim().toLocaleLowerCase();
-  const results = files.filter(file => file.name.toLocaleLowerCase().includes(normalized));
+  const results = files.filter(file => documentDisplayName(file).toLocaleLowerCase().includes(normalized));
   const container = $("#quick-open-results");
   container.innerHTML = "";
   results.forEach((file, index) => {
     const button = document.createElement("button");
     button.className = `quick-result${index === 0 ? " is-active" : ""}`;
     const name = document.createElement("span");
-    name.textContent = file.name;
+    name.textContent = documentDisplayName(file);
     const path = document.createElement("small");
     path.textContent = file.path || localized("当前草稿");
     button.append(name, path);
@@ -1605,6 +1805,7 @@ function compareWorkspaceFiles(left, right) {
 
 function setWorkspaceSnapshot(payload = {}) {
   setWorkspaceState(payload.state || {});
+  state.directories = Array.isArray(payload.directories) ? [...payload.directories].sort(compareWorkspaceDirectories) : [];
   // 非空工作区直接打开排序后的首篇文稿；空工作区仍保留系统创建的占位草稿。
   setWorkspaceFiles(payload.files || [], { openFirst: true });
 }
@@ -1612,6 +1813,8 @@ function setWorkspaceSnapshot(payload = {}) {
 function resetWorkspaceSession() {
   state.documents = [];
   state.files = [];
+  state.directories = [];
+  state.expandedImagePaths.clear();
   state.workspaceDocuments = [];
   state.graph = { nodes: [], edges: [] };
   workspaceKnowledgeRequest += 1;
@@ -2662,6 +2865,25 @@ $("#graph-refresh").addEventListener("click", () => void refreshKnowledgeGraph()
 $("#graph-search").addEventListener("input", event => filterKnowledgeGraph(event.target.value));
 $("#sidebar-toggle").addEventListener("click", () => $("#sidebar").classList.toggle("is-hidden"));
 $("#new-file-button").addEventListener("click", () => createUntitledDocument());
+$("#new-folder-button").addEventListener("click", () => toggleNewFolderForm());
+$("#new-folder-cancel").addEventListener("click", () => toggleNewFolderForm(false));
+$("#new-folder-form").addEventListener("submit", event => {
+  event.preventDefault();
+  const relativePath = $("#new-folder-input").value.trim();
+  if (relativePath) void createWorkspaceFolder(relativePath);
+});
+$("#new-folder-input").addEventListener("keydown", event => {
+  if (event.key === "Escape") { event.preventDefault(); toggleNewFolderForm(false); }
+});
+$("#file-context-menu").addEventListener("click", event => {
+  const action = event.target.closest("button[data-file-action]")?.dataset.fileAction;
+  if (action) void handleFileContextAction(action);
+});
+$("#file-list").addEventListener("scroll", closeFileContextMenu);
+$("#image-preview-close").addEventListener("click", closeImagePreview);
+$("#image-preview").addEventListener("mousedown", event => {
+  if (event.target === $("#image-preview")) closeImagePreview();
+});
 $("#settings-button").addEventListener("click", () => togglePreferences(true));
 $("#workspace-button").addEventListener("click", () => { togglePreferences(true); showWorkspaceForm(activeWorkspace()); });
 $("#workspace-add").addEventListener("click", () => showWorkspaceForm());
@@ -2754,6 +2976,15 @@ $("#theme-import").addEventListener("click", async () => {
     }
   } catch (error) { toast(error.message); }
 });
+$("#theme-choose-folder").addEventListener("click", async () => {
+  try {
+    const result = await hostRequest("chooseThemeFolder");
+    if (!result?.canceled) {
+      registerCustomThemes(result.themes || []);
+      toast(localized("主题目录已更新"));
+    }
+  } catch (error) { toast(error.message); }
+});
 $("#theme-folder").addEventListener("click", async () => {
   try { await hostRequest("openThemeFolder"); }
   catch (error) { toast(error.message); }
@@ -2781,7 +3012,10 @@ document.addEventListener("keydown", event => {
   const command = event.metaKey || event.ctrlKey;
   if (command && event.key.toLowerCase() === "p") { event.preventDefault(); openQuickOpen(); }
   if (command && event.key.toLowerCase() === "f") { event.preventDefault(); showFind(); }
-  if (event.key === "Escape") { closeQuickOpen(); closeFind(); togglePreferences(false); toggleExportDialog(false); toggleKnowledgeGraph(false); }
+  if (event.key === "Escape") { closeFileContextMenu(); closeImagePreview(); closeQuickOpen(); closeFind(); togglePreferences(false); toggleExportDialog(false); toggleKnowledgeGraph(false); }
+});
+document.addEventListener("pointerdown", event => {
+  if (!event.target.closest("#file-context-menu")) closeFileContextMenu();
 });
 
 function restorePreferences() {
@@ -2812,6 +3046,7 @@ window.Mory = {
   loadMarkdown: markdown => loadMarkdown(markdown, true),
   openDocument,
   newDocument: () => createUntitledDocument(),
+  newFolder: () => toggleNewFolderForm(true),
   closeDocument,
   normalizeMarkdown: renderMarkdownDocumentAtCaret,
   getMarkdown: () => state.sourceMode ? sourceEditor.value : editorToMarkdown(write),

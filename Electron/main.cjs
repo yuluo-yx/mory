@@ -1,7 +1,7 @@
 const { app, BrowserWindow, dialog, ipcMain, Menu, shell } = require("electron");
 const fs = require("node:fs/promises");
 const path = require("node:path");
-const { createWorkspaceManager, importImage, listDocuments, loadDocumentAssets, readWorkspaceDocuments, relocateDocumentAssets } = require("./workspaces.cjs");
+const { createWorkspaceDirectory, createWorkspaceManager, importImage, listDirectories, listDocuments, loadDocumentAssets, readDocumentImage, readWorkspaceDocuments, relocateDocumentAssets, sanitizeSegment } = require("./workspaces.cjs");
 const { createThemeManager } = require("./themes.cjs");
 const { createWorkspaceWatcher } = require("./workspace-watcher.cjs");
 
@@ -20,7 +20,7 @@ const workspaceWatcher = createWorkspaceWatcher({
 });
 
 const menuEnglish = {
-  "文件": "File", "新建": "New", "打开…": "Open…", "打开文件夹…": "Open Folder…", "保存": "Save", "另存为…": "Save As…", "导出": "Export", "退出": "Quit",
+  "文件": "File", "新建": "New", "新建目录": "New Folder", "打开…": "Open…", "打开文件夹…": "Open Folder…", "保存": "Save", "另存为…": "Save As…", "导出": "Export", "退出": "Quit",
   "编辑": "Edit", "撤销": "Undo", "重做": "Redo", "剪切": "Cut", "复制": "Copy", "粘贴": "Paste", "全选": "Select All", "查找和替换": "Find and Replace",
   "格式": "Format", "加粗": "Bold", "斜体": "Italic", "删除线": "Strikethrough", "行内代码": "Inline Code",
   "显示": "View", "显示／隐藏侧边栏": "Show/Hide Sidebar", "源代码模式": "Source Mode", "专注模式": "Focus Mode", "打字机模式": "Typewriter Mode",
@@ -107,9 +107,25 @@ async function getMarkdown() {
   return typeof markdown === "string" ? markdown : currentMarkdown;
 }
 
-async function writeDocument(filePath) {
+function suggestedDocumentName(markdown) {
+  const heading = String(markdown || "").match(/^#\s+(.+?)\s*#*\s*$/m)?.[1]?.replace(/[*_`~]/g, "").trim();
+  const fallback = /^未命名(?: \d+)?\.md$/i.test(currentDocumentName) ? currentDocumentName.replace(/\.md$/i, "") : path.basename(currentDocumentName, path.extname(currentDocumentName));
+  return `${sanitizeSegment(heading || fallback || "未命名")}.md`;
+}
+
+async function availableDocumentPath(root, filename) {
+  const extension = path.extname(filename) || ".md";
+  const base = path.basename(filename, extension);
+  for (let serial = 1; ; serial += 1) {
+    const candidate = path.join(root, serial === 1 ? `${base}${extension}` : `${base} ${serial}${extension}`);
+    try { await fs.access(candidate); }
+    catch (error) { if (error.code === "ENOENT") return candidate; throw error; }
+  }
+}
+
+async function writeDocument(filePath, sourceMarkdown) {
   try {
-    let markdown = await getMarkdown();
+    let markdown = typeof sourceMarkdown === "string" ? sourceMarkdown : await getMarkdown();
     markdown = await relocateDocumentAssets({
       root: workspaceManager.activeRoot(), markdown, oldPath: currentFilePath, oldName: currentDocumentName, newPath: filePath
     });
@@ -138,8 +154,8 @@ async function refreshWorkspace() {
   const root = workspaceManager.activeRoot();
   await fs.mkdir(root, { recursive: true });
   workspaceWatcher.start(root);
-  const files = await listDocuments(root);
-  await sendJSON("window.Mory.setWorkspaceSnapshot", { state: workspaceManager.state(), files });
+  const [files, directories] = await Promise.all([listDocuments(root), listDirectories(root)]);
+  await sendJSON("window.Mory.setWorkspaceSnapshot", { state: workspaceManager.state(), files, directories });
 }
 
 async function handleWorkspaceRequest(method, args = {}) {
@@ -196,6 +212,11 @@ async function handleWorkspaceRequest(method, args = {}) {
       }
       return { deleted: true };
     }
+    case "createDirectory": {
+      const directory = await createWorkspaceDirectory(workspaceManager.activeRoot(), args.relativePath);
+      await refreshWorkspace();
+      return directory;
+    }
     case "syncWorkspace": {
       const action = args.action === "push" ? "push" : "pull";
       const summary = await workspaceManager.sync(action);
@@ -204,6 +225,26 @@ async function handleWorkspaceRequest(method, args = {}) {
     }
     case "importImage":
       return importImage({ root: workspaceManager.activeRoot(), ...args });
+    case "documentAssets":
+      return currentFilePath ? loadDocumentAssets(currentFilePath, String(args.markdown || "")) : {};
+    case "documentImage":
+      return readDocumentImage(workspaceManager.activeRoot(), args.path);
+    case "revealFile": {
+      const root = path.resolve(workspaceManager.activeRoot());
+      const filePath = path.resolve(String(args.path || ""));
+      const local = path.relative(root, filePath);
+      if (!local || local === ".." || local.startsWith(`..${path.sep}`) || path.isAbsolute(local)) throw new Error("文件必须位于当前工作区内。");
+      shell.showItemInFolder(filePath);
+      return { revealed: true };
+    }
+    case "readDocument": {
+      const root = path.resolve(workspaceManager.activeRoot());
+      const filePath = path.resolve(String(args.path || ""));
+      const local = path.relative(root, filePath);
+      if (!local || local === ".." || local.startsWith(`..${path.sep}`) || path.isAbsolute(local)) throw new Error("文稿必须位于当前工作区内。");
+      const markdown = await fs.readFile(filePath, "utf8");
+      return { name: path.basename(filePath), path: filePath, markdown, assets: await loadDocumentAssets(filePath, markdown) };
+    }
     case "workspaceDocuments":
       return readWorkspaceDocuments(workspaceManager.activeRoot());
     case "listThemes":
@@ -217,10 +258,20 @@ async function handleWorkspaceRequest(method, args = {}) {
       return { themes: await themeManager.importFile(result.filePaths[0]) };
     }
     case "openThemeFolder": {
+      await themeManager.initialize();
       await fs.mkdir(themeManager.directory, { recursive: true });
       const error = await shell.openPath(themeManager.directory);
       if (error) throw new Error(error);
       return { opened: true };
+    }
+    case "chooseThemeFolder": {
+      await themeManager.initialize();
+      const result = await dialog.showOpenDialog(mainWindow, {
+        defaultPath: themeManager.directory,
+        properties: ["openDirectory", "createDirectory"]
+      });
+      if (result.canceled || !result.filePaths[0]) return { canceled: true };
+      return themeManager.setDirectory(result.filePaths[0]);
     }
     default:
       throw new Error(`未知宿主请求：${method}`);
@@ -229,7 +280,10 @@ async function handleWorkspaceRequest(method, args = {}) {
 
 async function saveDocument() {
   if (currentFilePath) await writeDocument(currentFilePath);
-  else await saveAs();
+  else if (workspaceManager?.active()?.isImplicit !== true) {
+    const markdown = await getMarkdown();
+    await writeDocument(await availableDocumentPath(workspaceManager.activeRoot(), suggestedDocumentName(markdown)), markdown);
+  } else await saveAs();
 }
 
 async function renderExportHTML(options) {
@@ -304,6 +358,7 @@ function buildMenu() {
       label: "文件",
       submenu: [
         { label: "新建", accelerator: "CmdOrCtrl+N", click: newDocument },
+        { label: "新建目录", accelerator: "CmdOrCtrl+Shift+N", click: () => runEditor("window.Mory.newFolder()") },
         { label: "打开…", accelerator: "CmdOrCtrl+O", click: openDocument },
         { label: "打开文件夹…", accelerator: "CmdOrCtrl+Shift+O", click: openFolder },
         { type: "separator" },
@@ -429,6 +484,7 @@ app.whenReady().then(async () => {
   workspaceManager = createWorkspaceManager({ userDataPath: app.getPath("userData"), sidecarPath: storageSidecarPath });
   themeManager = createThemeManager({ userDataPath: app.getPath("userData") });
   await workspaceManager.initialize();
+  await themeManager.initialize();
   createWindow();
   const argument = process.argv.find(value => /\.(?:md|markdown|mmd|mdown|mkd|txt)$/i.test(value));
   if (argument) loadFile(path.resolve(argument));
