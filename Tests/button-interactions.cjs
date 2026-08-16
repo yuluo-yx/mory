@@ -248,7 +248,7 @@ app.whenReady().then(async () => {
     ])`);
     await click(window, "#graph-button");
     await expect(window, "右下角知识图谱入口可打开", "document.querySelector('#knowledge-graph').classList.contains('is-open')");
-    await expect(window, "知识图谱渲染工作区节点和链接", "document.querySelectorAll('#graph-svg .graph-node').length === 4 && document.querySelectorAll('#graph-svg .graph-link').length === 3");
+    await expectEventually(window, "知识图谱渲染工作区节点和链接", "document.querySelectorAll('#graph-svg .graph-node').length === 4 && document.querySelectorAll('#graph-svg .graph-link').length === 3");
     const graphWheelPoint = await inspect(window, `(() => {
       const editor = document.querySelector('#editor-scroll');
       editor.dataset.scrollBeforeGraphZoom = String(editor.scrollTop);
@@ -265,13 +265,13 @@ app.whenReady().then(async () => {
       canScroll: true
     });
     await wait(180);
-    await expect(window, "知识图谱滚轮以画布为中心缩放且不滚动正文", "document.querySelector('#graph-stage').getAttribute('transform')?.includes('scale(') && document.querySelector('#graph-zoom').value !== '100%' && document.querySelector('#editor-scroll').scrollTop === Number(document.querySelector('#editor-scroll').dataset.scrollBeforeGraphZoom)");
+    await expectEventually(window, "知识图谱滚轮以画布为中心缩放且不滚动正文", "document.querySelector('#graph-stage').getAttribute('transform')?.includes('scale(') && document.querySelector('#graph-zoom').value !== '100%' && document.querySelector('#editor-scroll').scrollTop === Number(document.querySelector('#editor-scroll').dataset.scrollBeforeGraphZoom)");
     await click(window, "#graph-svg .graph-node[data-node-id='专题/设计.md'] circle");
-    await expect(window, "单击节点展示正向链接与反向链接", "!document.querySelector('#graph-relations').hidden && document.querySelectorAll('#graph-forward-list button').length === 1 && document.querySelectorAll('#graph-backlink-list button').length === 2");
-    await expect(window, "图谱区分正向、反向和互相引用", "document.querySelectorAll('#graph-svg .graph-link.is-outgoing').length === 1 && document.querySelectorAll('#graph-svg .graph-link.is-incoming').length === 2 && document.querySelectorAll('#graph-svg .graph-node.is-mutual').length === 1 && document.querySelectorAll('#graph-svg .graph-node.is-backlink').length === 2");
+    await expectEventually(window, "单击节点展示正向链接与反向链接", "!document.querySelector('#graph-relations').hidden && document.querySelectorAll('#graph-forward-list button').length === 1 && document.querySelectorAll('#graph-backlink-list button').length === 2");
+    await expectEventually(window, "图谱区分正向、反向和互相引用", "document.querySelectorAll('#graph-svg .graph-link.is-outgoing').length === 1 && document.querySelectorAll('#graph-svg .graph-link.is-incoming').length === 2 && document.querySelectorAll('#graph-svg .graph-node.is-mutual').length === 1 && document.querySelectorAll('#graph-svg .graph-node.is-backlink').length === 2");
     await click(window, "#graph-relations-close");
     await inspect(window, "(() => { const input = document.querySelector('#graph-search'); input.value = '孤立'; input.dispatchEvent(new Event('input', { bubbles: true })); })()");
-    await expect(window, "知识图谱支持文稿筛选", "document.querySelectorAll('#graph-svg .graph-node.is-match').length === 1 && document.querySelectorAll('#graph-svg .graph-node.is-dimmed').length === 3");
+    await expectEventually(window, "知识图谱支持文稿筛选", "document.querySelectorAll('#graph-svg .graph-node.is-match').length === 1 && document.querySelectorAll('#graph-svg .graph-node.is-dimmed').length === 3");
     await click(window, "#graph-close");
     await expect(window, "知识图谱可关闭", "!document.querySelector('#knowledge-graph').classList.contains('is-open')");
 
