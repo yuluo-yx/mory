@@ -12,13 +12,17 @@ test("desktop hosts use atomic workspace snapshots to avoid file-list races", ()
   assert.match(macOS, /window\.Mory\.setWorkspaceSnapshot/);
 });
 
-test("desktop hosts expose creation timestamps for stable sidebar ordering", () => {
+test("desktop hosts expose file timestamps and sizes for stable ordering and optional details", () => {
   const electron = fs.readFileSync(path.join(root, "Electron", "workspaces.cjs"), "utf8");
   const macOS = fs.readFileSync(path.join(root, "Sources", "Mory", "WorkspaceManager.swift"), "utf8");
   assert.match(electron, /stat\.birthtimeMs/);
   assert.match(electron, /compareDocumentsByCreation/);
+  assert.match(electron, /updatedAt: Number\(stat\.mtimeMs\)/);
+  assert.match(electron, /size: Number\(stat\.size\)/);
   assert.match(macOS, /\.creationDateKey/);
   assert.match(macOS, /"createdAt"/);
+  assert.match(macOS, /\.fileSizeKey/);
+  assert.match(macOS, /"updatedAt"/);
 });
 
 test("macOS and Windows hosts watch workspaces recursively and refresh atomic snapshots", () => {
@@ -110,6 +114,28 @@ test("macOS PDF export uses asynchronous WebKit generation and background pagina
   assert.match(paginator, /context\.beginPDFPage/);
   assert.match(paginator, /context\.drawPDFPage/);
   assert.doesNotMatch(source, /operation\.run\(\)/);
+});
+
+test("desktop hosts save mind maps as standalone HTML files", () => {
+  const electron = fs.readFileSync(path.join(root, "Electron", "main.cjs"), "utf8");
+  const macOS = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
+  const windows = fs.readFileSync(path.join(root, "cmd", "mory-windows", "platform_windows.go"), "utf8");
+  assert.match(electron, /format === "mindmap" \? "html"/);
+  assert.match(electron, /format === "html" \|\| format === "mindmap"/);
+  assert.match(macOS, /format == "mindmap" \? "html"/);
+  assert.match(macOS, /format == "html" \|\| format == "mindmap"/);
+  assert.match(windows, /extension == "mindmap"/);
+  assert.match(windows, /request\.Format == "html" \|\| request\.Format == "mindmap"/);
+});
+
+test("macOS rebuilds and localizes top-level application menus after locale changes", () => {
+  const host = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
+  const localizer = fs.readFileSync(path.join(root, "Sources", "Mory", "MenuLocalizer.swift"), "utf8");
+  assert.match(host, /case "localeChanged":/);
+  assert.match(host, /configureMenu\(\)/);
+  assert.match(host, /MenuLocalizer\.localize\(main, locale: interfaceLocale\)/);
+  assert.match(localizer, /menu\.title = englishTitle\(for: menu\.title\)/);
+  assert.match(localizer, /item\.title = submenu\.title/);
 });
 
 test("macOS sidebar and document title bars share native window zoom behavior", () => {

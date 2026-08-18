@@ -444,6 +444,13 @@ app.whenReady().then(async () => {
     await expect(window, "disabling the status bar takes effect immediately", "document.querySelector('#statusbar').hidden && getComputedStyle(document.querySelector('#statusbar')).display === 'none' && localStorage.getItem('mory.status') === 'false'");
     await click(window, ".setting-row:has(#status-toggle) .switch span");
     await expect(window, "re-enabling the status bar takes effect immediately", "!document.querySelector('#statusbar').hidden && getComputedStyle(document.querySelector('#statusbar')).display === 'flex' && localStorage.getItem('mory.status') === 'true'");
+    await inspect(window, "window.Mory.setFiles([{ name: 'Details.md', path: '/virtual/Details.md', createdAt: 1, updatedAt: 1787070600000, size: 1536, images: [{ name: 'cover.png', path: '/virtual/Details/cover.png', relative: 'Details/cover.png', updatedAt: 1787070600000, size: 5242880 }] }])");
+    await click(window, ".setting-row:has(#file-details-toggle) .switch span");
+    await expect(window, "file details setting shows document size and update time", "document.querySelector('.file-item[data-path=\"/virtual/Details.md\"] .file-meta')?.textContent.includes('1.5 KB') && localStorage.getItem('mory.fileDetails') === 'true'");
+    await inspect(window, "document.querySelector('.file-row:has(.file-item[data-path=\"/virtual/Details.md\"]) .file-expander').click()");
+    await expect(window, "expanded image rows show image size and update time", "document.querySelector('.file-assets .file-meta')?.textContent.includes('5 MB')");
+    await click(window, ".setting-row:has(#file-details-toggle) .switch span");
+    await expect(window, "file details setting hides optional metadata", "!document.querySelector('#file-list .file-meta') && localStorage.getItem('mory.fileDetails') === 'false'");
     await inspect(window, "(() => { const bar = document.querySelector('#statusbar'); window.__statusBeforeZoom = { font: parseFloat(getComputedStyle(bar).fontSize), height: bar.getBoundingClientRect().height }; window.Mory.zoom(1); window.Mory.zoom(1); })()");
     await expect(window, "editor zoom scales status-bar text and height", "(() => { const bar = document.querySelector('#statusbar'); return parseFloat(getComputedStyle(bar).fontSize) >= window.__statusBeforeZoom.font * 1.19 && bar.getBoundingClientRect().height > window.__statusBeforeZoom.height; })()");
     await inspect(window, "window.Mory.zoom(0)");
@@ -796,6 +803,25 @@ app.whenReady().then(async () => {
       }
     })()`);
     await expect(window, "dash and numeric markers convert to toolbar-equivalent lists", "document.querySelector('#write > ul > li')?.textContent === '\u65E0\u5E8F\u9879\u76EE' && document.querySelector('#write > ol > li')?.textContent === '\u6709\u5E8F\u9879\u76EE' && window.Mory.getMarkdown().includes('- \u65E0\u5E8F\u9879\u76EE') && window.Mory.getMarkdown().includes('1. \u6709\u5E8F\u9879\u76EE')");
+
+    await inspect(window, `(() => {
+      window.Mory.loadMarkdown('');
+      const paragraph = document.querySelector('#write p');
+      const range = document.createRange();
+      range.setStart(paragraph, 0);
+      range.collapse(true);
+      getSelection().removeAllRanges();
+      getSelection().addRange(range);
+      document.querySelector('#write').focus();
+    })()`);
+    await click(window, "#toolbar [data-command='calendar']");
+    await expect(window, "calendar toolbar action inserts an editable seven-column table", "document.querySelectorAll('#write > table thead th').length === 7 && document.querySelector('#write > .table-tools') && window.Mory.getMarkdown().includes('| --- | --- | --- | --- | --- | --- | --- |')");
+
+    await inspect(window, `window.Mory.loadMarkdown(${JSON.stringify("# Mory\u7F16\u8F91\u5668\n\n**\u4E2D\u6587English**\n\n\`const value=1\`")})`);
+    await click(window, "#toolbar [data-command='typography']");
+    await expect(window, "typography optimization adds CJK spacing without changing inline code", "window.Mory.getMarkdown().includes('Mory \u7F16\u8F91\u5668') && window.Mory.getMarkdown().includes('\u4E2D\u6587 English') && window.Mory.getMarkdown().includes('`const value=1`')");
+    await inspect(window, "window.Mory.exportDocument({ format: 'mindmap' }).then(html => { window.__mindMapHTML = html; })");
+    await expect(window, "mind-map export produces a standalone heading map", "window.__mindMapHTML.startsWith('<!doctype html>') && window.__mindMapHTML.includes('<svg') && window.__mindMapHTML.includes('Mory') && !window.__mindMapHTML.includes('<script')");
 
     await inspect(window, `(() => {
       window.Mory.loadMarkdown(${JSON.stringify("```go\nfunc main() {\n  fmt.Println(\"hello\")\n}\n```\n\n\u6B63\u6587")});

@@ -335,8 +335,8 @@ async function createExportView(html, width = 900) {
 
 async function exportRendered(options = {}) {
   const format = options.format || "html";
-  const extension = format === "jpeg" ? "jpg" : format;
-  const filterNames = { html: "HTML", pdf: "PDF", png: "PNG", jpeg: "JPEG" };
+  const extension = format === "jpeg" ? "jpg" : (format === "mindmap" ? "html" : format);
+  const filterNames = { html: "HTML", mindmap: "Mind Map", pdf: "PDF", png: "PNG", jpeg: "JPEG" };
   const result = await dialog.showSaveDialog(mainWindow, {
     defaultPath: `${currentFilePath ? path.basename(currentFilePath, path.extname(currentFilePath)) : "未命名"}.${extension}`,
     filters: [{ name: filterNames[format] || format.toUpperCase(), extensions: [extension] }]
@@ -345,7 +345,7 @@ async function exportRendered(options = {}) {
   let exportView;
   try {
     const html = await renderExportHTML(options);
-    if (format === "html") {
+    if (format === "html" || format === "mindmap") {
       await fs.writeFile(result.filePath, html, "utf8");
     } else if (format === "pdf") {
       exportView = await createExportView(html, 920);
@@ -401,7 +401,8 @@ function buildMenu() {
             { label: "PDF…", click: () => exportRendered({ format: "pdf", theme: "current", paper: "A4", background: true }) },
             { label: "HTML…", click: () => exportRendered({ format: "html", theme: "current", background: true }) },
             { label: "PNG…", click: () => exportRendered({ format: "png", theme: "current", width: 900, background: true }) },
-            { label: "JPEG…", click: () => exportRendered({ format: "jpeg", theme: "current", width: 900, background: true }) }
+            { label: "JPEG…", click: () => exportRendered({ format: "jpeg", theme: "current", width: 900, background: true }) },
+            { label: "Mind Map…", click: () => exportRendered({ format: "mindmap" }) }
           ]
         },
         { type: "separator" },

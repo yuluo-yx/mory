@@ -113,6 +113,8 @@ func (platform *windowsPlatform) Export(request windowshost.ExportRequest) error
 	extension := request.Format
 	if extension == "jpeg" {
 		extension = "jpg"
+	} else if extension == "mindmap" {
+		extension = "html"
 	}
 	defaultName := request.Name
 	if defaultName == "" {
@@ -125,7 +127,7 @@ func (platform *windowsPlatform) Export(request windowshost.ExportRequest) error
 	if request.HTML == "" {
 		return errors.New("前端没有返回已渲染的导出页面")
 	}
-	if request.Format == "html" {
+	if request.Format == "html" || request.Format == "mindmap" {
 		return writeExportFile(path, []byte(request.HTML))
 	}
 	return exportWithEdge(platform.context(), request, path)

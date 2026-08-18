@@ -141,7 +141,10 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width:
 .file-item.is-selected:not(.is-active) { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--text); }
 .file-symbol { width: 19px; flex: none; color: var(--sidebar-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; }
 .file-item.is-active .file-symbol { color: var(--accent); }
-.file-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-copy, .file-asset-copy { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.file-name, .file-asset-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-meta { overflow: hidden; color: var(--sidebar-faint); font-size: 10px; font-weight: 400; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.file-item:has(.file-meta) { min-height: 48px; }
 .file-dirty { width: 5px; height: 5px; flex: none; border-radius: 50%; background: var(--accent); }
 .file-dirty[hidden] { display: none; }
 .file-close { position: absolute; top: 50%; right: 4px; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 4px; color: var(--muted); opacity: 0; transform: translateY(-50%); pointer-events: none; }
@@ -153,7 +156,7 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width:
 .file-asset { width: 100%; min-height: 29px; padding: 5px 8px 5px 12px; display: flex; align-items: center; gap: 7px; overflow: hidden; color: var(--sidebar-muted); text-align: left; font-size: 12px; }
 .file-asset:hover { background: color-mix(in srgb, var(--text) 5%, transparent); color: var(--text); }
 .file-asset svg { width: 13px; height: 13px; flex: none; color: var(--sidebar-faint); }
-.file-asset span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-asset:has(.file-meta) { min-height: 40px; }
 .sidebar-footer { height: 42px; display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: var(--sidebar-deep); border-top: 1px solid var(--line); }
 .workspace-status { min-width: 0; flex: 1; overflow: hidden; text-align: center; text-overflow: ellipsis; white-space: nowrap; color: var(--sidebar-faint); font-size: 12px; }
 .workspace-status:hover { color: var(--text); }

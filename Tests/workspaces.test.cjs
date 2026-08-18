@@ -120,7 +120,11 @@ test("lists documents recursively while ignoring non-documents in asset folders"
   assert.equal(documents.length, 1);
   assert.deepEqual({ name: documents[0].name, path: documents[0].path }, { name: path.join("\u4E13\u9898", "\u6587\u7AE0.md"), path: path.join(root, "\u4E13\u9898", "\u6587\u7AE0.md") });
   assert.ok(Number.isFinite(documents[0].createdAt));
+  assert.equal(documents[0].size, Buffer.byteLength("# \u6587\u7AE0"));
+  assert.ok(Number.isFinite(documents[0].updatedAt));
   assert.deepEqual(documents[0].images.map(image => image.relative), ["\u6587\u7AE0/image.png"]);
+  assert.equal(documents[0].images[0].size, Buffer.byteLength("image"));
+  assert.ok(Number.isFinite(documents[0].images[0].updatedAt));
   const preview = await readDocumentImage(root, documents[0].images[0].path);
   assert.match(preview.dataURL, /^data:image\/png;base64,/);
   await assert.rejects(() => readDocumentImage(root, path.join(root, "\u4E13\u9898", "\u6587\u7AE0.md")), /\u56FE\u7247\u683C\u5F0F/);

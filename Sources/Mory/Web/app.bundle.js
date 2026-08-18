@@ -412,6 +412,156 @@ function buildKnowledgeGraph(documents = []) {
 }
 
 
+function protectMarkdownSyntax(source) {
+  const values = [];
+  const token = value => {
+    const index = values.push(value) - 1;
+    return `\uE100${index}\uE101`;
+  };
+  const protectedSource = String(source)
+    .replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, token)
+    .replace(/`[^`\n]*`/g, token)
+    .replace(/(?<=\]\()[^)\s]+(?=(?:\s+["'][^"']*["'])?\))/g, token)
+    .replace(/https?:\/\/[^\s)]+/g, token)
+    .replace(/<[^>\n]+>/g, token)
+    .replace(/\\[!-/:-@[-`{-~]|\*\*|__|~~/g, token);
+  return {
+    source: protectedSource,
+    restore(value) {
+      return String(value).replace(/\uE100(\d+)\uE101/g, (_, index) => values[Number(index)] ?? "");
+    }
+  };
+}
+
+function optimizeMarkdownTypography(markdown, spacingText) {
+  if (typeof spacingText !== "function") throw new TypeError("A text-spacing function is required");
+  const protectedMarkdown = protectMarkdownSyntax(String(markdown ?? ""));
+  return protectedMarkdown.restore(spacingText(protectedMarkdown.source));
+}
+
+function calendarMarkdown(date = new Date(), locale = "zh-CN") {
+  const selected = new Date(date);
+  if (Number.isNaN(selected.getTime())) throw new TypeError("A valid calendar date is required");
+  const year = selected.getFullYear();
+  const month = selected.getMonth();
+  const labels = locale === "en"
+    ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    : ["一", "二", "三", "四", "五", "六", "日"];
+  const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7;
+  const days = new Date(year, month + 1, 0).getDate();
+  const cells = [...Array(firstWeekday).fill(""), ...Array.from({ length: days }, (_, index) => String(index + 1))];
+  while (cells.length % 7) cells.push("");
+  const rows = [];
+  for (let index = 0; index < cells.length; index += 7) rows.push(`| ${cells.slice(index, index + 7).join(" | ")} |`);
+  return `| ${labels.join(" | ")} |\n| ${labels.map(() => "---").join(" | ")} |\n${rows.join("\n")}`;
+}
+
+function formatFileSize(bytes) {
+  const value = Number(bytes);
+  if (!Number.isFinite(value) || value < 0) return "";
+  if (value < 1024) return `${Math.round(value)} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let scaled = value / 1024;
+  let unit = 0;
+  while (scaled >= 1024 && unit < units.length - 1) {
+    scaled /= 1024;
+    unit += 1;
+  }
+  const digits = scaled >= 100 ? 0 : 1;
+  return `${scaled.toFixed(digits).replace(/\.0$/, "")} ${units[unit]}`;
+}
+
+function formatUpdatedAt(value, locale = "zh-CN") {
+  const date = new Date(Number(value));
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat(locale === "en" ? "en-US" : "zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
+}
+
+function plainHeadingText(value) {
+  return String(value)
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/[*_`~]/g, "")
+    .replace(/<[^>]+>/g, "")
+    .trim();
+}
+
+function markdownHeadingTree(markdown, title = "Untitled") {
+  const root = { text: String(title || "Untitled"), level: 0, children: [] };
+  const stack = [{ level: 0, node: root }];
+  let fence = "";
+  for (const line of String(markdown ?? "").replace(/\r\n?/g, "\n").split("\n")) {
+    const fenceMatch = line.match(/^\s*(```|~~~)/);
+    if (fenceMatch) {
+      fence = fence ? (fence === fenceMatch[1] ? "" : fence) : fenceMatch[1];
+      continue;
+    }
+    if (fence) continue;
+    const heading = line.match(/^(#{1,6})\s+(.+?)\s*#*\s*$/);
+    if (!heading) continue;
+    const text = plainHeadingText(heading[2]);
+    if (!text) continue;
+    const level = heading[1].length;
+    if (root.children.length === 0 && level === 1 && text === root.text) {
+      stack.splice(1);
+      stack.push({ level, node: root });
+      continue;
+    }
+    while (stack.length > 1 && stack.at(-1).level >= level) stack.pop();
+    const node = { text, level, children: [] };
+    stack.at(-1).node.children.push(node);
+    stack.push({ level, node });
+  }
+  return root;
+}
+
+function mindMapEntries(tree) {
+  const entries = [];
+  const visit = (node, depth, parent = null) => {
+    const entry = { node, depth, parent, index: entries.length };
+    entries.push(entry);
+    node.children.forEach(child => visit(child, depth + 1, entry));
+  };
+  visit(tree, 0);
+  return entries;
+}
+
+function mindMapHTML(markdown, title = "Untitled", locale = "zh-CN") {
+  const tree = markdownHeadingTree(markdown, title);
+  const entries = mindMapEntries(tree);
+  const maxDepth = Math.max(...entries.map(entry => entry.depth));
+  const width = Math.max(720, 260 + maxDepth * 240);
+  const height = Math.max(320, 100 + entries.length * 70);
+  const position = entry => ({ x: 38 + entry.depth * 240, y: 42 + entry.index * 70 });
+  const edges = entries.filter(entry => entry.parent).map(entry => {
+    const from = position(entry.parent);
+    const to = position(entry);
+    return `<path d="M${from.x + 190} ${from.y + 23} C${from.x + 215} ${from.y + 23},${to.x - 25} ${to.y + 23},${to.x} ${to.y + 23}"/>`;
+  }).join("");
+  const nodes = entries.map((entry, index) => {
+    const { x, y } = position(entry);
+    const label = entry.node.text.length > 28 ? `${entry.node.text.slice(0, 27)}…` : entry.node.text;
+    return `<g class="node${index === 0 ? " root" : ""}" transform="translate(${x} ${y})"><rect width="190" height="46" rx="9"/><text x="14" y="28">${escapeFeatureHTML(label)}</text><title>${escapeFeatureHTML(entry.node.text)}</title></g>`;
+  }).join("");
+  const description = locale === "en" ? "Generated from Markdown headings by Mory" : "由 Mory 根据 Markdown 标题生成";
+  return `<!doctype html>\n<html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escapeFeatureHTML(title)} - Mind Map</title><style>*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#f6f8fa;color:#1f2328;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}header{padding:24px 32px 12px}h1{margin:0;font-size:22px}p{margin:7px 0;color:#656d76;font-size:13px}main{padding:8px 24px 32px;overflow:auto}svg{display:block;min-width:100%;height:auto}path{fill:none;stroke:#8c959f;stroke-width:1.5}.node rect{fill:#fff;stroke:#afb8c1}.node text{fill:#1f2328;font-size:13px}.node.root rect{fill:#0969da;stroke:#0969da}.node.root text{fill:#fff;font-weight:700}@media(prefers-color-scheme:dark){html,body{background:#0d1117;color:#e6edf3}p{color:#8b949e}path{stroke:#6e7681}.node rect{fill:#161b22;stroke:#30363d}.node text{fill:#e6edf3}.node.root rect{fill:#1f6feb;stroke:#1f6feb}}</style></head><body><header><h1>${escapeFeatureHTML(title)}</h1><p>${description}</p></header><main><svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="${escapeFeatureHTML(title)}">${edges}${nodes}</svg></main></body></html>`;
+}
+
+function escapeFeatureHTML(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 const write = $("#write");
@@ -482,7 +632,8 @@ const state = {
   selectedGraphNodeId: "",
   workspaces: [],
   activeWorkspaceId: "",
-  editingWorkspaceId: ""
+  editingWorkspaceId: "",
+  showFileDetails: false
 };
 
 try {
@@ -525,7 +676,7 @@ const englishText = {
   "本地工作区": "Local workspace", "未命名": "Untitled", "未命名.md": "Untitled.md", "已保存": "Saved", "未保存": "Unsaved",
   "查找": "Find", "替换为": "Replace with", "替换": "Replace", "全部替换": "Replace all", "上一个": "Previous", "下一个": "Next", "关闭": "Close",
   "加粗（⌘B）": "Bold (⌘B)", "斜体（⌘I）": "Italic (⌘I)", "删除线": "Strikethrough", "行内代码": "Inline code",
-  "引用": "Quote", "无序列表": "Bulleted list", "有序列表": "Numbered list", "任务列表": "Task list", "链接（⌘K）": "Link (⌘K)", "表格": "Table", "分隔线": "Horizontal rule",
+  "引用": "Quote", "无序列表": "Bulleted list", "有序列表": "Numbered list", "任务列表": "Task list", "链接（⌘K）": "Link (⌘K)", "表格": "Table", "插入日历": "Insert calendar", "一键优化排版": "Optimize typography", "分隔线": "Horizontal rule",
   "知识图谱": "Knowledge graph", "源代码模式（⌘/）": "Source mode (⌘/)", "导出文档": "Export document",
   "专注模式": "Focus mode", "打字机模式": "Typewriter mode", "正在读取工作区…": "Reading workspace…", "筛选文稿": "Filter notes", "刷新": "Refresh",
   "当前工作区还没有可显示的文稿": "There are no notes to display in this workspace", "当前文稿": "Current note", "工作区文稿": "Workspace note", "文稿链接关系图": "Note connection graph",
@@ -542,8 +693,8 @@ const englishText = {
   "导入 CSS，或把主题与资源放入主题目录": "Import CSS, or place themes and assets in the theme folder", "导入 CSS": "Import CSS", "主题目录": "Theme folder",
   "更改目录": "Change folder", "打开目录": "Open folder", "主题目录已更新": "Theme folder updated",
   "编辑器宽度": "Editor width", "控制正文最大行宽": "Control maximum text width", "窄": "Narrow", "标准": "Standard", "宽": "Wide",
-  "显示状态栏": "Show status bar", "展示行数、字数与模式开关": "Show counts and mode controls", "拼写检查": "Spell check", "使用系统拼写检查能力": "Use the system spell checker",
-  "格式": "Format", "导出主题": "Export theme", "使用当前主题": "Use current theme", "纸张": "Paper", "图片宽度": "Image width", "保留主题背景": "Keep theme background",
+  "显示状态栏": "Show status bar", "展示行数、字数与模式开关": "Show counts and mode controls", "显示文件详情": "Show file details", "在文件树中显示大小与更新时间": "Show size and update time in the file tree", "拼写检查": "Spell check", "使用系统拼写检查能力": "Use the system spell checker",
+  "格式": "Format", "导出主题": "Export theme", "使用当前主题": "Use current theme", "纸张": "Paper", "图片宽度": "Image width", "保留主题背景": "Keep theme background", "思维导图（HTML）": "Mind map (HTML)",
   "PDF 与图片包含当前主题的纸张颜色": "Include theme paper color in PDF and images", "HTML、PDF 不需要 Pandoc": "HTML and PDF do not require Pandoc", "选择位置并导出": "Choose location and export",
   "开始写作…": "Start writing…", "新建文档（⌘N）": "New document (⌘N)", "新建目录": "New folder", "目录名称或路径": "Folder name or path", "创建目录": "Create folder", "目录已创建": "Folder created", "创建目录失败": "Failed to create folder", "取消": "Cancel", "打开文稿": "Open document", "在此新建文稿": "New document here", "在此新建目录": "New folder here", "在文件管理器中显示": "Show in file manager", "重命名…": "Rename…", "重命名条目": "Rename entry", "新名称": "New name", "重命名完成": "Renamed", "复制到…": "Copy to…", "移动到…": "Move to…", "导出…": "Export…", "删除目录": "Delete folder", "选择目标目录": "Choose destination", "工作区根目录": "Workspace root", "复制条目": "Copy entry", "移动条目": "Move entry", "复制完成": "Copied", "移动完成": "Moved", "新文稿已创建": "Document created", "操作失败": "Operation failed", "图片预览": "Image preview", "图片加载失败": "Failed to load image", "展开图片": "Expand images", "收起图片": "Collapse images", "展开目录": "Expand folder", "收起目录": "Collapse folder", "切换或配置工作区": "Switch or configure workspace", "显示／隐藏侧边栏": "Show/hide sidebar", "添加行": "Add row", "删除行": "Delete row", "添加列": "Add column", "删除列": "Delete column",
   "未检测到 Hannotate SC，将使用系统字体，排版观感可能不同。可安装该字体后重新选择主题。": "Hannotate SC was not found. Mory will use the system font, so the layout may look different. Install the font and select this theme again.",
@@ -552,7 +703,8 @@ const englishText = {
   "本地": "Local", "工作目录": "Working folder", "使用“选择本地目录”填写": "Use “Choose local folder”", "仓库": "Repository", "分支": "Branch",
   "API 地址": "API endpoint", "仓库内目录": "Repository path", "S3 兼容服务地址": "S3-compatible endpoint", "服务器": "Server", "端口": "Port",
   "用户名": "Username", "密码": "Password", "私钥或私钥路径": "Private key or path", "默认 ~/.ssh/known_hosts": "Default: ~/.ssh/known_hosts",
-  "远端目录": "Remote path", "区域": "Region", "路径前缀": "Path prefix", "已配置；留空则保持不变": "Configured; leave blank to keep it"
+  "远端目录": "Remote path", "区域": "Region", "路径前缀": "Path prefix", "已配置；留空则保持不变": "Configured; leave blank to keep it",
+  "排版已优化": "Typography optimized", "当前文稿无需优化": "This note already follows the typography rules"
 };
 const staticLocaleNodes = new WeakMap();
 const staticLocaleAttributes = new WeakMap();
@@ -2132,6 +2284,12 @@ function buildWorkspaceTree(entries) {
   return root;
 }
 
+function workspaceEntryDetails(entry) {
+  const size = formatFileSize(entry?.size);
+  const updated = formatUpdatedAt(entry?.updatedAt, locale());
+  return [size, updated].filter(Boolean).join(" · ");
+}
+
 function renderFileEntry(list, file, depth) {
     const row = document.createElement("div");
     row.className = "file-row";
@@ -2165,8 +2323,15 @@ function renderFileEntry(list, file, depth) {
     button.dataset.parentKey = parentKey;
     button.draggable = true;
     if (file.documentId) button.dataset.documentId = file.documentId;
-    button.innerHTML = `<span class="file-symbol">${file.path ? "M" : "M↓"}</span><span class="file-name"></span><span class="file-dirty"></span>`;
+    button.innerHTML = `<span class="file-symbol">${file.path ? "M" : "M↓"}</span><span class="file-copy"><span class="file-name"></span></span><span class="file-dirty"></span>`;
     button.querySelector(".file-name").textContent = String(documentDisplayName(file)).replaceAll("\\", "/").split("/").at(-1);
+    const details = state.showFileDetails ? workspaceEntryDetails(file) : "";
+    if (details) {
+      const metadata = document.createElement("span");
+      metadata.className = "file-meta";
+      metadata.textContent = details;
+      button.querySelector(".file-copy").append(metadata);
+    }
     button.querySelector(".file-dirty").setAttribute("aria-label", localized("未保存"));
     button.querySelector(".file-dirty").hidden = !file.dirty;
     button.addEventListener("click", () => {
@@ -2230,8 +2395,15 @@ function renderFileEntry(list, file, depth) {
         const asset = document.createElement("button");
         asset.className = "file-asset";
         asset.title = image.relative || image.name;
-        asset.innerHTML = '<svg aria-hidden="true"><use href="#i-image"/></svg><span></span>';
-        asset.querySelector("span").textContent = image.name;
+        asset.innerHTML = '<svg aria-hidden="true"><use href="#i-image"/></svg><span class="file-asset-copy"><span class="file-asset-name"></span></span>';
+        asset.querySelector(".file-asset-name").textContent = image.name;
+        const imageDetails = state.showFileDetails ? workspaceEntryDetails(image) : "";
+        if (imageDetails) {
+          const metadata = document.createElement("span");
+          metadata.className = "file-meta";
+          metadata.textContent = imageDetails;
+          asset.querySelector(".file-asset-copy").append(metadata);
+        }
         asset.addEventListener("click", () => void previewDocumentImage(image));
         assets.append(asset);
       });
@@ -2357,8 +2529,32 @@ function execute(command) {
   } else if (command === "table") {
     document.execCommand("insertHTML", false, '<table><thead><tr><th>标题</th><th>标题</th></tr></thead><tbody><tr><td>内容</td><td>内容</td></tr><tr><td>内容</td><td>内容</td></tr></tbody></table><p><br></p>');
     enhanceTables(write);
+  } else if (command === "calendar") {
+    const html = markdownToHTML(calendarMarkdown(new Date(), locale()));
+    document.execCommand("insertHTML", false, `${html}<p><br></p>`);
+    enhanceTables(write);
+  } else if (command === "typography") {
+    optimizeActiveDocumentTypography();
+    return;
   }
   syncFromWrite();
+}
+
+function optimizeActiveDocumentTypography() {
+  const document = activeDocument();
+  if (!document) return;
+  const current = state.sourceMode ? sourceEditor.value : editorToMarkdown(write);
+  const next = optimizeMarkdownTypography(current, value => globalThis.pangu.spacingText(value));
+  if (next === current) {
+    toast(localized("当前文稿无需优化"));
+    return;
+  }
+  document.markdown = next;
+  document.dirty = true;
+  renderDocument(document);
+  markChanged();
+  requestAnimationFrame(() => (state.sourceMode ? sourceEditor : write).focus());
+  toast(localized("排版已优化"));
 }
 
 function wrapSelection(tagName) {
@@ -3285,9 +3481,10 @@ window.addEventListener("resize", () => {
 });
 
 async function exportDocument(options = {}) {
+  const title = $("#document-title").value || localized("未命名");
+  if (options.format === "mindmap") return mindMapHTML(state.markdown, title, locale());
   const theme = options.theme && options.theme !== "current" ? options.theme : state.documentTheme;
   const themeCSS = await readThemeCSS(theme);
-  const title = $("#document-title").value || "Mory 文档";
   const backgroundOverride = options.background === false ? ".editor-scroll{background:#fff!important}" : "";
   const exportRoot = document.createElement("article");
   exportRoot.className = "write";
@@ -3313,7 +3510,9 @@ function syncExportOptions() {
   const format = $("#export-format").value;
   $("#paper-setting").hidden = format !== "pdf";
   $("#image-width-setting").hidden = !["png", "jpeg"].includes(format);
-  $("#export-hint").textContent = ["png", "jpeg"].includes(format) ? "长文档将在独立离屏页面中渲染" : "HTML、PDF 不需要 Pandoc";
+  $("#export-hint").textContent = format === "mindmap"
+    ? (locale() === "en" ? "The mind map follows the document heading hierarchy" : "思维导图按文稿标题层级生成")
+    : (["png", "jpeg"].includes(format) ? "长文档将在独立离屏页面中渲染" : localized("HTML、PDF 不需要 Pandoc"));
 }
 
 async function confirmExport() {
@@ -3333,10 +3532,11 @@ async function confirmExport() {
     return;
   }
   const html = await exportDocument(options);
-  if (options.format === "html") {
+  if (["html", "mindmap"].includes(options.format)) {
     const link = document.createElement("a");
     link.href = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
-    link.download = `${$("#document-title").value || "未命名"}.html`;
+    const suffix = options.format === "mindmap" ? "-mind-map" : "";
+    link.download = `${$("#document-title").value || localized("未命名")}${suffix}.html`;
     link.click();
     URL.revokeObjectURL(link.href);
   } else if (options.format === "pdf") {
@@ -3911,6 +4111,11 @@ $("#status-toggle").addEventListener("change", event => {
   $("#statusbar").hidden = !event.target.checked;
   localStorage.setItem("mory.status", String(event.target.checked));
 });
+$("#file-details-toggle").addEventListener("change", event => {
+  state.showFileDetails = event.target.checked;
+  localStorage.setItem("mory.fileDetails", String(event.target.checked));
+  renderFiles();
+});
 $("#spell-toggle").addEventListener("change", event => {
   write.spellcheck = event.target.checked;
   localStorage.setItem("mory.spell", String(event.target.checked));
@@ -3944,6 +4149,7 @@ function restorePreferences() {
   const theme = localStorage.getItem("mory.theme") || "system";
   const width = localStorage.getItem("mory.width") || "820";
   const showStatus = localStorage.getItem("mory.status") !== "false";
+  const showFileDetails = localStorage.getItem("mory.fileDetails") === "true";
   const spellcheck = localStorage.getItem("mory.spell") !== "false";
   const savedDocumentTheme = localStorage.getItem("mory.documentTheme");
   const defaultThemeVersion = localStorage.getItem("mory.documentThemeDefaultVersion");
@@ -3952,10 +4158,12 @@ function restorePreferences() {
   localStorage.setItem("mory.documentThemeDefaultVersion", "github-v1");
   $("#width-select").value = width;
   $("#status-toggle").checked = showStatus;
+  $("#file-details-toggle").checked = showFileDetails;
   $("#spell-toggle").checked = spellcheck;
   applyAppearanceTheme(theme, { persist: false });
   document.documentElement.style.setProperty("--editor-width", `${width}px`);
   $("#statusbar").hidden = !showStatus;
+  state.showFileDetails = showFileDetails;
   write.spellcheck = spellcheck;
   setDocumentTheme(builtInThemes.includes(documentTheme) ? documentTheme : "github");
   if (!builtInThemes.includes(documentTheme)) localStorage.setItem("mory.documentTheme", documentTheme);
@@ -4009,6 +4217,8 @@ window.Mory = {
   didExport: format => toast(locale() === "en" ? `Exported ${String(format).toUpperCase()}` : `已导出 ${String(format).toUpperCase()}`),
   exportHTML: () => exportDocument({ theme: "current", background: true }),
   exportDocument,
+  calendarMarkdown,
+  optimizeTypography: optimizeActiveDocumentTypography,
   resolveHostRequest,
   setWorkspaceState,
   command: execute,

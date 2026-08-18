@@ -173,7 +173,7 @@ final class WorkspaceManager: @unchecked Sendable {
     }
 
     func documents() throws -> [[String: Any]] {
-        let keys: [URLResourceKey] = [.isRegularFileKey, .isDirectoryKey, .isHiddenKey, .creationDateKey, .contentModificationDateKey]
+        let keys: [URLResourceKey] = [.isRegularFileKey, .isDirectoryKey, .isHiddenKey, .creationDateKey, .contentModificationDateKey, .fileSizeKey]
         guard let enumerator = fileManager.enumerator(at: activeRoot, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]) else { return [] }
         let extensions = Set(["md", "markdown", "mmd", "mdown", "mkd", "txt", "text"])
         var result: [[String: Any]] = []
@@ -183,7 +183,8 @@ final class WorkspaceManager: @unchecked Sendable {
                 let relative = url.path.replacingOccurrences(of: activeRoot.path + "/", with: "")
                 // Prefer creationDate on desktop filesystems and use metadata change time as a stable fallback.
                 let createdAt = (values.creationDate ?? values.contentModificationDate ?? .distantFuture).timeIntervalSince1970 * 1_000
-                result.append(["name": relative, "path": url.path, "createdAt": createdAt, "images": documentImages(for: url)])
+                let updatedAt = (values.contentModificationDate ?? values.creationDate ?? .distantPast).timeIntervalSince1970 * 1_000
+                result.append(["name": relative, "path": url.path, "createdAt": createdAt, "updatedAt": updatedAt, "size": values.fileSize ?? 0, "images": documentImages(for: url)])
             }
         }
         return result.sorted {
@@ -424,18 +425,20 @@ final class WorkspaceManager: @unchecked Sendable {
         return url
     }
 
-    private func documentImages(for documentURL: URL) -> [[String: String]] {
+    private func documentImages(for documentURL: URL) -> [[String: Any]] {
         let directory = documentURL.deletingLastPathComponent().appendingPathComponent(sanitize(documentURL.deletingPathExtension().lastPathComponent), isDirectory: true)
         let supported = Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"])
-        guard let enumerator = fileManager.enumerator(at: directory, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) else { return [] }
-        var images: [[String: String]] = []
+        let keys: Set<URLResourceKey> = [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey]
+        guard let enumerator = fileManager.enumerator(at: directory, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles]) else { return [] }
+        var images: [[String: Any]] = []
         for case let url as URL in enumerator where supported.contains(url.pathExtension.lowercased()) {
-            guard (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { continue }
+            guard let values = try? url.resourceValues(forKeys: keys), values.isRegularFile == true else { continue }
             let name = url.path.replacingOccurrences(of: directory.path + "/", with: "")
             let relative = url.path.replacingOccurrences(of: documentURL.deletingLastPathComponent().path + "/", with: "")
-            images.append(["name": name, "path": url.path, "relative": relative])
+            let updatedAt = (values.contentModificationDate ?? .distantPast).timeIntervalSince1970 * 1_000
+            images.append(["name": name, "path": url.path, "relative": relative, "updatedAt": updatedAt, "size": values.fileSize ?? 0])
         }
-        return images.sorted { ($0["name"] ?? "").localizedStandardCompare($1["name"] ?? "") == .orderedAscending }
+        return images.sorted { ($0["name"] as? String ?? "").localizedStandardCompare($1["name"] as? String ?? "") == .orderedAscending }
     }
 
     func importImage(arguments: [String: Any]) throws -> [String: String] {

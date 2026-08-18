@@ -26,6 +26,9 @@ func TestListDocumentsReadsContentAndSkipsHiddenDirectories(t *testing.T) {
 	}
 	for _, document := range documents {
 		if document.Name == "2-note.md" && document.Markdown == "# two" {
+			if document.Size != int64(len("# two")) || document.UpdatedAt <= 0 {
+				t.Fatalf("document metadata = size %d, updated %d", document.Size, document.UpdatedAt)
+			}
 			return
 		}
 	}
@@ -66,6 +69,9 @@ func TestImportAndLoadDocumentImages(t *testing.T) {
 	images, err := listDocumentImages(documentPath)
 	if err != nil || len(images) != 1 {
 		t.Fatalf("list images: %v, count %d", err, len(images))
+	}
+	if images[0].Size != int64(len(pixel)) || images[0].UpdatedAt <= 0 {
+		t.Fatalf("image metadata = size %d, updated %d", images[0].Size, images[0].UpdatedAt)
 	}
 }
 

@@ -27,6 +27,8 @@
     <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m5 17 4.5-4 3 2.5 2.5-2 4 3.5"/></symbol>
     <symbol id="i-sync" viewBox="0 0 24 24"><path d="M20 7h-6V1"/><path d="M20 7a9 9 0 0 0-15.5-2M4 17h6v6"/><path d="M4 17a9 9 0 0 0 15.5 2"/></symbol>
     <symbol id="i-graph" viewBox="0 0 24 24"><circle cx="6" cy="7" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="15" cy="18" r="2.4"/><circle cx="5" cy="17" r="2.4"/><path d="m8.3 6.8 7.3-.6M7.2 9l6.6 7.1M16.9 8.2l-1.3 7.4M7.4 17.2l5.2.5"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18M8 14h2M14 14h2M8 18h2M14 18h2"/></symbol>
+    <symbol id="i-typography" viewBox="0 0 24 24"><path d="M4 6h10M9 6v13M6 19h6M15 10h5M17.5 8v10M14.5 18h6"/></symbol>
   </svg>
 
   <main id="app" class="app-shell">
@@ -105,7 +107,9 @@
         <button data-command="task" data-tooltip="任务列表" aria-label="任务列表"><span aria-hidden="true">☑</span></button>
         <button data-command="link" data-tooltip="链接（⌘K）" aria-label="链接（⌘K）"><span aria-hidden="true">↗</span></button>
         <button data-command="table" data-tooltip="表格" aria-label="表格"><span aria-hidden="true">▦</span></button>
+        <button data-command="calendar" data-tooltip="插入日历" aria-label="插入日历"><svg aria-hidden="true"><use href="#i-calendar"/></svg></button>
         <button data-command="hr" data-tooltip="分隔线" aria-label="分隔线"><span aria-hidden="true">—</span></button>
+        <button data-command="typography" data-tooltip="一键优化排版" aria-label="一键优化排版"><svg aria-hidden="true"><use href="#i-typography"/></svg></button>
         <span class="bar-separator"></span>
         <button id="graph-button" class="mode-button" data-tooltip="知识图谱" aria-label="知识图谱"><svg aria-hidden="true"><use href="#i-graph"/></svg></button>
         <button id="source-toggle" class="mode-button" data-tooltip="源代码模式（⌘/）" aria-label="源代码模式（⌘/）"><svg aria-hidden="true"><use href="#i-code"/></svg></button>
@@ -226,6 +230,7 @@
         <div class="setting-row theme-manager-row"><div><strong>用户主题</strong><p id="custom-theme-summary">导入 CSS，或把主题与资源放入主题目录</p></div><div class="theme-actions"><button id="theme-import" class="quiet-button">导入 CSS</button><button id="theme-choose-folder" class="quiet-button">更改目录</button><button id="theme-folder" class="quiet-button">打开目录</button><button id="theme-refresh" class="quiet-button">刷新</button></div></div>
         <div class="setting-row"><div><strong>编辑器宽度</strong><p>控制正文最大行宽</p></div><select id="width-select"><option value="700">窄</option><option value="820" selected>标准</option><option value="980">宽</option></select></div>
         <div class="setting-row"><div><strong>显示状态栏</strong><p>展示行数、字数与模式开关</p></div><label class="switch"><input id="status-toggle" type="checkbox" checked><span></span></label></div>
+        <div class="setting-row"><div><strong>显示文件详情</strong><p>在文件树中显示大小与更新时间</p></div><label class="switch"><input id="file-details-toggle" type="checkbox"><span></span></label></div>
         <div class="setting-row"><div><strong>拼写检查</strong><p>使用系统拼写检查能力</p></div><label class="switch"><input id="spell-toggle" type="checkbox" checked><span></span></label></div>
       </div>
     </section>
@@ -235,7 +240,7 @@
     <section class="export-card" role="dialog" aria-modal="true" aria-label="导出文档">
       <header><div><small>EXPORT</small><h2>导出文档</h2></div><button id="export-close"><svg><use href="#i-close"/></svg></button></header>
       <div class="export-form">
-        <label><span>格式</span><select id="export-format"><option value="pdf">PDF 文档</option><option value="html">HTML 网页</option><option value="png">PNG 长图</option><option value="jpeg">JPEG 图片</option></select></label>
+        <label><span>格式</span><select id="export-format"><option value="pdf">PDF 文档</option><option value="html">HTML 网页</option><option value="png">PNG 长图</option><option value="jpeg">JPEG 图片</option><option value="mindmap">思维导图（HTML）</option></select></label>
         <label><span>导出主题</span><select id="export-theme"><option value="current">使用当前主题</option><option value="yuluo-css">Yuluo CSS</option><option value="github">GitHub</option><option value="whitey">Whitey</option><option value="newsprint">Newsprint</option><option value="pixyll">Pixyll</option><option value="gothic">Gothic</option><option value="night">Night</option></select></label>
         <label id="paper-setting"><span>纸张</span><select id="export-paper"><option value="A4">A4</option><option value="Letter">US Letter</option><option value="Legal">US Legal</option></select></label>
         <label id="image-width-setting" hidden><span>图片宽度</span><select id="export-width"><option value="640">640 px</option><option value="900" selected>900 px</option><option value="1200">1200 px</option><option value="1600">1600 px</option></select></label>
@@ -249,6 +254,7 @@
   <script src="vendor/mermaid.min.js"></script>
   <script src="vendor/highlight.min.js"></script>
   <script src="vendor/d3.min.js"></script>
+  <script src="vendor/pangu.umd.js"></script>
   <script src="app.bundle.js"></script>
 </body>
 </html>

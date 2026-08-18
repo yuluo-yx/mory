@@ -352,23 +352,6 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         presentError("编辑器页面加载失败：\(error.localizedDescription)")
     }
 
-    private func localizeMenu(_ menu: NSMenu) {
-        guard interfaceLocale == "en" else { return }
-        let translations = [
-            "关于 Mory": "About Mory", "偏好设置…": "Preferences…", "退出 Mory": "Quit Mory", "文件": "File", "新建": "New", "新建目录": "New Folder",
-            "打开…": "Open…", "打开文件夹…": "Open Folder…", "保存": "Save", "另存为…": "Save As…", "导出…": "Export…",
-            "编辑": "Edit", "撤销": "Undo", "重做": "Redo", "剪切": "Cut", "复制": "Copy", "粘贴": "Paste", "全选": "Select All",
-            "查找和替换": "Find and Replace", "格式": "Format", "加粗": "Bold", "斜体": "Italic", "删除线": "Strikethrough", "行内代码": "Inline Code",
-            "显示": "View", "显示／隐藏侧边栏": "Show/Hide Sidebar", "源代码模式": "Source Mode", "专注模式": "Focus Mode",
-            "打字机模式": "Typewriter Mode", "实际大小": "Actual Size", "放大": "Zoom In", "缩小": "Zoom Out"
-        ]
-        for item in menu.items {
-            if let translated = translations[item.title] { item.title = translated }
-            else if item.title.hasSuffix(" 级标题"), let level = item.title.split(separator: " ").first { item.title = "Heading \(level)" }
-            if let submenu = item.submenu { localizeMenu(submenu) }
-        }
-    }
-
     private func configureMenu() {
         let main = NSMenu()
 
@@ -440,7 +423,7 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         viewMenu.addItem(withTitle: "缩小", action: #selector(zoomOut), keyEquivalent: "-")
         viewItem.submenu = viewMenu
 
-        localizeMenu(main)
+        MenuLocalizer.localize(main, locale: interfaceLocale)
         NSApp.mainMenu = main
     }
 
@@ -579,7 +562,7 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
             return
         }
         let format = options["format"] as? String ?? "html"
-        let fileExtension = format == "jpeg" ? "jpg" : format
+        let fileExtension = format == "jpeg" ? "jpg" : (format == "mindmap" ? "html" : format)
         let panel = NSSavePanel()
         panel.allowedContentTypes = [UTType(filenameExtension: fileExtension) ?? .data]
         panel.nameFieldStringValue = (currentFileURL?.deletingPathExtension().lastPathComponent ?? "未命名") + ".\(fileExtension)"
@@ -608,11 +591,11 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
                 return
             }
 
-            if format == "html" {
+            if format == "html" || format == "mindmap" {
                 do {
                     try html.write(to: url, atomically: true, encoding: .utf8)
                     isExporting = false
-                    runJavaScript("window.Mory.didExport('html')")
+                    runJavaScript("window.Mory.didExport('\(format)')")
                 } catch {
                     isExporting = false
                     presentError("无法导出 HTML：\(error.localizedDescription)")

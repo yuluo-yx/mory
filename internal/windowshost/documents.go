@@ -31,6 +31,8 @@ type Document struct {
 	Name      string            `json:"name"`
 	Path      string            `json:"path"`
 	CreatedAt int64             `json:"createdAt"`
+	UpdatedAt int64             `json:"updatedAt"`
+	Size      int64             `json:"size"`
 	Markdown  string            `json:"markdown,omitempty"`
 	Images    []DocumentImage   `json:"images,omitempty"`
 	Assets    map[string]string `json:"assets,omitempty"`
@@ -38,9 +40,11 @@ type Document struct {
 
 // DocumentImage describes an image stored in a note's matching asset directory.
 type DocumentImage struct {
-	Name     string `json:"name"`
-	Path     string `json:"path"`
-	Relative string `json:"relative"`
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	Relative  string `json:"relative"`
+	UpdatedAt int64  `json:"updatedAt"`
+	Size      int64  `json:"size"`
 }
 
 // Directory is a visible directory inside the active workspace.
@@ -78,7 +82,13 @@ func listDocuments(root string, includeMarkdown bool) ([]Document, error) {
 		if err != nil {
 			return err
 		}
-		document := Document{Name: filepath.ToSlash(relative), Path: path, CreatedAt: fileCreatedAt(info).UnixMilli()}
+		document := Document{
+			Name:      filepath.ToSlash(relative),
+			Path:      path,
+			CreatedAt: fileCreatedAt(info).UnixMilli(),
+			UpdatedAt: info.ModTime().UnixMilli(),
+			Size:      info.Size(),
+		}
 		document.Images, err = listDocumentImages(path)
 		if err != nil {
 			return err
@@ -161,6 +171,10 @@ func listDocumentImages(documentPath string) ([]DocumentImage, error) {
 		if entry.IsDir() || !imageExtensions[strings.ToLower(filepath.Ext(entry.Name()))] {
 			return nil
 		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
 		name, err := filepath.Rel(assetRoot, path)
 		if err != nil {
 			return err
@@ -169,7 +183,13 @@ func listDocumentImages(documentPath string) ([]DocumentImage, error) {
 		if err != nil {
 			return err
 		}
-		images = append(images, DocumentImage{Name: filepath.ToSlash(name), Path: path, Relative: filepath.ToSlash(relative)})
+		images = append(images, DocumentImage{
+			Name:      filepath.ToSlash(name),
+			Path:      path,
+			Relative:  filepath.ToSlash(relative),
+			UpdatedAt: info.ModTime().UnixMilli(),
+			Size:      info.Size(),
+		})
 		return nil
 	})
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -188,7 +208,14 @@ func loadDocument(path string) (Document, error) {
 	if err != nil {
 		return Document{}, fmt.Errorf("读取文稿信息：%w", err)
 	}
-	document := Document{Name: filepath.Base(path), Path: path, CreatedAt: fileCreatedAt(info).UnixMilli(), Markdown: string(data)}
+	document := Document{
+		Name:      filepath.Base(path),
+		Path:      path,
+		CreatedAt: fileCreatedAt(info).UnixMilli(),
+		UpdatedAt: info.ModTime().UnixMilli(),
+		Size:      info.Size(),
+		Markdown:  string(data),
+	}
 	document.Images, err = listDocumentImages(path)
 	if err != nil {
 		return Document{}, err

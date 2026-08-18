@@ -57,6 +57,7 @@ test-macos:
 	$(NPM) run test:mac-graph
 	$(NPM) run test:mac-drag
 	$(NPM) run test:mac-workspace-watcher
+	$(NPM) run test:mac-menu-localization
 
 package-macos: verify
 	$(NPM) run build:mac

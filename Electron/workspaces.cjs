@@ -152,7 +152,14 @@ async function listDocuments(root) {
         const stat = await fs.stat(fullPath);
         const birthtime = Number(stat.birthtimeMs);
         const createdAt = Number.isFinite(birthtime) && birthtime > 0 ? birthtime : Number(stat.ctimeMs);
-        files.push({ name: path.relative(root, fullPath), path: fullPath, createdAt, images: await listDocumentImages(fullPath) });
+        files.push({
+          name: path.relative(root, fullPath),
+          path: fullPath,
+          createdAt,
+          updatedAt: Number(stat.mtimeMs),
+          size: Number(stat.size),
+          images: await listDocumentImages(fullPath)
+        });
       }
     }
   }
@@ -172,10 +179,13 @@ async function listDocumentImages(documentPath) {
       const fullPath = path.join(current, entry.name);
       if (entry.isDirectory()) await visit(fullPath);
       else if (entry.isFile() && IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+        const stat = await fs.stat(fullPath);
         images.push({
           name: path.relative(directory, fullPath).replaceAll("\\", "/"),
           path: fullPath,
-          relative: path.relative(path.dirname(documentPath), fullPath).replaceAll("\\", "/")
+          relative: path.relative(path.dirname(documentPath), fullPath).replaceAll("\\", "/"),
+          updatedAt: Number(stat.mtimeMs),
+          size: Number(stat.size)
         });
       }
     }
@@ -284,7 +294,15 @@ async function createWorkspaceDocument(root, directoryPath, name) {
   const target = await availableEntryPath(directory, filename, false);
   await fs.writeFile(target, "", { flag: "wx" });
   const stat = await fs.stat(target);
-  return { name: path.basename(target), path: target, markdown: "", createdAt: Number(stat.birthtimeMs || stat.ctimeMs), images: [] };
+  return {
+    name: path.basename(target),
+    path: target,
+    markdown: "",
+    createdAt: Number(stat.birthtimeMs || stat.ctimeMs),
+    updatedAt: Number(stat.mtimeMs),
+    size: Number(stat.size),
+    images: []
+  };
 }
 
 async function copyWorkspaceEntry(root, sourcePath, destinationPath) {

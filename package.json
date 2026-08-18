@@ -21,10 +21,11 @@
     "test:mac-graph": "bash scripts/test-macos-graph.sh",
     "test:mac-drag": "bash scripts/test-macos-drag.sh",
     "test:mac-workspace-watcher": "bash scripts/test-macos-workspace-watcher.sh",
+    "test:mac-menu-localization": "bash scripts/test-macos-menu-localization.sh",
     "pretest:e2e": "npm run build:web",
     "test:e2e": "electron Tests/electron-export.cjs && electron Tests/button-interactions.cjs",
     "precheck": "npm run build:web",
-    "check": "npm run check:language && node scripts/build-web.mjs --check && node --check Electron/main.cjs && node --check Electron/preload.cjs && node --check Electron/workspaces.cjs && node --check Electron/workspace-watcher.cjs && node --check Electron/themes.cjs && node --check Sources/Mory/Web/app.js && node --check Sources/Mory/Web/markdown.js && node --check Sources/Mory/Web/knowledge.js && node --check Sources/Mory/Web/app.bundle.js && node --check Tests/electron-export.cjs && node --check Tests/button-interactions.cjs && node --check Tests/host-regressions.test.cjs && node --check Tests/workspaces.test.cjs && node --check Tests/workspace-watcher.test.cjs && node --check Tests/knowledge.test.js",
+    "check": "npm run check:language && node scripts/build-web.mjs --check && node --check Electron/main.cjs && node --check Electron/preload.cjs && node --check Electron/workspaces.cjs && node --check Electron/workspace-watcher.cjs && node --check Electron/themes.cjs && node --check Sources/Mory/Web/app.js && node --check Sources/Mory/Web/editor-features.js && node --check Sources/Mory/Web/markdown.js && node --check Sources/Mory/Web/knowledge.js && node --check Sources/Mory/Web/app.bundle.js && node --check Tests/electron-export.cjs && node --check Tests/button-interactions.cjs && node --check Tests/host-regressions.test.cjs && node --check Tests/workspaces.test.cjs && node --check Tests/workspace-watcher.test.cjs && node --check Tests/knowledge.test.js",
     "prebuild:mac": "npm run build:web",
     "build:mac": "bash scripts/build-macos.sh",
     "dist:mac": "bash scripts/package-macos-release.sh",
@@ -57,7 +58,10 @@
       {
         "from": ".build/storage",
         "to": "storage",
-        "filter": ["mory-storage", "mory-storage.exe"]
+        "filter": [
+          "mory-storage",
+          "mory-storage.exe"
+        ]
       }
     ],
     "directories": {
@@ -101,5 +105,8 @@
         "role": "Editor"
       }
     ]
+  },
+  "dependencies": {
+    "pangu": "9.1.0"
   }
 }
