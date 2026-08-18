@@ -71,7 +71,7 @@ func (platform *fakePlatform) Export(request ExportRequest) error {
 func TestHostBridgesReadyOpenChangeLocaleAndExport(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
-	writeAt(t, filepath.Join(root, "01.md"), "# 你好", time.Now())
+	writeAt(t, filepath.Join(root, "01.md"), "# \u4F60\u597D", time.Now())
 	platform := &fakePlatform{}
 	host := New(platform, t.TempDir(), root)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -87,7 +87,7 @@ func TestHostBridgesReadyOpenChangeLocaleAndExport(t *testing.T) {
 	if err := host.Send(map[string]any{"type": "openFile", "path": filepath.Join(root, "01.md")}); err != nil {
 		t.Fatal(err)
 	}
-	if err := host.Send(map[string]any{"type": "changed", "markdown": "# 已修改", "name": "01.md"}); err != nil {
+	if err := host.Send(map[string]any{"type": "changed", "markdown": "# \u5DF2\u4FEE\u6539", "name": "01.md"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := host.Send(map[string]any{"type": "localeChanged", "locale": "en"}); err != nil {
@@ -104,16 +104,16 @@ func TestHostBridgesReadyOpenChangeLocaleAndExport(t *testing.T) {
 	defer platform.mu.Unlock()
 	joined := strings.Join(platform.scripts, "\n")
 	if !strings.Contains(joined, "window.Mory.setWorkspaceSnapshot") || !strings.Contains(joined, "window.Mory.openDocument") {
-		t.Fatalf("前端调用不完整：%s", joined)
+		t.Fatalf("incomplete renderer calls: %s", joined)
 	}
 	if len(platform.locales) != 1 || platform.locales[0] != "en" {
-		t.Fatalf("菜单语言未更新：%v", platform.locales)
+		t.Fatalf("menu locale was not updated: %v", platform.locales)
 	}
 	if platform.maximised != 1 {
-		t.Fatalf("最大化次数 = %d", platform.maximised)
+		t.Fatalf("maximize count = %d", platform.maximised)
 	}
 	if len(platform.exports) != 1 || platform.exports[0].HTML == "" {
-		t.Fatalf("导出任务错误：%#v", platform.exports)
+		t.Fatalf("invalid export tasks: %#v", platform.exports)
 	}
 }
 
@@ -135,14 +135,14 @@ func TestHostSavesUntitledDocumentInsideExplicitWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := host.Send(map[string]any{"type": "documentSelected", "name": "未命名.md", "markdown": "# 中文标题", "dirty": true}); err != nil {
+	if err := host.Send(map[string]any{"type": "documentSelected", "name": "\u672A\u547D\u540D.md", "markdown": "# \u4E2D\u6587\u6807\u9898", "dirty": true}); err != nil {
 		t.Fatal(err)
 	}
 	if err := host.Save(); err != nil {
 		t.Fatal(err)
 	}
-	if data, err := os.ReadFile(filepath.Join(root, "中文标题.md")); err != nil || string(data) != "# 中文标题" {
-		t.Fatalf("草稿没有写入显式工作区：%q，%v", data, err)
+	if data, err := os.ReadFile(filepath.Join(root, "\u4E2D\u6587\u6807\u9898.md")); err != nil || string(data) != "# \u4E2D\u6587\u6807\u9898" {
+		t.Fatalf("draft was not written to the explicit workspace: %q, %v", data, err)
 	}
 }
 
@@ -165,23 +165,23 @@ func TestHostDeleteDocumentUsesConfirmation(t *testing.T) {
 		t.Fatal(err)
 	}
 	if result.(map[string]bool)["deleted"] != true {
-		t.Fatalf("删除结果：%#v", result)
+		t.Fatalf("delete result: %#v", result)
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Fatalf("文稿仍存在：%v", err)
+		t.Fatalf("document still exists: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "delete")); !os.IsNotExist(err) {
-		t.Fatalf("文稿图片目录仍存在：%v", err)
+		t.Fatalf("document image directory still exists: %v", err)
 	}
 
 	directory := filepath.Join(root, "directory")
 	writeAt(t, filepath.Join(directory, "nested.md"), "nested", time.Now())
 	result, err = host.Request("deleteWorkspaceEntry", map[string]any{"path": directory, "name": "directory"})
 	if err != nil || result.(map[string]bool)["deleted"] != true {
-		t.Fatalf("删除目录：%#v，%v", result, err)
+		t.Fatalf("delete directory: %#v, %v", result, err)
 	}
 	if _, err := os.Stat(directory); !os.IsNotExist(err) {
-		t.Fatalf("目录仍存在：%v", err)
+		t.Fatalf("directory still exists: %v", err)
 	}
 }
 
@@ -214,19 +214,25 @@ func TestHostWorkspaceRequestMatrixAndMenuActions(t *testing.T) {
 		"directoryPath": filepath.Join(root, "nested", "folder"), "name": "created.md",
 	})
 	if err != nil || filepath.Dir(created.(Document).Path) != filepath.Join(root, "nested", "folder") {
-		t.Fatalf("在所选目录创建文稿：%#v，%v", created, err)
+		t.Fatalf("create document in selected directory: %#v, %v", created, err)
 	}
 	copied, err := host.Request("copyWorkspaceEntry", map[string]any{
 		"path": created.(Document).Path, "destinationPath": root,
 	})
 	if err != nil || copied.(WorkspaceMutation).Path == "" {
-		t.Fatalf("复制文稿：%#v，%v", copied, err)
+		t.Fatalf("copy document: %#v, %v", copied, err)
 	}
 	moved, err := host.Request("moveWorkspaceEntry", map[string]any{
 		"path": copied.(WorkspaceMutation).Path, "destinationPath": filepath.Join(root, "nested"),
 	})
 	if err != nil || filepath.Dir(moved.(WorkspaceMutation).Path) != filepath.Join(root, "nested") {
-		t.Fatalf("移动文稿：%#v，%v", moved, err)
+		t.Fatalf("move document: %#v, %v", moved, err)
+	}
+	renamed, err := host.Request("renameWorkspaceEntry", map[string]any{
+		"path": moved.(WorkspaceMutation).Path, "name": "renamed.md",
+	})
+	if err != nil || filepath.Base(renamed.(WorkspaceMutation).Path) != "renamed.md" {
+		t.Fatalf("rename document: %#v, %v", renamed, err)
 	}
 	if _, err := host.Request("syncWorkspace", map[string]any{"action": "pull"}); err != nil {
 		t.Fatal(err)
@@ -247,7 +253,7 @@ func TestHostWorkspaceRequestMatrixAndMenuActions(t *testing.T) {
 		t.Fatal(err)
 	}
 	if documents, err := host.Request("workspaceDocuments", nil); err != nil || len(documents.([]Document)) != 3 {
-		t.Fatalf("工作区文稿：%#v，%v", documents, err)
+		t.Fatalf("workspace documents: %#v, %v", documents, err)
 	}
 	if _, err := host.Request("listThemes", nil); err != nil {
 		t.Fatal(err)
@@ -282,7 +288,7 @@ func TestHostWorkspaceRequestMatrixAndMenuActions(t *testing.T) {
 		t.Fatal(err)
 	}
 	host.NewDocument()
-	if err := host.Send(map[string]any{"type": "changed", "markdown": "# saved", "name": "未命名.md"}); err != nil {
+	if err := host.Send(map[string]any{"type": "changed", "markdown": "# saved", "name": "\u672A\u547D\u540D.md"}); err != nil {
 		t.Fatal(err)
 	}
 	platform.savePath = filepath.Join(platform.chosenDirectory, "saved.md")
@@ -291,7 +297,7 @@ func TestHostWorkspaceRequestMatrixAndMenuActions(t *testing.T) {
 	}
 	host.Evaluate("window.Mory.showFind()")
 	if _, err := host.Request("unknown", nil); err == nil {
-		t.Fatal("未知请求应返回错误")
+		t.Fatal("unknown request should return an error")
 	}
 }
 
@@ -305,10 +311,10 @@ func TestHostCancellationValidationAndRemainingMessages(t *testing.T) {
 	}
 	defer host.Stop()
 
-	if err := host.Send(map[string]any{"type": "documentSelected", "name": "草稿.md", "markdown": "正文"}); err != nil {
+	if err := host.Send(map[string]any{"type": "documentSelected", "name": "\u8349\u7A3F.md", "markdown": "\u6B63\u6587"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := host.Send(map[string]any{"type": "title", "value": "新标题"}); err != nil {
+	if err := host.Send(map[string]any{"type": "title", "value": "\u65B0\u6807\u9898"}); err != nil {
 		t.Fatal(err)
 	}
 	for _, message := range []string{"windowDragStart", "windowDragMove", "windowDragEnd"} {
@@ -317,59 +323,59 @@ func TestHostCancellationValidationAndRemainingMessages(t *testing.T) {
 		}
 	}
 	if err := host.Send(map[string]any{"type": "unknown"}); err == nil {
-		t.Fatal("未知消息应失败")
+		t.Fatal("unknown message should fail")
 	}
 	if err := host.Send(map[string]any{"type": "export", "options": "bad"}); err == nil {
-		t.Fatal("无效导出参数应失败")
+		t.Fatal("invalid export arguments should fail")
 	}
 
 	if result, err := host.Request("chooseLocalWorkspace", nil); err != nil || result.(map[string]bool)["canceled"] != true {
-		t.Fatalf("取消目录：%#v，%v", result, err)
+		t.Fatalf("cancel directory selection: %#v, %v", result, err)
 	}
 	if result, err := host.Request("importTheme", nil); err != nil || result.(map[string]bool)["canceled"] != true {
-		t.Fatalf("取消主题：%#v，%v", result, err)
+		t.Fatalf("cancel theme selection: %#v, %v", result, err)
 	}
 	if result, err := host.Request("chooseThemeFolder", nil); err != nil || result.(map[string]bool)["canceled"] != true {
-		t.Fatalf("取消主题目录：%#v，%v", result, err)
+		t.Fatalf("cancel theme-folder selection: %#v, %v", result, err)
 	}
 	if assets, err := host.Request("documentAssets", map[string]any{"markdown": ""}); err != nil || len(assets.(map[string]string)) != 0 {
-		t.Fatalf("草稿资源：%#v，%v", assets, err)
+		t.Fatalf("draft assets: %#v, %v", assets, err)
 	}
 	if _, err := host.Request("saveWorkspace", map[string]any{"workspace": "bad"}); err == nil {
-		t.Fatal("无效工作区载荷应失败")
+		t.Fatal("invalid workspace payload should fail")
 	}
 	if _, err := host.Request("activateWorkspace", map[string]any{"id": "missing"}); err == nil {
-		t.Fatal("不存在工作区不应激活")
+		t.Fatal("missing workspace should not activate")
 	}
 	if _, err := host.Request("removeWorkspace", map[string]any{"id": host.workspaces.state().ActiveID}); err == nil {
-		t.Fatal("不应删除唯一工作区")
+		t.Fatal("the only workspace should not be deleted")
 	}
 	if _, err := host.Request("readDocument", map[string]any{"path": filepath.Join(t.TempDir(), "outside.md")}); err == nil {
-		t.Fatal("不应读取工作区外文稿")
+		t.Fatal("documents outside the workspace should not be read")
 	}
 	if _, err := host.Request("documentImage", map[string]any{"path": filepath.Join(root, "bad.txt")}); err == nil {
-		t.Fatal("不应读取非图片")
+		t.Fatal("non-image files should not be read as images")
 	}
 	if _, err := host.Request("importImage", map[string]any{"mime": "image/unknown", "data": "bad"}); err == nil {
-		t.Fatal("不应导入未知图片")
+		t.Fatal("unknown image types should not be imported")
 	}
 
 	platform.chosenFile = filepath.Join(t.TempDir(), "outside.md")
 	writeAt(t, platform.chosenFile, "outside", time.Now())
 	if err := host.OpenDocument(); err != nil {
-		t.Fatalf("系统打开应允许工作区外文件：%v", err)
+		t.Fatalf("system open should allow files outside the workspace: %v", err)
 	}
 	platform.chosenFile = ""
 	if err := host.OpenDocument(); err != nil {
-		t.Fatalf("取消打开不应报错：%v", err)
+		t.Fatalf("cancelling open should not return an error: %v", err)
 	}
 	platform.chosenDirectory = ""
 	if err := host.OpenFolder(); err != nil {
-		t.Fatalf("取消打开目录不应报错：%v", err)
+		t.Fatalf("cancelling folder open should not return an error: %v", err)
 	}
 	platform.savePath = ""
 	if err := host.SaveAs(); err != nil {
-		t.Fatalf("取消另存为不应报错：%v", err)
+		t.Fatalf("cancelling Save As should not return an error: %v", err)
 	}
 
 	cancel()
@@ -402,5 +408,5 @@ func TestHostWatcherRefreshesAfterExternalChange(t *testing.T) {
 			return
 		}
 	}
-	t.Fatal("外部文件变化没有触发工作区快照")
+	t.Fatal("external file changes did not trigger a workspace snapshot")
 }

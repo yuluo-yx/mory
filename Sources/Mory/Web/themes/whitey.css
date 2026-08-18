@@ -2,7 +2,7 @@
 [data-doc-theme="whitey"] .write {
   color: #3a3a38;
   font-family: "Avenir Next", Avenir, "PingFang SC", sans-serif;
-  font-size: clamp(16px, .92vw, 19px);
+  font-size: 1.0625rem;
   line-height: 1.82;
 }
 [data-doc-theme="whitey"] .write h1,

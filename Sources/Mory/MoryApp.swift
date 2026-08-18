@@ -241,7 +241,7 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
 
     private func runWindowDragSmokeIfRequested() {
         guard ProcessInfo.processInfo.environment["MORY_DRAG_SMOKE"] == "1" else { return }
-        // 托管运行器会把居中的窗口贴近屏幕上缘。先下移窗口，为向上拖动预留空间。
+        // Hosted runners can center the window against the top edge; leave room for an upward drag.
         let initial = window.frame.origin
         window.setFrameOrigin(NSPoint(x: initial.x, y: initial.y - 40))
         let origin = window.frame.origin
@@ -282,7 +282,7 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
                     || abs(zoomedFrame.origin.y - restoredFrame.origin.y) >= 1
                     || abs(zoomedFrame.width - restoredFrame.width) >= 1
                     || abs(zoomedFrame.height - restoredFrame.height) >= 1
-                // 小尺寸托管屏幕可能已容纳窗口的全部宽高，系统放大只会调整窗口位置。
+                // On constrained hosted displays, system zoom may only reposition an already fitting window.
                 guard window.isZoomed, frameChanged else {
                     fputs("macOS 左侧顶部双击放大冒烟失败：before=\(restoredFrame), after=\(zoomedFrame)\n", stderr)
                     Darwin.exit(1)
@@ -307,8 +307,8 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
                                 && abs(zoomedFrame.height - restoredFrame.height) <= 3
                         } ?? false
                         let restored = sizeRestored && (!window.isZoomed || sizeWasAlreadyMaximal) || constrainedToVisibleFrame
-                        // 托管小屏幕可能只能通过移动窗口表示放大，并把还原位置继续钳制在可见区内。
-                        // 正常屏幕仍要求退出 isZoomed；仅当系统把窗口精确钳制到可见区域且尺寸差不超过 3 点时接受。
+                        // A constrained hosted display may represent zoom only by moving the window and clamping restore geometry.
+                        // Normal displays must exit isZoomed; accept clamping only when size differs by at most three points.
                         if restored {
                             print("macOS 窗口拖动与左侧顶部双击放大/还原冒烟通过")
                             NSApplication.shared.terminate(nil)
@@ -323,7 +323,7 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     }
 
     private func doubleClickSidebarTitlebar(completion: @escaping () -> Void) {
-        // 从真实 DOM 入口触发，防止宿主消息测试绕过侧栏事件绑定而产生假阳性。
+        // Trigger through the real DOM entry point so host tests cannot bypass sidebar event wiring.
         let script = """
         (() => {
           const region = document.querySelector('.traffic-space');
@@ -771,6 +771,13 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
                 let result = try workspaceManager.moveEntry(
                     path: arguments["path"] as? String ?? "",
                     destinationPath: arguments["destinationPath"] as? String ?? ""
+                )
+                answerHostRequest(id: id, result: result)
+                refreshWorkspace()
+            case "renameWorkspaceEntry":
+                let result = try workspaceManager.renameEntry(
+                    path: arguments["path"] as? String ?? "",
+                    name: arguments["name"] as? String ?? ""
                 )
                 answerHostRequest(id: id, result: result)
                 refreshWorkspace()

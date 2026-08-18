@@ -337,6 +337,50 @@ async function moveWorkspaceEntry(root, sourcePath, destinationPath) {
   return { name: path.relative(root, target).replaceAll("\\", "/"), path: target, sourcePath: source, isDirectory: stat.isDirectory() };
 }
 
+async function renameWorkspaceEntry(root, sourcePath, requestedName) {
+  const source = workspaceEntryPath(root, sourcePath);
+  const stat = await fs.stat(source);
+  const requested = String(requestedName || "").trim();
+  if (!requested || /[\\/]/.test(requested) || path.basename(requested) !== requested || [".", ".."].includes(requested)) {
+    throw new Error("名称不能为空或包含路径分隔符。");
+  }
+  const requestedExtension = stat.isDirectory() ? "" : path.extname(requested);
+  const originalExtension = stat.isDirectory() ? "" : path.extname(source);
+  const base = sanitizeSegment(stat.isDirectory() ? requested : path.basename(requested, requestedExtension));
+  const filename = stat.isDirectory() ? base : `${base}${requestedExtension || originalExtension}`;
+  const target = path.join(path.dirname(source), filename);
+  if (target === source) throw new Error("名称没有变化。");
+  if (await entryExists(target)) throw new Error("同名条目已经存在。");
+
+  if (stat.isDirectory()) {
+    await fs.rename(source, target);
+    return { name: path.relative(root, target).replaceAll("\\", "/"), path: target, sourcePath: source, isDirectory: true };
+  }
+
+  const sourceAssets = companionAssets(source);
+  const targetAssets = companionAssets(target);
+  const hasAssets = await entryExists(sourceAssets);
+  if (hasAssets && await entryExists(targetAssets)) throw new Error("同名图片目录已经存在。");
+  const markdown = await fs.readFile(source, "utf8");
+  const oldBase = path.basename(sourceAssets);
+  const newBase = path.basename(targetAssets);
+  const nextMarkdown = markdown.split(`](${oldBase}/`).join(`](${newBase}/`);
+  let assetsMoved = false;
+  await fs.rename(source, target);
+  try {
+    if (hasAssets) {
+      await fs.rename(sourceAssets, targetAssets);
+      assetsMoved = true;
+    }
+    if (nextMarkdown !== markdown) await fs.writeFile(target, nextMarkdown);
+  } catch (error) {
+    if (assetsMoved) await fs.rename(targetAssets, sourceAssets).catch(() => {});
+    await fs.rename(target, source).catch(() => {});
+    throw error;
+  }
+  return { name: path.relative(root, target).replaceAll("\\", "/"), path: target, sourcePath: source, isDirectory: false };
+}
+
 function compareDocumentsByCreation(left, right) {
   const leftTime = Number.isFinite(Number(left.createdAt)) ? Number(left.createdAt) : Number.MAX_SAFE_INTEGER;
   const rightTime = Number.isFinite(Number(right.createdAt)) ? Number(right.createdAt) : Number.MAX_SAFE_INTEGER;
@@ -380,7 +424,7 @@ async function loadDocumentAssets(documentPath, markdown) {
       const mime = mimeForPath(resolved);
       assets[relative.replaceAll("\\", "/")] = `data:${mime};base64,${data.toString("base64")}`;
     } catch {
-      // 缺失图片仍保留 Markdown 原始地址，编辑器会显示浏览器的加载失败状态。
+      // Preserve the Markdown URL for missing images so the editor can expose the browser failure state.
     }
   }
   return assets;
@@ -460,4 +504,4 @@ function runSidecar(executable, payload) {
   });
 }
 
-module.exports = { compareDocumentsByCreation, copyWorkspaceEntry, createWorkspaceDirectory, createWorkspaceDocument, createWorkspaceManager, importImage, listDirectories, listDocumentImages, listDocuments, loadDocumentAssets, markdownImagePaths, moveWorkspaceEntry, readDocumentImage, readWorkspaceDocuments, relocateDocumentAssets, resolveWorkspaceDirectory, sanitizeSegment, validateWorkspace, workspaceEntryPath };
+module.exports = { compareDocumentsByCreation, copyWorkspaceEntry, createWorkspaceDirectory, createWorkspaceDocument, createWorkspaceManager, importImage, listDirectories, listDocumentImages, listDocuments, loadDocumentAssets, markdownImagePaths, moveWorkspaceEntry, readDocumentImage, readWorkspaceDocuments, relocateDocumentAssets, renameWorkspaceEntry, resolveWorkspaceDirectory, sanitizeSegment, validateWorkspace, workspaceEntryPath };

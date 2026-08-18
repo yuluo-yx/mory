@@ -19,7 +19,7 @@ const (
 	ProviderSFTP   = "sftp"
 )
 
-// Config 是宿主与存储侧车之间稳定的插件配置契约。
+// Config is the stable plugin contract shared by the desktop host and storage sidecar.
 type Config struct {
 	ID              string `json:"id"`
 	Name            string `json:"name"`

@@ -181,7 +181,7 @@ final class WorkspaceManager: @unchecked Sendable {
             let values = try url.resourceValues(forKeys: Set(keys))
             if values.isRegularFile == true {
                 let relative = url.path.replacingOccurrences(of: activeRoot.path + "/", with: "")
-                // creationDate 在 APFS、NTFS 等桌面文件系统可用；缺失时用元数据变更时间保持确定顺序。
+                // Prefer creationDate on desktop filesystems and use metadata change time as a stable fallback.
                 let createdAt = (values.creationDate ?? values.contentModificationDate ?? .distantFuture).timeIntervalSince1970 * 1_000
                 result.append(["name": relative, "path": url.path, "createdAt": createdAt, "images": documentImages(for: url)])
             }
@@ -283,6 +283,59 @@ final class WorkspaceManager: @unchecked Sendable {
             }
         }
         return mutationResult(source: source, target: target, isDirectory: isDirectory)
+    }
+
+    func renameEntry(path: String, name: String) throws -> [String: Any] {
+        let source = try workspaceFileURL(path: path, kind: "条目")
+        let values = try source.resourceValues(forKeys: [.isDirectoryKey])
+        let isDirectory = values.isDirectory == true
+        let requested = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !requested.isEmpty, requested != ".", requested != "..",
+              !requested.contains("/"), !requested.contains("\\") else {
+            throw workspaceError("名称不能为空或包含路径分隔符。")
+        }
+        let requestedURL = URL(fileURLWithPath: requested)
+        let requestedExtension = isDirectory ? "" : requestedURL.pathExtension
+        let originalExtension = isDirectory ? "" : source.pathExtension
+        let base = sanitize(isDirectory || requestedExtension.isEmpty ? requested : requestedURL.deletingPathExtension().lastPathComponent)
+        let fileExtension = requestedExtension.isEmpty ? originalExtension : requestedExtension
+        let filename = isDirectory || fileExtension.isEmpty ? base : "\(base).\(fileExtension)"
+        let target = source.deletingLastPathComponent().appendingPathComponent(filename, isDirectory: isDirectory)
+        guard target.standardizedFileURL != source.standardizedFileURL else { throw workspaceError("名称没有变化。") }
+        guard !fileManager.fileExists(atPath: target.path) else { throw workspaceError("同名条目已经存在。") }
+
+        if isDirectory {
+            try fileManager.moveItem(at: source, to: target)
+            return mutationResult(source: source, target: target, isDirectory: true)
+        }
+
+        let sourceAssets = companionAssetsURL(for: source)
+        let targetAssets = companionAssetsURL(for: target)
+        let hasAssets = fileManager.fileExists(atPath: sourceAssets.path)
+        guard !hasAssets || !fileManager.fileExists(atPath: targetAssets.path) else {
+            throw workspaceError("同名图片目录已经存在。")
+        }
+        let markdown = try String(contentsOf: source, encoding: .utf8)
+        let nextMarkdown = markdown.replacingOccurrences(
+            of: "](\(sourceAssets.lastPathComponent)/",
+            with: "](\(targetAssets.lastPathComponent)/"
+        )
+        try fileManager.moveItem(at: source, to: target)
+        var assetsMoved = false
+        do {
+            if hasAssets {
+                try fileManager.moveItem(at: sourceAssets, to: targetAssets)
+                assetsMoved = true
+            }
+            if nextMarkdown != markdown {
+                try nextMarkdown.write(to: target, atomically: true, encoding: .utf8)
+            }
+        } catch {
+            if assetsMoved { try? fileManager.moveItem(at: targetAssets, to: sourceAssets) }
+            try? fileManager.moveItem(at: target, to: source)
+            throw error
+        }
+        return mutationResult(source: source, target: target, isDirectory: false)
     }
 
     func deletionTargets(path: String) throws -> [URL] {

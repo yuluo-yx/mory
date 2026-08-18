@@ -2,8 +2,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 /**
- * 使用 Node 官方文件系统监听器跟踪当前工作目录。
- * Windows 与 macOS 都支持 recursive；事件经过防抖后只触发一次原子快照刷新。
+ * Tracks the active workspace with Node's filesystem watcher.
+ * Recursive events on Windows and macOS are debounced into one atomic snapshot refresh.
  */
 function createWorkspaceWatcher({ onChange, onError = () => {}, debounceMs = 180, pollIntervalMs = 1500 }) {
   let watcher = null;
@@ -34,7 +34,7 @@ function createWorkspaceWatcher({ onChange, onError = () => {}, debounceMs = 180
     if (watcher && watchedRoot === nextRoot) return;
     stop();
     watchedRoot = nextRoot;
-    // fs.watch 允许操作系统合并或遗漏事件；低频轮询保证 Finder 外部修改最终一定会刷新。
+    // Operating systems may coalesce or omit fs.watch events; periodic polling guarantees convergence.
     pollTimer = setInterval(scheduleRefresh, pollIntervalMs);
     pollTimer.unref?.();
     try {
@@ -43,7 +43,7 @@ function createWorkspaceWatcher({ onChange, onError = () => {}, debounceMs = 180
         onError(error);
         watcher?.close();
         watcher = null;
-        // 原生监听失效后继续依靠轮询刷新；切换工作区时 start 会重建监听器。
+        // Continue polling after native watch failure; start recreates the watcher on workspace changes.
         scheduleRefresh();
       });
     } catch (error) {

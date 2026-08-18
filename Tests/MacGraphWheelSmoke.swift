@@ -17,7 +17,7 @@ final class MacGraphWheelSmoke: NSObject, NSApplicationDelegate, WKNavigationDel
         application.delegate = delegate
         application.setActivationPolicy(.regular)
         DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
-            delegate.finish(failure: "macOS 知识图谱滚轮测试 15 秒内未完成")
+            delegate.finish(failure: "macOS knowledge-graph wheel test did not finish within 15 seconds")
         }
         application.run()
     }
@@ -47,9 +47,9 @@ final class MacGraphWheelSmoke: NSObject, NSApplicationDelegate, WKNavigationDel
         let script = """
         (() => {
           window.Mory.setWorkspaceDocuments([
-            { name: '入口.md', path: '/virtual/入口.md', markdown: '# 入口\\n[[设计]]' },
-            { name: '设计.md', path: '/virtual/设计.md', markdown: '# 设计\\n[[入口]]' },
-            { name: '孤立.md', path: '/virtual/孤立.md', markdown: '# 孤立' }
+            { name: '\u{5165}\u{53E3}.md', path: '/virtual/\u{5165}\u{53E3}.md', markdown: '# \u{5165}\u{53E3}\\n[[\u{8BBE}\u{8BA1}]]' },
+            { name: '\u{8BBE}\u{8BA1}.md', path: '/virtual/\u{8BBE}\u{8BA1}.md', markdown: '# \u{8BBE}\u{8BA1}\\n[[\u{5165}\u{53E3}]]' },
+            { name: '\u{5B64}\u{7ACB}.md', path: '/virtual/\u{5B64}\u{7ACB}.md', markdown: '# \u{5B64}\u{7ACB}' }
           ]);
           document.querySelector('#graph-button').click();
           const editor = document.querySelector('#editor-scroll');
@@ -70,7 +70,7 @@ final class MacGraphWheelSmoke: NSObject, NSApplicationDelegate, WKNavigationDel
         webView.evaluateJavaScript(script) { [weak self] _, error in
             guard let self else { return }
             if let error {
-                finish(failure: "macOS 图谱初始化失败：\(error.localizedDescription)")
+                finish(failure: "macOS graph initialization failed: \(error.localizedDescription)")
                 return
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
@@ -98,7 +98,7 @@ final class MacGraphWheelSmoke: NSObject, NSApplicationDelegate, WKNavigationDel
                   result["ready"] as? Bool == true,
                   let x = (result["x"] as? NSNumber)?.doubleValue,
                   let y = (result["y"] as? NSNumber)?.doubleValue else {
-                finish(failure: "macOS 图谱画布尚未就绪：\(String(describing: value))")
+                finish(failure: "macOS graph canvas is not ready: \(String(describing: value))")
                 return
             }
 
@@ -115,7 +115,7 @@ final class MacGraphWheelSmoke: NSObject, NSApplicationDelegate, WKNavigationDel
             webView.evaluateJavaScript(wheelScript) { [weak self] _, wheelError in
                 guard let self else { return }
                 if let wheelError {
-                    finish(failure: "WKWebView line-unit 滚轮执行失败：\(wheelError.localizedDescription)")
+                    finish(failure: "WKWebView line-unit wheel execution failed: \(wheelError.localizedDescription)")
                     return
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
@@ -149,10 +149,10 @@ final class MacGraphWheelSmoke: NSObject, NSApplicationDelegate, WKNavigationDel
                   let zoom = result["zoom"] as? String,
                   zoom != "100%",
                   result["editorStayed"] as? Bool == true else {
-                finish(failure: "WKWebView line-unit 滚轮未缩放知识图谱：\(String(describing: value))")
+                finish(failure: "WKWebView line-unit wheel input did not zoom the graph: \(String(describing: value))")
                 return
             }
-            print("macOS WKWebView line-unit 滚轮缩放通过：\(zoom)，\(transform)")
+            print("macOS WKWebView line-unit wheel zoom passed: \(zoom), \(transform)")
             NSApplication.shared.terminate(nil)
         }
     }

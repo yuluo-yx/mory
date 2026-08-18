@@ -6,7 +6,7 @@ SDK_PATH="${MORY_SDKROOT:-$(xcrun --sdk macosx --show-sdk-path)}"
 OUTPUT_PATH="$PROJECT_DIR/.build/mory-mac-ime-smoke"
 
 if ! defaults read com.apple.HIToolbox AppleSelectedInputSources 2>/dev/null | grep -q 'com.apple.inputmethod.SCIM.ITABC'; then
-  echo "跳过真实简体拼音测试：当前输入源不是 macOS 简体拼音。"
+  echo "Skipping the native Simplified Pinyin test because that input source is not active."
   exit 0
 fi
 

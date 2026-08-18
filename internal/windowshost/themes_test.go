@@ -14,7 +14,7 @@ func TestThemeManagerInlinesLocalAssets(t *testing.T) {
 	if err := manager.initialize(); err != nil {
 		t.Fatal(err)
 	}
-	source := filepath.Join(t.TempDir(), "海风.css")
+	source := filepath.Join(t.TempDir(), "\u6D77\u98CE.css")
 	asset := filepath.Join(filepath.Dir(source), "font.woff2")
 	if err := os.WriteFile(asset, []byte("font"), 0o644); err != nil {
 		t.Fatal(err)
@@ -22,7 +22,7 @@ func TestThemeManagerInlinesLocalAssets(t *testing.T) {
 	if err := os.WriteFile(source, []byte(`@font-face{src:url("font.woff2")}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// 资源与 CSS 一起放到主题目录，模拟用户主题文件夹的组织形式。
+	// Store the resource beside the CSS file to model a user-managed theme directory.
 	if err := os.WriteFile(filepath.Join(manager.path(), "font.woff2"), []byte("font"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -31,10 +31,10 @@ func TestThemeManagerInlinesLocalAssets(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(themes) != 1 || !strings.Contains(themes[0].CSS, "data:font/woff2;base64,") {
-		t.Fatalf("主题资源未内联：%#v", themes)
+		t.Fatalf("theme assets were not inlined: %#v", themes)
 	}
 	if !strings.HasPrefix(themes[0].ID, "user-") {
-		t.Fatalf("主题 ID 不稳定：%q", themes[0].ID)
+		t.Fatalf("theme ID is unstable: %q", themes[0].ID)
 	}
 }
 
@@ -50,7 +50,7 @@ func TestThemeDirectoryCanBeChanged(t *testing.T) {
 		t.Fatal(err)
 	}
 	if result["directory"] != next || manager.path() != next {
-		t.Fatalf("主题目录未更新：%#v", result)
+		t.Fatalf("theme directory was not updated: %#v", result)
 	}
 }
 
@@ -70,17 +70,17 @@ func TestThemeManagerRestoresDirectoryAndRejectsInvalidImport(t *testing.T) {
 		t.Fatal(err)
 	}
 	if second.path() != next {
-		t.Fatalf("主题目录未恢复：%q", second.path())
+		t.Fatalf("theme directory was not restored: %q", second.path())
 	}
 	invalid := filepath.Join(t.TempDir(), "theme.txt")
 	if err := os.WriteFile(invalid, []byte("css"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := second.importFile(invalid); err == nil {
-		t.Fatal("非 CSS 主题应被拒绝")
+		t.Fatal("non-CSS themes should be rejected")
 	}
 	if _, err := second.setDirectory(""); err == nil {
-		t.Fatal("空主题目录应被拒绝")
+		t.Fatal("an empty theme directory should be rejected")
 	}
 }
 
@@ -93,14 +93,14 @@ func TestThemeAssetBoundariesAndMissingReferences(t *testing.T) {
 		t.Fatal(err)
 	}
 	if result != css {
-		t.Fatalf("缺失或远端资源不应改写：%q", result)
+		t.Fatalf("missing or remote assets should not be rewritten: %q", result)
 	}
 	large := make([]byte, maxThemeAssetBytes+1)
 	if err := os.WriteFile(filepath.Join(directory, "large.woff2"), large, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := inlineThemeAssets(`.a{src:url("large.woff2")}`, directory); err == nil {
-		t.Fatal("超大主题资源应失败")
+		t.Fatal("oversized theme assets should fail")
 	}
 }
 
@@ -118,6 +118,6 @@ func TestThemeListSkipsOversizedCSS(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(themes) != 0 {
-		t.Fatalf("超大主题不应显示：%#v", themes)
+		t.Fatalf("oversized themes should not be listed: %#v", themes)
 	}
 }

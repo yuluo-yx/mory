@@ -5,16 +5,16 @@ NPM ?= npm
 .PHONY: help install web storage storage-macos windows-build-x64 windows-build-arm64 check test-unit test-go test-e2e verify test-macos package-macos package-windows-x64 package-windows-arm64 package-windows ci-macos ci-windows
 
 help:
-	@echo "Mory 本地构建目标"
-	@echo "  make install                安装 package-lock.json 锁定的依赖"
-	@echo "  make verify                 执行语法检查、单元测试和 Electron 端到端测试"
-	@echo "  make storage                生成当前平台的存储插件侧车"
-	@echo "  make package-macos          验证并生成当前架构的 macOS DMG、ZIP 与校验文件"
-	@echo "  make windows-build-x64      交叉编译 WebView2 Windows x64 GUI（不打包）"
-	@echo "  make windows-build-arm64    交叉编译 WebView2 Windows ARM64 GUI（不打包）"
-	@echo "  make package-windows-x64    在 Windows 上生成 WebView2 x64 安装版和便携版"
-	@echo "  make package-windows-arm64  在 Windows 上生成 WebView2 ARM64 安装版和便携版"
-	@echo "  make package-windows        验证并生成两种 Windows 架构的全部制品"
+	@echo "Mory local build targets"
+	@echo "  make install                Install dependencies from package-lock.json"
+	@echo "  make verify                 Run syntax, unit, Go, and Electron E2E checks"
+	@echo "  make storage                Build the storage sidecar for the current platform"
+	@echo "  make package-macos          Build macOS DMG, ZIP, and checksums for this architecture"
+	@echo "  make windows-build-x64      Cross-compile the WebView2 Windows x64 GUI"
+	@echo "  make windows-build-arm64    Cross-compile the WebView2 Windows ARM64 GUI"
+	@echo "  make package-windows-x64    Build Windows WebView2 x64 setup and portable artifacts"
+	@echo "  make package-windows-arm64  Build Windows WebView2 ARM64 setup and portable artifacts"
+	@echo "  make package-windows        Build all Windows setup and portable artifacts"
 
 install:
 	$(NPM) ci

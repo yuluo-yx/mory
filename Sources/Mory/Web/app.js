@@ -49,6 +49,7 @@ const state = {
   expandedDirectoryPaths: new Set(),
   expandedImagePaths: new Set(),
   selectedWorkspaceEntry: null,
+  manualFileOrder: [],
   workspaceDocuments: [],
   activeDocumentId: null,
   documentSerial: 0,
@@ -59,7 +60,7 @@ const state = {
   findIndex: -1,
   zoom: 1,
   titleTouched: false,
-  documentTheme: "yuluo-css",
+  documentTheme: "github",
   themeCSS: new Map(),
   customThemes: [],
   locale: "zh-CN",
@@ -72,6 +73,13 @@ const state = {
   activeWorkspaceId: "",
   editingWorkspaceId: ""
 };
+
+try {
+  const savedFileOrder = JSON.parse(localStorage.getItem("mory.fileOrder") || "[]");
+  state.manualFileOrder = Array.isArray(savedFileOrder) ? savedFileOrder.filter(item => typeof item === "string") : [];
+} catch {
+  state.manualFileOrder = [];
+}
 
 let changeTimer;
 let toastTimer;
@@ -90,11 +98,16 @@ let documentAssetTimer = 0;
 let documentAssetRequest = 0;
 let contextEntry = null;
 let pendingEntryOperation = null;
+let draggedFileEntry = null;
+let pathSuggestionContext = null;
+let pathSuggestionEntries = [];
+let pathSuggestionIndex = 0;
 const pendingHostRequests = new Map();
 const caretMarker = "\u200b";
 const renderCaretMarker = "\ue000";
 const doubleEnterWindow = 650;
 const builtInThemes = ["yuluo-css", "github", "whitey", "newsprint", "pixyll", "gothic", "night"];
+const yuluoPrimaryFont = "Hannotate SC";
 const appearanceMedia = window.matchMedia("(prefers-color-scheme: dark)");
 const englishText = {
   "文件": "Files", "大纲": "Outline", "工作区": "Workspace", "文档还没有标题": "No headings yet",
@@ -121,9 +134,10 @@ const englishText = {
   "显示状态栏": "Show status bar", "展示行数、字数与模式开关": "Show counts and mode controls", "拼写检查": "Spell check", "使用系统拼写检查能力": "Use the system spell checker",
   "格式": "Format", "导出主题": "Export theme", "使用当前主题": "Use current theme", "纸张": "Paper", "图片宽度": "Image width", "保留主题背景": "Keep theme background",
   "PDF 与图片包含当前主题的纸张颜色": "Include theme paper color in PDF and images", "HTML、PDF 不需要 Pandoc": "HTML and PDF do not require Pandoc", "选择位置并导出": "Choose location and export",
-  "开始写作…": "Start writing…", "新建文档（⌘N）": "New document (⌘N)", "新建目录": "New folder", "目录名称或路径": "Folder name or path", "创建目录": "Create folder", "目录已创建": "Folder created", "创建目录失败": "Failed to create folder", "取消": "Cancel", "打开文稿": "Open document", "在此新建文稿": "New document here", "在此新建目录": "New folder here", "在文件管理器中显示": "Show in file manager", "复制到…": "Copy to…", "移动到…": "Move to…", "导出…": "Export…", "删除目录": "Delete folder", "选择目标目录": "Choose destination", "工作区根目录": "Workspace root", "复制条目": "Copy entry", "移动条目": "Move entry", "复制完成": "Copied", "移动完成": "Moved", "新文稿已创建": "Document created", "操作失败": "Operation failed", "图片预览": "Image preview", "图片加载失败": "Failed to load image", "展开图片": "Expand images", "收起图片": "Collapse images", "展开目录": "Expand folder", "收起目录": "Collapse folder", "切换或配置工作区": "Switch or configure workspace", "显示／隐藏侧边栏": "Show/hide sidebar",
+  "开始写作…": "Start writing…", "新建文档（⌘N）": "New document (⌘N)", "新建目录": "New folder", "目录名称或路径": "Folder name or path", "创建目录": "Create folder", "目录已创建": "Folder created", "创建目录失败": "Failed to create folder", "取消": "Cancel", "打开文稿": "Open document", "在此新建文稿": "New document here", "在此新建目录": "New folder here", "在文件管理器中显示": "Show in file manager", "重命名…": "Rename…", "重命名条目": "Rename entry", "新名称": "New name", "重命名完成": "Renamed", "复制到…": "Copy to…", "移动到…": "Move to…", "导出…": "Export…", "删除目录": "Delete folder", "选择目标目录": "Choose destination", "工作区根目录": "Workspace root", "复制条目": "Copy entry", "移动条目": "Move entry", "复制完成": "Copied", "移动完成": "Moved", "新文稿已创建": "Document created", "操作失败": "Operation failed", "图片预览": "Image preview", "图片加载失败": "Failed to load image", "展开图片": "Expand images", "收起图片": "Collapse images", "展开目录": "Expand folder", "收起目录": "Collapse folder", "切换或配置工作区": "Switch or configure workspace", "显示／隐藏侧边栏": "Show/hide sidebar", "添加行": "Add row", "删除行": "Delete row", "添加列": "Add column", "删除列": "Delete column",
+  "未检测到 Hannotate SC，将使用系统字体，排版观感可能不同。可安装该字体后重新选择主题。": "Hannotate SC was not found. Mory will use the system font, so the layout may look different. Install the font and select this theme again.",
   "已切换文档": "Document switched", "关闭文档": "Close document", "删除文档": "Delete document", "移除草稿": "Remove draft", "文档已关闭": "Document closed", "文档已移到废纸篓": "Document moved to Trash", "目录已移到废纸篓": "Folder moved to Trash", "删除文档失败": "Failed to delete entry", "草稿已移除": "Draft removed", "当前草稿": "Current draft",
-  "磁盘文件已删除": "deleted from disk", "文件已从磁盘删除，未保存内容已保留为草稿": "The file was deleted from disk; unsaved content was kept as a draft",
+  "磁盘文件已删除": "deleted from disk", "文件已从磁盘删除，未保存内容已保留为草稿": "The file was deleted from disk; unsaved content was kept as a draft", "文稿": "Document", "图片": "Image",
   "本地": "Local", "工作目录": "Working folder", "使用“选择本地目录”填写": "Use “Choose local folder”", "仓库": "Repository", "分支": "Branch",
   "API 地址": "API endpoint", "仓库内目录": "Repository path", "S3 兼容服务地址": "S3-compatible endpoint", "服务器": "Server", "端口": "Port",
   "用户名": "Username", "密码": "Password", "私钥或私钥路径": "Private key or path", "默认 ~/.ssh/known_hosts": "Default: ~/.ssh/known_hosts",
@@ -177,6 +191,7 @@ function applyLocale(next = state.locale) {
   $("#source-toggle").setAttribute("aria-label", sourceLabel);
   renderWorkspaceSettings();
   syncThemeOptions();
+  updateYuluoFontWarning();
   updateDocumentBacklinks();
   if ($("#knowledge-graph").classList.contains("is-open")) updateGraphLabels();
   bridge({ type: "localeChanged", locale: state.locale });
@@ -252,13 +267,23 @@ function firstLevelHeading(markdown) {
   return "";
 }
 
+function documentDisplayNameTracksHeading(document) {
+  // Use the first level-one heading in the tree while preserving the on-disk name for host operations.
+  return Boolean(document);
+}
+
 function documentDisplayName(document) {
-  if (!document || document.path) return document?.name || localized("未命名.md");
-  const heading = firstLevelHeading(document.markdown);
-  return heading ? (heading.toLocaleLowerCase().endsWith(".md") ? heading : `${heading}.md`) : document.name;
+  if (!document) return localized("未命名.md");
+  const heading = documentDisplayNameTracksHeading(document) ? firstLevelHeading(document.markdown) : "";
+  return heading ? (heading.toLocaleLowerCase().endsWith(".md") ? heading : `${heading}.md`) : (document.name || localized("未命名.md"));
+}
+
+function documentHostName(document) {
+  return document?.path ? (document.name || localized("未命名.md")) : documentDisplayName(document);
 }
 
 function renderDocument(document, announce = false) {
+  closePathSuggestions();
   clearTimeout(changeTimer);
   clearTimeout(documentAssetTimer);
   documentAssetRequest += 1;
@@ -267,6 +292,7 @@ function renderDocument(document, announce = false) {
   state.titleTouched = false;
   sourceEditor.value = state.markdown;
   write.innerHTML = markdownToHTML(state.markdown) || "<p><br></p>";
+  enhanceTables(write);
   applyDocumentAssets(write, document);
   highlightCodeBlocks(write);
   $("#save-state").textContent = localized(state.dirty ? "未保存" : "已保存");
@@ -282,20 +308,25 @@ function notifyDocumentSelected(document) {
   bridge({
     type: "documentSelected",
     documentId: document.id,
-    name: documentDisplayName(document),
+    name: documentHostName(document),
     path: document.path || "",
     markdown: document.markdown,
     dirty: document.dirty
   });
 }
 
-function activateDocument(documentId, { announce = false, notifyHost = true } = {}) {
+function activateDocument(documentId, { announce = false, notifyHost = true, focusEditor = true } = {}) {
   const document = state.documents.find(item => item.id === documentId);
   if (!document) return;
   state.activeDocumentId = document.id;
+  const workspaceFile = state.files.find(file => file.path === document.path);
+  // Documents and directories share one selection source so only one tree entry is highlighted.
+  state.selectedWorkspaceEntry = workspaceFile
+    ? { kind: "file", path: workspaceFile.path, name: workspaceFile.name }
+    : null;
   if (notifyHost) notifyDocumentSelected(document);
   renderDocument(document, announce);
-  requestAnimationFrame(() => (state.sourceMode ? sourceEditor : write).focus());
+  if (focusEditor) requestAnimationFrame(() => (state.sourceMode ? sourceEditor : write).focus());
 }
 
 function createUntitledDocument(markdown = "", { announce = true, notifyHost = true, workspacePlaceholder = false } = {}) {
@@ -357,7 +388,7 @@ function scheduleDocumentAssetRefresh(document) {
       document.assets = { ...(document.assets || {}), ...assets };
       applyDocumentAssets(write, document, { refreshMissing: false });
     } catch {
-      // 输入尚未完成或图片暂不存在时保持原始地址，后续编辑会再次触发解析。
+      // Keep unresolved URLs intact; a later edit will retry after the path or file becomes available.
     }
   }, 90);
 }
@@ -366,13 +397,16 @@ function applyDocumentAssets(root, document = activeDocument(), { refreshMissing
   const assets = document?.assets || {};
   let missingLocalAsset = false;
   root.querySelectorAll("img[src]").forEach(image => {
-    const raw = image.getAttribute("src") || "";
+    const raw = image.dataset.markdownSrc || image.getAttribute("src") || "";
     let decoded = raw;
-    try { decoded = decodeURI(raw); } catch { /* 保留无法解码的原始路径。 */ }
+    try { decoded = decodeURI(raw); } catch { /* Keep the original path when it cannot be decoded. */ }
     const candidates = [raw, decoded]
       .map(source => source.replaceAll("\\", "/").replace(/^\.\//, ""));
     const asset = candidates.map(source => assets[source]).find(Boolean);
-    if (asset) image.src = asset;
+    if (asset) {
+      if (!image.dataset.markdownSrc) image.dataset.markdownSrc = raw;
+      image.src = asset;
+    }
     else if (candidates.some(isLocalDocumentImage)) missingLocalAsset = true;
   });
   if (refreshMissing && missingLocalAsset) scheduleDocumentAssetRefresh(document);
@@ -383,7 +417,7 @@ function syncFromWrite() {
   sourceEditor.value = state.markdown;
   const document = activeDocument();
   if (document) document.markdown = state.markdown;
-  // 大纲属于编辑视图状态，不能等待草稿持久化的防抖计时器。
+  // Outline state belongs to the live editor and must not wait for draft persistence.
   updateOutline();
   markChanged();
 }
@@ -440,19 +474,167 @@ function placeTextCaret(element, offset) {
   selection?.addRange(caret);
 }
 
+function workspaceRelativePath(targetName) {
+  const active = activeDocument();
+  const workspaceFile = state.files.find(file => file.path === active?.path);
+  const currentName = String(workspaceFile?.name || active?.name || "").replaceAll("\\", "/");
+  const from = currentName.split("/").filter(Boolean).slice(0, -1);
+  const target = String(targetName || "").replaceAll("\\", "/").split("/").filter(Boolean);
+  let common = 0;
+  while (common < from.length && common < target.length && from[common] === target[common]) common += 1;
+  const relative = [...Array.from({ length: from.length - common }, () => ".."), ...target.slice(common)].join("/") || ".";
+  const safe = relative.replaceAll(" ", "%20").replaceAll("(", "%28").replaceAll(")", "%29");
+  return safe.startsWith("../") ? safe : `./${safe}`;
+}
+
+function workspacePathCandidates() {
+  const entries = [];
+  const seen = new Set();
+  const add = entry => {
+    const key = `${entry.kind}:${entry.path}`;
+    if (!entry.path || seen.has(key)) return;
+    seen.add(key);
+    entries.push(entry);
+  };
+  for (const file of state.files) {
+    add({ kind: "document", name: String(file.name || "").split(/[\\/]/).pop() || localized("文稿"), path: workspaceRelativePath(file.name) });
+    const parent = String(file.name || "").replaceAll("\\", "/").split("/").slice(0, -1).join("/");
+    for (const image of file.images || []) {
+      const target = [parent, image.relative || image.name].filter(Boolean).join("/");
+      add({ kind: "image", name: image.name || String(target).split("/").pop() || localized("图片"), path: workspaceRelativePath(target) });
+    }
+  }
+  return entries;
+}
+
+function pathSuggestionMatch() {
+  if (state.sourceMode || document.activeElement !== write) return null;
+  const selection = window.getSelection();
+  if (!selection?.isCollapsed || !selection.rangeCount) return null;
+  const block = currentWriteBlock();
+  if (!block?.matches("p, div")) return null;
+  const offset = textOffsetWithin(block, selection.anchorNode, selection.anchorOffset);
+  const source = (block.textContent || "").replaceAll(caretMarker, "");
+  const match = source.slice(0, offset).match(/(!?)\[([^\]\n]*)\]\(((?:\.{1,2}\/)[^)\s]*)$/);
+  if (!match) return null;
+  return { block, source, start: match.index, end: offset, imageSyntax: match[1] === "!", label: match[2], query: match[3] };
+}
+
+function closePathSuggestions() {
+  const popup = $("#path-suggestions");
+  if (!popup) return;
+  popup.classList.remove("is-open");
+  popup.setAttribute("aria-hidden", "true");
+  popup.innerHTML = "";
+  pathSuggestionContext = null;
+  pathSuggestionEntries = [];
+  pathSuggestionIndex = 0;
+}
+
+function selectPathSuggestion(index) {
+  if (!pathSuggestionEntries.length) return;
+  pathSuggestionIndex = (index + pathSuggestionEntries.length) % pathSuggestionEntries.length;
+  const buttons = $$("#path-suggestions button");
+  buttons.forEach((button, buttonIndex) => button.classList.toggle("is-selected", buttonIndex === pathSuggestionIndex));
+  buttons[pathSuggestionIndex]?.scrollIntoView({ block: "nearest" });
+}
+
+function acceptPathSuggestion(index = pathSuggestionIndex) {
+  const context = pathSuggestionContext;
+  const entry = pathSuggestionEntries[index];
+  if (!context?.block?.isConnected || !entry) return false;
+  const defaultLabel = entry.name.replace(/\.(?:md|markdown)$/i, "");
+  const imageMarker = context.imageSyntax && entry.kind === "image" ? "!" : "";
+  const replacement = `${imageMarker}[${context.label || defaultLabel}](${entry.path})`;
+  const nextSource = context.source.slice(0, context.start) + replacement + context.source.slice(context.end);
+  closePathSuggestions();
+  context.block.textContent = nextSource;
+  placeTextCaret(context.block, context.start + replacement.length);
+  renderMarkdownBlockAtCaret();
+  syncFromWrite();
+  highlightCodeBlocks(write);
+  updateFocusLine();
+  return true;
+}
+
+function updatePathSuggestions() {
+  const context = pathSuggestionMatch();
+  if (!context) {
+    closePathSuggestions();
+    return false;
+  }
+  const query = context.query.toLocaleLowerCase();
+  const candidates = workspacePathCandidates().filter(entry => entry.path.toLocaleLowerCase().startsWith(query)).slice(0, 24);
+  if (!candidates.length) {
+    closePathSuggestions();
+    return false;
+  }
+  pathSuggestionContext = context;
+  pathSuggestionEntries = candidates;
+  pathSuggestionIndex = 0;
+  const popup = $("#path-suggestions");
+  popup.innerHTML = "";
+  candidates.forEach((entry, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.path = entry.path;
+    button.setAttribute("role", "option");
+    button.innerHTML = `<span class="path-suggestion-name">${escapeHTML(entry.path)}</span><span class="path-suggestion-kind">${localized(entry.kind === "image" ? "图片" : "文稿")}</span>`;
+    button.addEventListener("mousedown", event => event.preventDefault());
+    button.addEventListener("click", event => {
+      event.preventDefault();
+      acceptPathSuggestion(index);
+    });
+    popup.append(button);
+  });
+  popup.classList.add("is-open");
+  popup.setAttribute("aria-hidden", "false");
+  selectPathSuggestion(0);
+  const selection = window.getSelection();
+  const caretRect = selection?.rangeCount ? selection.getRangeAt(0).getBoundingClientRect() : context.block.getBoundingClientRect();
+  const blockRect = context.block.getBoundingClientRect();
+  const left = caretRect?.left || blockRect.left;
+  const top = (caretRect?.bottom || blockRect.bottom) + 6;
+  popup.style.left = `${Math.max(8, Math.min(innerWidth - popup.offsetWidth - 8, left))}px`;
+  popup.style.top = `${Math.max(8, Math.min(innerHeight - popup.offsetHeight - 8, top))}px`;
+  return true;
+}
+
+function handlePathSuggestionKey(event) {
+  if (!$("#path-suggestions").classList.contains("is-open")) return false;
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    selectPathSuggestion(pathSuggestionIndex + (event.key === "ArrowDown" ? 1 : -1));
+    return true;
+  }
+  if (event.key === "Enter") {
+    event.preventDefault();
+    return acceptPathSuggestion();
+  }
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closePathSuggestions();
+    return true;
+  }
+  return false;
+}
+
 function beginComposition(event) {
   pendingCodeExit = null;
   recentCompositionCommit = null;
   const block = writeBlockForNode(event.target) || currentWriteBlock();
   const selection = window.getSelection();
-  if (!block?.matches("h1, h2, h3, h4, h5, h6") || !selection?.isCollapsed || !selection.rangeCount) {
+  const blockText = (block?.textContent || "").replaceAll(caretMarker, "");
+  const isHeadingInput = block?.matches("h1, h2, h3, h4, h5, h6")
+    || (block?.matches("p, div") && /^(#{1,6})\s/.test(blockText));
+  if (!isHeadingInput || !selection?.isCollapsed || !selection.rangeCount) {
     activeComposition = null;
     return;
   }
   const offset = block.contains(selection.anchorNode)
     ? textOffsetWithin(block, selection.anchorNode, selection.anchorOffset)
     : (block.textContent || "").length;
-  const text = (block.textContent || "").replaceAll(caretMarker, "");
+  const text = blockText;
   activeComposition = {
     block,
     index: [...write.childNodes].indexOf(block),
@@ -485,7 +667,7 @@ function handleHeadingCompositionInput(event) {
   const composition = activeComposition;
   if (!composition || !composition.block.isConnected || !event.cancelable) return false;
   if (event.inputType === "deleteCompositionText") {
-    // WebKit 会在提交中文候选词前删除空标题节点；保留节点并等待最终文本。
+    // WebKit can remove an empty heading before committing IME text; retain it until composition completes.
     event.preventDefault();
     return true;
   }
@@ -515,6 +697,210 @@ function selectionAtEnd(element) {
     return false;
   }
   return tail.toString().replaceAll(caretMarker, "") === "";
+}
+
+function selectionAtStart(element) {
+  const selection = window.getSelection();
+  if (!selection?.isCollapsed || !selection.rangeCount || !element.contains(selection.anchorNode)) return false;
+  const head = document.createRange();
+  head.selectNodeContents(element);
+  try {
+    head.setEnd(selection.anchorNode, selection.anchorOffset);
+  } catch {
+    return false;
+  }
+  return head.toString().replaceAll(caretMarker, "") === "";
+}
+
+function selectedTableCell(table) {
+  let node = window.getSelection()?.anchorNode;
+  if (node?.nodeType === Node.TEXT_NODE) node = node.parentElement;
+  const cell = node instanceof Element ? node.closest("th, td") : null;
+  return cell && table.contains(cell) ? cell : null;
+}
+
+function focusTableCell(cell) {
+  if (!cell) return;
+  if (!cell.childNodes.length) cell.append(document.createElement("br"));
+  const selection = window.getSelection();
+  const caret = document.createRange();
+  caret.selectNodeContents(cell);
+  caret.collapse(false);
+  selection?.removeAllRanges();
+  selection?.addRange(caret);
+  write.focus({ preventScroll: true });
+}
+
+function addTableRow(table) {
+  const selected = selectedTableCell(table);
+  const columns = Math.max(1, table.rows[0]?.cells.length || 1);
+  const body = table.tBodies[0] || table.createTBody();
+  const row = document.createElement("tr");
+  for (let index = 0; index < columns; index += 1) {
+    const cell = document.createElement("td");
+    cell.append(document.createElement("br"));
+    row.append(cell);
+  }
+  const selectedRow = selected?.parentElement;
+  if (selectedRow?.parentElement === body) body.insertBefore(row, selectedRow.nextSibling);
+  else body.append(row);
+  focusTableCell(row.cells[0]);
+  syncFromWrite();
+}
+
+function addTableColumn(table) {
+  const selected = selectedTableCell(table);
+  const width = Math.max(1, table.rows[0]?.cells.length || 1);
+  const column = selected ? selected.cellIndex + 1 : width;
+  let focusTarget = null;
+  for (const row of table.rows) {
+    const cell = document.createElement(row.parentElement?.tagName === "THEAD" ? "th" : "td");
+    cell.append(document.createElement("br"));
+    row.insertBefore(cell, row.cells[column] || null);
+    if (!focusTarget && cell.tagName === "TD") focusTarget = cell;
+  }
+  focusTableCell(focusTarget || table.rows[0]?.cells[column]);
+  syncFromWrite();
+}
+
+function deleteTableRow(table) {
+  const selected = selectedTableCell(table);
+  const body = table.tBodies[0];
+  const row = selected?.tagName === "TD" ? selected.parentElement : body?.rows[0];
+  if (!body || !row) return;
+  const rowIndex = [...body.rows].indexOf(row);
+  if (body.rows.length === 1) {
+    for (const cell of row.cells) cell.replaceChildren(document.createElement("br"));
+    focusTableCell(row.cells[0]);
+  } else {
+    const nextRow = body.rows[Math.min(rowIndex + 1, body.rows.length - 1)]
+      || body.rows[Math.max(0, rowIndex - 1)];
+    const column = Math.min(selected?.cellIndex || 0, Math.max(0, nextRow.cells.length - 1));
+    row.remove();
+    focusTableCell(nextRow.cells[column]);
+  }
+  syncFromWrite();
+}
+
+function deleteTableColumn(table) {
+  const selected = selectedTableCell(table);
+  const width = Math.max(1, table.rows[0]?.cells.length || 1);
+  const column = Math.min(selected?.cellIndex ?? width - 1, width - 1);
+  if (width === 1) {
+    for (const row of table.rows) row.cells[0]?.replaceChildren(document.createElement("br"));
+    focusTableCell(table.tBodies[0]?.rows[0]?.cells[0] || table.rows[0]?.cells[0]);
+  } else {
+    for (const row of table.rows) row.cells[column]?.remove();
+    const targetColumn = Math.min(column, width - 2);
+    focusTableCell(table.tBodies[0]?.rows[0]?.cells[targetColumn] || table.rows[0]?.cells[targetColumn]);
+  }
+  syncFromWrite();
+}
+
+function enhanceTables(root = write) {
+  root.querySelectorAll(":scope > .table-tools").forEach(tools => {
+    if (!tools.previousElementSibling?.matches("table")) tools.remove();
+  });
+  root.querySelectorAll(":scope > table").forEach(table => {
+    if (!table.tBodies[0]?.rows.length) {
+      const body = table.tBodies[0] || table.createTBody();
+      const row = body.insertRow();
+      const columns = Math.max(1, table.tHead?.rows[0]?.cells.length || 1);
+      for (let index = 0; index < columns; index += 1) row.insertCell().append(document.createElement("br"));
+    }
+    if (table.nextElementSibling?.matches(".table-tools")) return;
+    const tools = document.createElement("div");
+    tools.className = "table-tools";
+    tools.contentEditable = "false";
+    const actions = [
+      ["add-row", "添加行", addTableRow],
+      ["delete-row", "删除行", deleteTableRow],
+      ["add-column", "添加列", addTableColumn],
+      ["delete-column", "删除列", deleteTableColumn]
+    ];
+    actions.forEach(([action, label, operation]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.tableAction = action;
+      button.classList.toggle("is-danger", action.startsWith("delete"));
+      button.textContent = `${action.startsWith("add") ? "＋" : "−"} ${localized(label)}`;
+      button.setAttribute("aria-label", localized(label));
+      button.addEventListener("mousedown", event => event.preventDefault());
+      button.addEventListener("click", event => {
+        event.preventDefault();
+        event.stopPropagation();
+        operation(table);
+      });
+      tools.append(button);
+    });
+    table.after(tools);
+  });
+}
+
+function rawTableCells(block) {
+  if (!block?.matches?.("p, div")) return null;
+  const value = (block.textContent || "").trim();
+  if (!/^\|.+\|$/.test(value)) return null;
+  const cells = value.replace(/^\|/, "").replace(/\|$/, "").split(/(?<!\\)\|/).map(cell => cell.trim());
+  return cells.length >= 2 ? cells : null;
+}
+
+function renderRawTableAtCaret({ allowHeaderOnly = false } = {}) {
+  const current = currentWriteBlock();
+  if (!rawTableCells(current)) return false;
+  const blocks = [...write.children];
+  const currentIndex = blocks.indexOf(current);
+  const tableRow = block => Boolean(rawTableCells(block));
+  let start = currentIndex;
+  let end = currentIndex;
+  while (start > 0 && tableRow(blocks[start - 1])) start -= 1;
+  while (end + 1 < blocks.length && tableRow(blocks[end + 1])) end += 1;
+  const separatorPattern = /^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/;
+  const separator = blocks.findIndex((block, index) => index >= start && index <= end && separatorPattern.test(block.textContent || ""));
+  if (separator <= start && !allowHeaderOnly) return false;
+  const tableBlocks = separator > start ? blocks.slice(separator - 1, end + 1) : blocks.slice(start, end + 1);
+  const rows = tableBlocks.filter(block => !separatorPattern.test(block.textContent || "")).map(rawTableCells);
+  if (!rows.length) return false;
+  const width = Math.max(...rows.map(row => row.length));
+  const normalized = rows.map(row => Array.from({ length: width }, (_, index) => row[index] || ""));
+  const source = [normalized[0], Array.from({ length: width }, () => "---"), ...normalized.slice(1)]
+    .map(row => `| ${row.join(" | ")} |`).join("\n");
+  const template = document.createElement("template");
+  template.innerHTML = markdownToHTML(source);
+  const table = template.content.querySelector("table");
+  if (!table) return false;
+  tableBlocks[0].replaceWith(table);
+  tableBlocks.slice(1).forEach(block => block.remove());
+  enhanceTables(write);
+  focusTableCell(table.tBodies[0]?.rows[0]?.cells[0]);
+  return true;
+}
+
+function deleteTableBeforeCaret(event) {
+  if (state.sourceMode || event.isComposing || event.keyCode === 229 || !["Backspace", "Delete"].includes(event.key)) return false;
+  const selection = window.getSelection();
+  if (!selection?.isCollapsed || !selection.rangeCount) return false;
+  const block = currentWriteBlock();
+  let previous = null;
+  if (block && selectionAtStart(block)) previous = block.previousElementSibling;
+  else if (selection.anchorNode === write && selection.anchorOffset > 0) previous = write.children[selection.anchorOffset - 1] || null;
+  const tools = previous?.matches?.(".table-tools") ? previous : null;
+  const table = tools ? tools.previousElementSibling : (previous?.matches?.("table") ? previous : null);
+  if (!table?.matches("table")) return false;
+  event.preventDefault();
+  const next = (tools || table).nextSibling;
+  table.remove();
+  tools?.remove();
+  let target = block?.isConnected ? block : null;
+  if (!target) {
+    target = document.createElement("p");
+    target.append(document.createElement("br"));
+    write.insertBefore(target, next?.parentNode === write ? next : null);
+  }
+  placeTextCaret(target, 0);
+  syncFromWrite();
+  updateFocusLine();
+  return true;
 }
 
 function paragraphAfterCode(block) {
@@ -664,30 +1050,30 @@ function renderMarkdownBlockAtCaret() {
 
   const text = block.textContent ?? "";
   const rawHeading = block.matches("p, div") && /^(#{1,6})\s+\S/.test(text);
+  const rawList = block.matches("p, div") && /^\s*(?:[-*+]|\d+[.)])\s+\S/.test(text);
   const rawInline = /`[^`\n]+`|\*\*[^*\n]+\*\*|__[^_\n]+__|~~[^~\n]+~~|(^|[^*])\*[^*\n]+\*(?!\*)|(^|[^_])_[^_\n]+_(?!_)|!?\[[^\]\n]+\]\([^\n)]+\)/.test(text);
-  if (!rawHeading && !rawInline) return false;
+  if (!rawHeading && !rawList && !rawInline) return false;
   if (!insertRenderCaretMarker()) return false;
-
-  const wrapper = document.createElement("div");
-  wrapper.append(block.cloneNode(true));
-  const html = markdownToHTML(editorToMarkdown(wrapper));
+  const html = markdownToHTML(block.textContent || "");
   const template = document.createElement("template");
   template.innerHTML = html || "<p><br></p>";
   block.replaceWith(template.content);
   restoreRenderCaret();
+  enhanceTables(write);
   applyDocumentAssets(write);
   return true;
 }
 
 function renderMarkdownDocumentAtCaret() {
   const hasCaret = insertRenderCaretMarker();
-  let markdown = editorToMarkdown(write);
+  let markdown = editorToMarkdown(write, { escapeText: false });
   if (hasCaret) {
-    // 围栏闭合行会被解析器丢弃，把光标标记移到代码块后的新段落。
+    // The parser drops a closing fence, so move the caret marker into the following paragraph.
     const closingFenceWithCaret = new RegExp("(^|\\n)(\\s*(?:```|~~~)\\s*)" + renderCaretMarker + "(?=\\n|$)", "g");
     markdown = markdown.replace(closingFenceWithCaret, `$1$2\n\n${renderCaretMarker}`);
   }
   write.innerHTML = markdownToHTML(markdown) || "<p><br></p>";
+  enhanceTables(write);
   if (hasCaret && !restoreRenderCaret()) {
     const paragraph = document.createElement("p");
     paragraph.append(document.createElement("br"));
@@ -710,15 +1096,19 @@ function removeCaretMarkers() {
   const anchorNode = selection?.isCollapsed ? selection.anchorNode : null;
   const anchorOffset = selection?.anchorOffset ?? 0;
   let nextOffset = anchorOffset;
+  let anchorMarkerRemoved = false;
   const walker = document.createTreeWalker(write, NodeFilter.SHOW_TEXT);
   while (walker.nextNode()) {
     const node = walker.currentNode;
     const value = node.nodeValue ?? "";
     if (!value.includes(caretMarker)) continue;
-    if (node === anchorNode) nextOffset = value.slice(0, anchorOffset).replaceAll(caretMarker, "").length;
+    if (node === anchorNode) {
+      nextOffset = value.slice(0, anchorOffset).replaceAll(caretMarker, "").length;
+      anchorMarkerRemoved = true;
+    }
     node.nodeValue = value.replaceAll(caretMarker, "");
   }
-  if (anchorNode?.isConnected && selection) {
+  if (anchorMarkerRemoved && anchorNode?.isConnected && selection) {
     const caret = document.createRange();
     caret.setStart(anchorNode, Math.min(nextOffset, anchorNode.nodeValue?.length ?? 0));
     caret.collapse(true);
@@ -750,9 +1140,11 @@ function handleWriteInput(event) {
     syncFromWrite();
     return;
   }
-  const converted = renderMarkdownBlockAtCaret();
+  const converted = renderRawTableAtCaret() || renderMarkdownBlockAtCaret();
   if (!converted) removeCaretMarkers();
   syncFromWrite();
+  highlightCodeBlocks(write);
+  updatePathSuggestions();
   scheduleMarkdownNormalization();
 }
 
@@ -788,6 +1180,7 @@ function syncFromSource(render = false) {
   if (document) document.markdown = state.markdown;
   if (render) {
     write.innerHTML = markdownToHTML(state.markdown) || "<p><br></p>";
+    enhanceTables(write);
     applyDocumentAssets(write);
     highlightCodeBlocks(write);
     void renderMermaidDiagrams(write, state.documentTheme);
@@ -814,7 +1207,7 @@ function markChanged() {
     bridge({
       type: "changed",
       documentId: document?.id || "",
-      name: documentDisplayName(document),
+      name: documentHostName(document),
       path: document?.path || "",
       markdown: state.markdown
     });
@@ -832,7 +1225,7 @@ function updateDerivedState() {
     $("#document-title").value = title;
     bridge({ type: "title", value: title, dirty: state.dirty });
   }
-  if (!activeDocument()?.path) renderFiles();
+  if (documentDisplayNameTracksHeading(activeDocument())) renderFiles();
 }
 
 function updateOutline() {
@@ -852,6 +1245,45 @@ function updateOutline() {
   $("#outline-empty").hidden = entries.length > 0;
 }
 
+function fileEntryKey(file) {
+  return file.path ? `path:${String(file.path).replaceAll("\\", "/")}` : `draft:${file.documentId || file.id}`;
+}
+
+function fileParentKey(file) {
+  if (!file.path || !state.files.some(item => item.path === file.path)) return "";
+  const parts = String(file.name || "").replaceAll("\\", "/").split("/").filter(Boolean);
+  return parts.slice(0, -1).join("/");
+}
+
+function sortFilesByManualOrder(files) {
+  const ranks = new Map(state.manualFileOrder.map((key, index) => [key, index]));
+  return files
+    .map((file, index) => ({ file, index, rank: ranks.get(fileEntryKey(file)) }))
+    .sort((left, right) => {
+      if (left.rank !== undefined || right.rank !== undefined) {
+        if (left.rank === undefined) return 1;
+        if (right.rank === undefined) return -1;
+        if (left.rank !== right.rank) return left.rank - right.rank;
+      }
+      return left.index - right.index;
+    })
+    .map(item => item.file);
+}
+
+function reorderFileEntry(source, target, after) {
+  if (!source || !target || source.parent !== target.parent || source.key === target.key) return;
+  const siblings = sortFilesByManualOrder(visibleFileEntries().filter(file => fileParentKey(file) === source.parent));
+  const keys = siblings.map(fileEntryKey).filter(key => key !== source.key);
+  let index = keys.indexOf(target.key);
+  if (index < 0) return;
+  if (after) index += 1;
+  keys.splice(index, 0, source.key);
+  const siblingKeys = new Set(keys);
+  state.manualFileOrder = [...state.manualFileOrder.filter(key => !siblingKeys.has(key)), ...keys];
+  localStorage.setItem("mory.fileOrder", JSON.stringify(state.manualFileOrder));
+  renderFiles();
+}
+
 function visibleFileEntries() {
   const drafts = state.documents
     .filter(document => !document.path)
@@ -861,13 +1293,13 @@ function visibleFileEntries() {
   const workspaceEntries = state.files.map(file => {
     const document = openByPath.get(file.path);
     return document
-      ? { ...file, ...document, createdAt: file.createdAt, documentId: document.id, open: true }
+      ? { ...file, ...document, name: file.name, createdAt: file.createdAt, documentId: document.id, open: true }
       : { ...file, documentId: "", markdown: "", dirty: false, open: false };
   });
   const externalDocuments = state.documents
     .filter(document => document.path && !workspacePaths.has(document.path))
     .map(document => ({ ...document, documentId: document.id, open: true }));
-  return [...drafts, ...workspaceEntries, ...externalDocuments];
+  return [...workspaceEntries, ...externalDocuments, ...drafts];
 }
 
 function closeDocument(documentId) {
@@ -934,7 +1366,7 @@ function toggleNewFolderForm(force) {
   if (open) {
     const input = $("#new-folder-input");
     input.value = "";
-    // 离屏窗口可能暂停下一帧，先同步聚焦保证菜单和快捷键打开后可以直接输入。
+    // An offscreen window may pause animation frames; focus synchronously before scheduling a retry.
     input.focus({ preventScroll: true });
     requestAnimationFrame(() => {
       if (!form.hidden) input.focus({ preventScroll: true });
@@ -1004,14 +1436,91 @@ async function openWorkspaceFile(file) {
 }
 
 function selectedDirectory() {
-  if (state.selectedWorkspaceEntry?.kind !== "directory") return null;
-  return state.directories.find(directory => directory.path === state.selectedWorkspaceEntry.path) || null;
+  if (state.selectedWorkspaceEntry?.kind === "directory") {
+    return state.directories.find(directory => directory.path === state.selectedWorkspaceEntry.path)
+      || state.selectedWorkspaceEntry;
+  }
+  const selectedFilePath = state.selectedWorkspaceEntry?.kind === "file"
+    ? state.selectedWorkspaceEntry.path
+    : "";
+  const activePath = activeDocument()?.path || "";
+  const workspaceFilePath = selectedFilePath || (state.files.some(file => file.path === activePath) ? activePath : "");
+  if (!workspaceFilePath) return null;
+  // The add button inherits the nearest parent of the selected or active workspace document.
+  return state.directories
+    .filter(directory => pathIsWithin(directory.path, workspaceFilePath) && directory.path !== workspaceFilePath)
+    .sort((left, right) => String(right.path).length - String(left.path).length)[0] || null;
+}
+
+function beginSelectedEntryRename() {
+  const selected = state.selectedWorkspaceEntry;
+  if (!selected?.path) return false;
+  toggleEntryOperation(true, { action: "rename", entry: selected });
+  return true;
 }
 
 function pathIsWithin(parent, candidate) {
   const normalizedParent = String(parent || "").replaceAll("\\", "/").replace(/\/$/, "");
   const normalizedCandidate = String(candidate || "").replaceAll("\\", "/");
   return normalizedCandidate === normalizedParent || normalizedCandidate.startsWith(`${normalizedParent}/`);
+}
+
+function replacePathPrefix(value, source, target) {
+  const normalized = String(value || "").replaceAll("\\", "/");
+  const normalizedSource = String(source || "").replaceAll("\\", "/").replace(/\/$/, "");
+  const normalizedTarget = String(target || "").replaceAll("\\", "/").replace(/\/$/, "");
+  if (normalized === normalizedSource) return normalizedTarget;
+  if (!normalized.startsWith(`${normalizedSource}/`)) return value;
+  return `${normalizedTarget}${normalized.slice(normalizedSource.length)}`;
+}
+
+function renameDocumentAssets(document, sourcePath, targetPath) {
+  const sourceBase = String(sourcePath).replaceAll("\\", "/").split("/").at(-1).replace(/\.[^.]+$/, "");
+  const targetBase = String(targetPath).replaceAll("\\", "/").split("/").at(-1).replace(/\.[^.]+$/, "");
+  document.markdown = String(document.markdown || "").split(`](${sourceBase}/`).join(`](${targetBase}/`);
+  if (!document.assets || sourceBase === targetBase) return;
+  document.assets = Object.fromEntries(Object.entries(document.assets).map(([key, value]) => [
+    replacePathPrefix(key, sourceBase, targetBase),
+    value
+  ]));
+}
+
+function applyRenamedWorkspaceEntry(entry, result) {
+  if (!result?.path) return;
+  const isDirectory = entry.kind === "directory" || result.isDirectory;
+  const renamePath = value => isDirectory ? replacePathPrefix(value, entry.path, result.path) : (value === entry.path ? result.path : value);
+  const renameName = value => isDirectory ? replacePathPrefix(value, entry.name, result.name) : (value === entry.name ? result.name : value);
+  state.files = state.files.map(file => pathIsWithin(entry.path, file.path) ? {
+    ...file,
+    name: renameName(file.name),
+    path: renamePath(file.path),
+    images: Array.isArray(file.images) ? file.images.map(image => ({ ...image, path: renamePath(image.path) })) : file.images
+  } : file);
+  state.directories = state.directories.map(directory => pathIsWithin(entry.path, directory.path) ? {
+    ...directory,
+    name: renameName(directory.name),
+    path: renamePath(directory.path)
+  } : directory);
+  state.documents.forEach(document => {
+    if (!pathIsWithin(entry.path, document.path)) return;
+    if (!isDirectory) renameDocumentAssets(document, entry.path, result.path);
+    document.path = renamePath(document.path);
+    document.name = renameName(document.name);
+  });
+  state.expandedDirectoryPaths = new Set([...state.expandedDirectoryPaths].map(renamePath));
+  state.expandedImagePaths = new Set([...state.expandedImagePaths].map(renamePath));
+  state.manualFileOrder = state.manualFileOrder.map(key => key.startsWith("path:") ? `path:${renamePath(key.slice(5))}` : key);
+  localStorage.setItem("mory.fileOrder", JSON.stringify(state.manualFileOrder));
+  const active = activeDocument();
+  if (active && !isDirectory && active.path === result.path) {
+    state.markdown = active.markdown;
+    sourceEditor.value = state.markdown;
+    const sourceBase = String(entry.path).replaceAll("\\", "/").split("/").at(-1).replace(/\.[^.]+$/, "");
+    const targetBase = String(result.path).replaceAll("\\", "/").split("/").at(-1).replace(/\.[^.]+$/, "");
+    write.querySelectorAll("img[data-markdown-src]").forEach(image => {
+      image.dataset.markdownSrc = replacePathPrefix(image.dataset.markdownSrc, sourceBase, targetBase);
+    });
+  }
 }
 
 async function createDocumentInSelectedDirectory(directory = selectedDirectory()) {
@@ -1040,10 +1549,24 @@ function toggleEntryOperation(force, operation = pendingEntryOperation) {
     return;
   }
   pendingEntryOperation = operation;
+  const isRename = operation.action === "rename";
   const isCopy = operation.action === "copy";
-  $("#entry-operation-title").textContent = localized(isCopy ? "复制条目" : "移动条目");
-  $("#entry-operation-confirm").textContent = localized(isCopy ? "复制条目" : "移动条目");
+  const actionLabel = isRename ? "重命名条目" : (isCopy ? "复制条目" : "移动条目");
+  $("#entry-operation-title").textContent = localized(actionLabel);
+  $("#entry-operation-confirm").textContent = localized(actionLabel);
   $("#entry-operation-source").textContent = operation.entry.name;
+  $("#entry-operation-destination-row").hidden = isRename;
+  $("#entry-operation-name-row").hidden = !isRename;
+  if (isRename) {
+    const input = $("#entry-operation-name");
+    input.value = String(operation.entry.name || "").replaceAll("\\", "/").split("/").at(-1);
+    dialog.classList.add("is-open");
+    dialog.setAttribute("aria-hidden", "false");
+    input.focus({ preventScroll: true });
+    const extension = operation.entry.kind === "file" ? input.value.lastIndexOf(".") : -1;
+    input.setSelectionRange(0, extension > 0 ? extension : input.value.length);
+    return;
+  }
   const select = $("#entry-operation-destination");
   select.innerHTML = "";
   const sourceParent = String(operation.entry.path).replaceAll("\\", "/").split("/").slice(0, -1).join("/");
@@ -1065,6 +1588,27 @@ function toggleEntryOperation(force, operation = pendingEntryOperation) {
 async function confirmEntryOperation() {
   const operation = pendingEntryOperation;
   if (!operation) return;
+  if (operation.action === "rename") {
+    const name = $("#entry-operation-name").value.trim();
+    if (!name) {
+      toast(localized("新名称"));
+      $("#entry-operation-name").focus();
+      return;
+    }
+    toggleEntryOperation(false);
+    try {
+      const result = await hostRequest("renameWorkspaceEntry", { path: operation.entry.path, name });
+      applyRenamedWorkspaceEntry(operation.entry, result);
+      state.selectedWorkspaceEntry = result?.path
+        ? { kind: operation.entry.kind, path: result.path, name: result.name }
+        : null;
+      renderFiles();
+      toast(localized("重命名完成"));
+    } catch (error) {
+      toast(`${localized("操作失败")}：${error.message}`, 3200);
+    }
+    return;
+  }
   const destinationPath = $("#entry-operation-destination").value;
   toggleEntryOperation(false);
   try {
@@ -1106,6 +1650,7 @@ async function handleFileContextAction(action) {
     if (action === "new-document") await createDocumentInSelectedDirectory(entry);
     if (action === "new-folder") toggleNewFolderForm(true);
     if (action === "reveal") await hostRequest("revealFile", { path: entry.path });
+    if (action === "rename") toggleEntryOperation(true, { action, entry });
     if (action === "copy" || action === "move") toggleEntryOperation(true, { action, entry });
     if (action === "export") {
       await openWorkspaceFile(entry);
@@ -1168,6 +1713,11 @@ function buildWorkspaceTree(entries) {
       : [documentDisplayName(file)];
     ensureDirectory(parts.slice(0, -1)).files.push(file);
   });
+  const sortNode = node => {
+    node.files = sortFilesByManualOrder(node.files);
+    node.directories.forEach(sortNode);
+  };
+  sortNode(root);
   return root;
 }
 
@@ -1195,8 +1745,14 @@ function renderFileEntry(list, file, depth) {
     }
     const button = document.createElement("button");
     const selected = state.selectedWorkspaceEntry?.kind === "file" && state.selectedWorkspaceEntry.path === file.path;
-    button.className = `file-item${file.documentId === state.activeDocumentId ? " is-active" : ""}${selected ? " is-selected" : ""}`;
+    const active = file.documentId === state.activeDocumentId && (!state.selectedWorkspaceEntry || selected);
+    button.className = `file-item${active ? " is-active" : ""}${selected ? " is-selected" : ""}`;
     button.dataset.path = file.path;
+    const entryKey = fileEntryKey(file);
+    const parentKey = fileParentKey(file);
+    button.dataset.entryKey = entryKey;
+    button.dataset.parentKey = parentKey;
+    button.draggable = true;
     if (file.documentId) button.dataset.documentId = file.documentId;
     button.innerHTML = `<span class="file-symbol">${file.path ? "M" : "M↓"}</span><span class="file-name"></span><span class="file-dirty"></span>`;
     button.querySelector(".file-name").textContent = String(documentDisplayName(file)).replaceAll("\\", "/").split("/").at(-1);
@@ -1204,10 +1760,40 @@ function renderFileEntry(list, file, depth) {
     button.querySelector(".file-dirty").hidden = !file.dirty;
     button.addEventListener("click", () => {
       if (file.path) state.selectedWorkspaceEntry = { kind: "file", path: file.path, name: file.name };
-      if (file.documentId) activateDocument(file.documentId, { announce: true, notifyHost: true });
+      if (file.documentId) activateDocument(file.documentId, { announce: true, notifyHost: true, focusEditor: false });
       else if (file.path) bridge({ type: "openFile", path: file.path });
     });
     button.addEventListener("contextmenu", event => showFileContextMenu({ ...file, kind: "file" }, event));
+    if (file.path) button.addEventListener("dblclick", () => toggleEntryOperation(true, { action: "rename", entry: { ...file, kind: "file" } }));
+    button.addEventListener("dragstart", event => {
+      draggedFileEntry = { key: entryKey, parent: parentKey };
+      event.dataTransfer?.setData("text/plain", entryKey);
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+      button.classList.add("is-dragging");
+    });
+    button.addEventListener("dragend", () => {
+      draggedFileEntry = null;
+      button.classList.remove("is-dragging");
+      $$(".file-row.is-drop-before, .file-row.is-drop-after").forEach(item => item.classList.remove("is-drop-before", "is-drop-after"));
+    });
+    button.addEventListener("dragover", event => {
+      if (!draggedFileEntry || draggedFileEntry.parent !== parentKey || draggedFileEntry.key === entryKey) return;
+      event.preventDefault();
+      const after = event.clientY >= button.getBoundingClientRect().top + button.getBoundingClientRect().height / 2;
+      row.classList.toggle("is-drop-before", !after);
+      row.classList.toggle("is-drop-after", after);
+    });
+    button.addEventListener("dragleave", event => {
+      if (!row.contains(event.relatedTarget)) row.classList.remove("is-drop-before", "is-drop-after");
+    });
+    button.addEventListener("drop", event => {
+      if (!draggedFileEntry || draggedFileEntry.parent !== parentKey || draggedFileEntry.key === entryKey) return;
+      event.preventDefault();
+      const after = event.clientY >= button.getBoundingClientRect().top + button.getBoundingClientRect().height / 2;
+      const source = draggedFileEntry;
+      draggedFileEntry = null;
+      reorderFileEntry(source, { key: entryKey, parent: parentKey }, after);
+    });
     row.append(button);
     if (file.documentId || file.path) {
       const close = document.createElement("button");
@@ -1266,11 +1852,7 @@ function renderDirectoryNode(list, directory, depth) {
   button.innerHTML = '<svg aria-hidden="true"><use href="#i-files"/></svg><span class="folder-name"></span>';
   button.querySelector(".folder-name").textContent = String(directory.name).replaceAll("\\", "/").split("/").at(-1);
   button.addEventListener("click", () => selectWorkspaceEntry({ ...directory, kind: "directory" }));
-  button.addEventListener("dblclick", () => {
-    if (expanded) state.expandedDirectoryPaths.delete(directory.path);
-    else state.expandedDirectoryPaths.add(directory.path);
-    renderFiles();
-  });
+  button.addEventListener("dblclick", () => toggleEntryOperation(true, { action: "rename", entry: { ...directory, kind: "directory" } }));
   button.addEventListener("contextmenu", event => showFileContextMenu({ ...directory, kind: "directory" }, event));
   row.append(toggle, button);
   list.append(row);
@@ -1284,8 +1866,17 @@ function renderFiles() {
   list.innerHTML = "";
   const entries = visibleFileEntries();
   const tree = buildWorkspaceTree(entries);
-  tree.files.forEach(file => renderFileEntry(list, file, 0));
-  [...tree.directories.values()].sort(compareWorkspaceDirectories).forEach(directory => renderDirectoryNode(list, directory, 0));
+  const pendingDrafts = tree.files.filter(file => !file.path && !state.manualFileOrder.includes(fileEntryKey(file)));
+  const positionedFiles = tree.files.filter(file => !pendingDrafts.includes(file));
+  const hasManualRootOrder = positionedFiles.some(file => state.manualFileOrder.includes(fileEntryKey(file)));
+  if (hasManualRootOrder) {
+    positionedFiles.forEach(file => renderFileEntry(list, file, 0));
+    [...tree.directories.values()].sort(compareWorkspaceDirectories).forEach(directory => renderDirectoryNode(list, directory, 0));
+  } else {
+    positionedFiles.filter(file => file.path).forEach(file => renderFileEntry(list, file, 0));
+    [...tree.directories.values()].sort(compareWorkspaceDirectories).forEach(directory => renderDirectoryNode(list, directory, 0));
+  }
+  pendingDrafts.forEach(file => renderFileEntry(list, file, 0));
   renderQuickResults(entries);
 }
 
@@ -1315,6 +1906,7 @@ function renderQuickResults(files = visibleFileEntries(), query = "") {
 function toggleSource(force) {
   const next = typeof force === "boolean" ? force : !state.sourceMode;
   if (next === state.sourceMode) return;
+  closePathSuggestions();
   if (next) {
     syncFromWrite();
     sourceEditor.value = state.markdown;
@@ -1353,6 +1945,7 @@ function execute(command) {
     document.execCommand("insertHTML", false, '<ul><li class="task-item"><input type="checkbox">待办事项</li></ul>');
   } else if (command === "table") {
     document.execCommand("insertHTML", false, '<table><thead><tr><th>标题</th><th>标题</th></tr></thead><tbody><tr><td>内容</td><td>内容</td></tr><tr><td>内容</td><td>内容</td></tr></tbody></table><p><br></p>');
+    enhanceTables(write);
   }
   syncFromWrite();
 }
@@ -1618,7 +2211,7 @@ function setWorkspaceSnapshot(payload = {}) {
     state.directories.some(directory => directory.path === state.selectedWorkspaceEntry.path)
     || (payload.files || []).some(file => file.path === state.selectedWorkspaceEntry.path)
   )) state.selectedWorkspaceEntry = null;
-  // 非空工作区直接打开排序后的首篇文稿；空工作区仍保留系统创建的占位草稿。
+  // Open the first sorted document in a non-empty workspace; keep a placeholder only for an empty one.
   setWorkspaceFiles(payload.files || [], { openFirst: true });
 }
 
@@ -1806,7 +2399,7 @@ async function refreshWorkspaceKnowledge({ renderGraph = false } = {}) {
     rebuildWorkspaceKnowledge({ renderGraph });
   } catch (error) {
     if (request !== workspaceKnowledgeRequest) return;
-    // 宿主刷新失败时保留最近一次有效文稿，避免离线或瞬时 I/O 错误清空知识图谱。
+    // Preserve the last valid snapshot when a transient host error prevents a refresh.
     rebuildWorkspaceKnowledge({ renderGraph });
     if (renderGraph) toast(locale() === "en" ? `Unable to build graph: ${error.message}` : `无法生成知识图谱：${error.message}`);
   }
@@ -1916,7 +2509,7 @@ function handleGraphWheel(event) {
   if (!svgNode || !window.d3) return;
   event.preventDefault();
   event.stopPropagation();
-  // 与 d3-zoom 的官方 defaultWheelDelta 保持一致，兼容像素、行、页面和捏合事件。
+  // Match d3-zoom's default wheel delta across pixel, line, page, and pinch events.
   const delta = -event.deltaY
     * (event.deltaMode === 1 ? .05 : event.deltaMode ? 1 : .002)
     * (event.ctrlKey ? 10 : 1);
@@ -1956,7 +2549,7 @@ function renderKnowledgeGraph(graph = state.graph) {
   state.graphZoom = zoom;
   state.graphZoomScale = 1;
   $("#graph-zoom").value = "100%";
-  // 平移仍使用 D3；滚轮由外层 HTML 画布捕获，避免 WKWebView 的 SVG 命中差异。
+  // Keep D3 panning while the HTML canvas captures wheel input consistently across WKWebView versions.
   svg.call(zoom).on("wheel.zoom", null);
   const nodes = graph.nodes.map(node => ({ ...node }));
   const links = graph.edges.map(edge => ({ ...edge }));
@@ -2205,7 +2798,7 @@ function registerCustomThemes(themes = []) {
   syncThemeOptions();
   const selected = localStorage.getItem("mory.documentTheme") || state.documentTheme;
   if (state.customThemes.some(theme => theme.id === selected)) setDocumentTheme(selected);
-  else if (!builtInThemes.includes(state.documentTheme)) setDocumentTheme("yuluo-css");
+  else if (!builtInThemes.includes(state.documentTheme)) setDocumentTheme("github");
 }
 
 async function refreshCustomThemes(announce = false) {
@@ -2218,9 +2811,33 @@ async function refreshCustomThemes(announce = false) {
   }
 }
 
-function setDocumentTheme(theme) {
+function fontAvailable(family) {
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  if (!context) return false;
+  const sample = "mmmmmmmmmmlli汉字 0123456789";
+  return ["monospace", "serif", "sans-serif"].some(fallback => {
+    context.font = `72px ${fallback}`;
+    const baseline = context.measureText(sample).width;
+    context.font = `72px "${family.replaceAll('"', '')}", ${fallback}`;
+    return Math.abs(context.measureText(sample).width - baseline) > .1;
+  });
+}
+
+function updateYuluoFontWarning({ announce = false } = {}) {
+  const warning = $("#theme-font-warning");
+  const missing = state.documentTheme === "yuluo-css" && !fontAvailable(yuluoPrimaryFont);
+  const message = localized("未检测到 Hannotate SC，将使用系统字体，排版观感可能不同。可安装该字体后重新选择主题。");
+  warning.hidden = !missing;
+  warning.textContent = missing ? message : "";
+  document.documentElement.dataset.yuluoFont = missing ? "fallback" : "available";
+  if (missing && announce) toast(message, 5200);
+  return !missing;
+}
+
+function setDocumentTheme(theme, { announceFontWarning = false } = {}) {
   const custom = state.customThemes.find(item => item.id === theme);
-  const next = builtInThemes.includes(theme) || custom ? theme : "yuluo-css";
+  const next = builtInThemes.includes(theme) || custom ? theme : "github";
   state.documentTheme = next;
   document.documentElement.dataset.docTheme = next;
   $("#document-theme").disabled = Boolean(custom);
@@ -2230,6 +2847,7 @@ function setDocumentTheme(theme) {
   localStorage.setItem("mory.documentTheme", next);
   requestAnimationFrame(applyEditorZoom);
   readThemeCSS(next);
+  updateYuluoFontWarning({ announce: announceFontWarning });
   void renderMermaidDiagrams(write, next);
 }
 
@@ -2243,8 +2861,8 @@ function applyEditorZoom() {
     sourceEditor.style.fontSize = `${sourceBase * state.zoom}px`;
   }
   document.documentElement.style.setProperty("--interface-scale", String(state.zoom));
-  document.documentElement.style.setProperty("--status-font-size", `${10 * state.zoom}px`);
-  document.documentElement.style.setProperty("--status-height", `${16 + 11 * state.zoom}px`);
+  document.documentElement.style.setProperty("--status-font-size", `${12 * state.zoom}px`);
+  document.documentElement.style.setProperty("--status-height", `${18 + 13 * state.zoom}px`);
 }
 
 window.addEventListener("resize", () => {
@@ -2296,8 +2914,8 @@ async function confirmExport() {
     background: $("#export-background").checked
   };
   if (window.webkit?.messageHandlers?.mory || window.moryNative || nativeWailsHost()) {
-    // Windows Wails 无法像 Electron executeJavaScript 一样同步取得返回值，
-    // 先在编辑器中完成主题、Mermaid、代码高亮和图片内联，再交给宿主落盘。
+    // Wails cannot synchronously retrieve a JavaScript return value like Electron can.
+    // Finish theming, Mermaid, syntax highlighting, and image inlining before handing HTML to the host.
     const html = await exportDocument(options);
     bridge({ type: "export", options: { ...options, html, name: $("#document-title").value || "未命名" } });
     toggleExportDialog(false);
@@ -2359,12 +2977,35 @@ function exitHeadingToParagraph(block, renderedHeading = block) {
 
 function handleEditorShortcut(event) {
   if (event.isComposing || event.keyCode === 229) return;
+  if (handlePathSuggestionKey(event)) return;
+  if (deleteTableBeforeCaret(event)) return;
   if (event.key !== "Enter") recentCompositionCommit = null;
   const command = event.metaKey || event.ctrlKey;
+  const tableCell = selectedTableCell(write);
+  const selectedTable = tableCell?.closest("table");
+  if (command && event.shiftKey && event.key === "Backspace" && selectedTable) {
+    event.preventDefault();
+    deleteTableRow(selectedTable);
+    return;
+  }
+  if (command && !event.shiftKey && event.key === "Enter" && selectedTable) {
+    event.preventDefault();
+    addTableRow(selectedTable);
+    return;
+  }
   if (command && event.key.toLowerCase() === "b") { event.preventDefault(); execute("bold"); }
   if (command && event.key.toLowerCase() === "i") { event.preventDefault(); execute("italic"); }
   if (command && event.key.toLowerCase() === "k") { event.preventDefault(); execute("link"); }
   if (command && event.key === "/") { event.preventDefault(); toggleSource(); }
+
+  if (!command && event.key === "Enter" && !state.sourceMode && rawTableCells(currentWriteBlock())) {
+    event.preventDefault();
+    if (renderRawTableAtCaret({ allowHeaderOnly: true })) {
+      syncFromWrite();
+      updateFocusLine();
+    }
+    return;
+  }
 
   if (!command && event.key === "ArrowDown" && !state.sourceMode) {
     const block = currentWriteBlock();
@@ -2476,6 +3117,20 @@ function handleEditorShortcut(event) {
       selection.addRange(caret);
       syncFromWrite();
       updateFocusLine();
+    } else if (/^(?:[-*+]|\d+[.)])$/.test(marker)) {
+      event.preventDefault();
+      const list = document.createElement(/^\d/.test(marker) ? "ol" : "ul");
+      const item = document.createElement("li");
+      item.append(document.createElement("br"));
+      list.append(item);
+      block.replaceWith(list);
+      const caret = document.createRange();
+      caret.setStart(item, 0);
+      caret.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(caret);
+      syncFromWrite();
+      updateFocusLine();
     }
   }
 }
@@ -2562,6 +3217,14 @@ write.addEventListener("beforeinput", event => {
   if (handleHeadingCompositionInput(event)) return;
   if (state.sourceMode || event.isComposing || !["insertParagraph", "insertLineBreak"].includes(event.inputType)) return;
   const block = currentWriteBlock();
+  if (rawTableCells(block)) {
+    event.preventDefault();
+    if (renderRawTableAtCaret({ allowHeaderOnly: true })) {
+      syncFromWrite();
+      updateFocusLine();
+    }
+    return;
+  }
   if (!block?.matches("pre")) return;
   event.preventDefault();
   const code = block.querySelector("code") || block;
@@ -2632,13 +3295,17 @@ write.addEventListener("compositionend", event => {
       selection?.removeAllRanges();
       selection?.addRange(caret);
     }
-    if (renderMarkdownBlockAtCaret()) syncFromWrite();
+    const converted = renderMarkdownBlockAtCaret();
+    const normalized = normalizeInactiveRawHeadings(currentWriteBlock());
+    if (converted || normalized) syncFromWrite();
   });
 });
 document.addEventListener("selectionchange", () => {
   if (document.activeElement !== write) return;
   const block = currentWriteBlock();
   if (block?.matches("pre[data-highlighted='true']")) clearCodeHighlight(block);
+  highlightCodeBlocks(write);
+  if ($("#path-suggestions").classList.contains("is-open")) updatePathSuggestions();
 });
 sourceEditor.addEventListener("input", () => syncFromSource(false));
 sourceEditor.addEventListener("keydown", handleEditorShortcut);
@@ -2657,7 +3324,7 @@ function handleWindowTitlebarDoubleClick(event) {
   bridge({ type: "windowTitlebarDoubleClick" });
 }
 
-// 原生 macOS 窗口的正文标题栏与侧栏顶部都应遵循同一套拖动、双击缩放行为。
+// Apply identical drag and double-click zoom behavior to both native macOS titlebar regions.
 for (const region of $$(".titlebar, .traffic-space")) {
   region.addEventListener("pointerdown", handleWindowDragStart);
   region.addEventListener("dblclick", handleWindowTitlebarDoubleClick);
@@ -2701,6 +3368,10 @@ $("#file-context-menu").addEventListener("click", event => {
 $("#entry-operation-close").addEventListener("click", () => toggleEntryOperation(false));
 $("#entry-operation-cancel").addEventListener("click", () => toggleEntryOperation(false));
 $("#entry-operation-confirm").addEventListener("click", () => void confirmEntryOperation());
+$("#entry-operation-name").addEventListener("keydown", event => {
+  if (event.key === "Enter") { event.preventDefault(); void confirmEntryOperation(); }
+  if (event.key === "Escape") { event.preventDefault(); toggleEntryOperation(false); }
+});
 $("#entry-operation-dialog").addEventListener("mousedown", event => {
   if (event.target === $("#entry-operation-dialog")) toggleEntryOperation(false);
 });
@@ -2795,7 +3466,7 @@ $("#replace-all").addEventListener("click", replaceAll);
 $("#theme-select").addEventListener("change", event => {
   applyAppearanceTheme(event.target.value);
 });
-$("#document-theme-select").addEventListener("change", event => setDocumentTheme(event.target.value));
+$("#document-theme-select").addEventListener("change", event => setDocumentTheme(event.target.value, { announceFontWarning: true }));
 $("#document-theme").addEventListener("load", applyEditorZoom);
 $("#theme-import").addEventListener("click", async () => {
   try {
@@ -2840,11 +3511,20 @@ $("#document-title").addEventListener("input", event => {
 
 document.addEventListener("keydown", event => {
   const command = event.metaKey || event.ctrlKey;
+  const target = event.target instanceof Element ? event.target : null;
+  const editing = target?.closest("input, textarea, select, [contenteditable='true']");
+  const sidebarEntry = target?.closest(".file-item, .folder-item")
+    || (document.activeElement instanceof Element ? document.activeElement.closest(".file-item, .folder-item") : null);
+  if (!command && event.key === "Enter" && !editing && sidebarEntry && !$("#entry-operation-dialog").classList.contains("is-open") && beginSelectedEntryRename()) {
+    event.preventDefault();
+    return;
+  }
   if (command && event.key.toLowerCase() === "p") { event.preventDefault(); openQuickOpen(); }
   if (command && event.key.toLowerCase() === "f") { event.preventDefault(); showFind(); }
-  if (event.key === "Escape") { closeFileContextMenu(); toggleEntryOperation(false); closeImagePreview(); closeQuickOpen(); closeFind(); togglePreferences(false); toggleExportDialog(false); toggleKnowledgeGraph(false); }
+  if (event.key === "Escape") { closePathSuggestions(); closeFileContextMenu(); toggleEntryOperation(false); closeImagePreview(); closeQuickOpen(); closeFind(); togglePreferences(false); toggleExportDialog(false); toggleKnowledgeGraph(false); }
 });
 document.addEventListener("pointerdown", event => {
+  if (!event.target.closest("#path-suggestions, #write")) closePathSuggestions();
   if (!event.target.closest("#file-context-menu")) closeFileContextMenu();
 });
 
@@ -2856,10 +3536,9 @@ function restorePreferences() {
   const spellcheck = localStorage.getItem("mory.spell") !== "false";
   const savedDocumentTheme = localStorage.getItem("mory.documentTheme");
   const defaultThemeVersion = localStorage.getItem("mory.documentThemeDefaultVersion");
-  const documentTheme = !defaultThemeVersion && (!savedDocumentTheme || savedDocumentTheme === "github")
-    ? "yuluo-css"
-    : (savedDocumentTheme || "yuluo-css");
-  localStorage.setItem("mory.documentThemeDefaultVersion", "yuluo-css-v1");
+  const migrateBundledYuluoDefault = defaultThemeVersion === "yuluo-css-v1" && savedDocumentTheme === "yuluo-css";
+  const documentTheme = migrateBundledYuluoDefault ? "github" : (savedDocumentTheme || "github");
+  localStorage.setItem("mory.documentThemeDefaultVersion", "github-v1");
   $("#width-select").value = width;
   $("#status-toggle").checked = showStatus;
   $("#spell-toggle").checked = spellcheck;
@@ -2867,7 +3546,7 @@ function restorePreferences() {
   document.documentElement.style.setProperty("--editor-width", `${width}px`);
   $("#statusbar").hidden = !showStatus;
   write.spellcheck = spellcheck;
-  setDocumentTheme(builtInThemes.includes(documentTheme) ? documentTheme : "yuluo-css");
+  setDocumentTheme(builtInThemes.includes(documentTheme) ? documentTheme : "github");
   if (!builtInThemes.includes(documentTheme)) localStorage.setItem("mory.documentTheme", documentTheme);
   applyLocale(savedLocale);
 }
@@ -2883,21 +3562,28 @@ window.Mory = {
   setFiles: setWorkspaceFiles,
   setWorkspaceSnapshot,
   setWorkspaceDocuments: documents => {
-    // 显式快照比尚未完成的宿主请求更新，使旧响应不能覆盖当前工作区。
+    // An explicit snapshot supersedes pending host requests so stale responses cannot overwrite it.
     workspaceKnowledgeRequest += 1;
     state.workspaceDocuments = Array.isArray(documents) ? documents : [];
     rebuildWorkspaceKnowledge();
   },
   setCustomThemes: registerCustomThemes,
+  fontAvailable,
   didSave: payload => {
     const document = activeDocument();
     if (document) {
+      const previousOrderKey = fileEntryKey(document);
       document.path = typeof payload?.path === "string" ? payload.path : document.path;
       document.name = String(payload?.name || document.name);
       document.markdown = typeof payload?.markdown === "string" ? payload.markdown : (state.sourceMode ? sourceEditor.value : editorToMarkdown(write));
       if (payload?.assets && typeof payload.assets === "object") document.assets = payload.assets;
       document.dirty = false;
       state.documents = state.documents.filter(item => item === document || !document.path || item.path !== document.path);
+      const orderIndex = state.manualFileOrder.indexOf(previousOrderKey);
+      if (orderIndex >= 0) {
+        state.manualFileOrder[orderIndex] = fileEntryKey(document);
+        localStorage.setItem("mory.fileOrder", JSON.stringify(state.manualFileOrder));
+      }
     }
     state.dirty = false;
     rebuildWorkspaceKnowledge();

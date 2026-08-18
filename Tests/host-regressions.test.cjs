@@ -5,14 +5,14 @@ const test = require("node:test");
 
 const root = path.join(__dirname, "..");
 
-test("桌面宿主使用原子工作区快照避免文件列表竞态", () => {
+test("desktop hosts use atomic workspace snapshots to avoid file-list races", () => {
   const electron = fs.readFileSync(path.join(root, "Electron", "main.cjs"), "utf8");
   const macOS = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
   assert.match(electron, /window\.Mory\.setWorkspaceSnapshot/);
   assert.match(macOS, /window\.Mory\.setWorkspaceSnapshot/);
 });
 
-test("桌面宿主都提供文件创建时间供侧栏稳定排序", () => {
+test("desktop hosts expose creation timestamps for stable sidebar ordering", () => {
   const electron = fs.readFileSync(path.join(root, "Electron", "workspaces.cjs"), "utf8");
   const macOS = fs.readFileSync(path.join(root, "Sources", "Mory", "WorkspaceManager.swift"), "utf8");
   assert.match(electron, /stat\.birthtimeMs/);
@@ -21,7 +21,7 @@ test("桌面宿主都提供文件创建时间供侧栏稳定排序", () => {
   assert.match(macOS, /"createdAt"/);
 });
 
-test("macOS 与 Windows 宿主递归监听工作区并刷新原子快照", () => {
+test("macOS and Windows hosts watch workspaces recursively and refresh atomic snapshots", () => {
   const electron = fs.readFileSync(path.join(root, "Electron", "workspace-watcher.cjs"), "utf8");
   const macOS = fs.readFileSync(path.join(root, "Sources", "Mory", "WorkspaceWatcher.swift"), "utf8");
   assert.match(electron, /fs\.watch\(nextRoot, \{ recursive: true \}/);
@@ -32,7 +32,7 @@ test("macOS 与 Windows 宿主递归监听工作区并刷新原子快照", () =>
   assert.match(macOS, /kFSEventStreamCreateFlagWatchRoot/);
 });
 
-test("macOS 与 Windows 都通过系统废纸篓删除文稿", () => {
+test("macOS and Windows move deleted documents to the system trash", () => {
   const electron = fs.readFileSync(path.join(root, "Electron", "main.cjs"), "utf8");
   const macOS = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
   const web = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "app.js"), "utf8");
@@ -41,10 +41,10 @@ test("macOS 与 Windows 都通过系统废纸篓删除文稿", () => {
   assert.match(macOS, /case "deleteDocument"/);
   assert.match(macOS, /FileManager\.default\.trashItem/);
   assert.match(web, /hostRequest\("deleteDocument"/);
-  assert.match(web, /localized\("文档已移到废纸篓"\)/);
+  assert.match(web, /localized\("\u6587\u6863\u5DF2\u79FB\u5230\u5E9F\u7EB8\u7BD3"\)/);
 });
 
-test("macOS 与 Windows 都支持受限于当前工作区的目录创建和图片按需加载", () => {
+test("macOS and Windows constrain directory creation and lazy image loading to the workspace", () => {
   const electronHost = fs.readFileSync(path.join(root, "Electron", "main.cjs"), "utf8");
   const electronWorkspace = fs.readFileSync(path.join(root, "Electron", "workspaces.cjs"), "utf8");
   const macOSHost = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
@@ -62,7 +62,7 @@ test("macOS 与 Windows 都支持受限于当前工作区的目录创建和图�
   assert.match(web, /hostRequest\("documentAssets"/);
 });
 
-test("macOS 与 Windows 保存草稿时优先写入当前工作区", () => {
+test("macOS and Windows save drafts into the active workspace when possible", () => {
   const electron = fs.readFileSync(path.join(root, "Electron", "main.cjs"), "utf8");
   const macOS = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
   assert.match(electron, /workspaceManager\?\.active\(\)\?\.isImplicit !== true/);
@@ -72,7 +72,7 @@ test("macOS 与 Windows 保存草稿时优先写入当前工作区", () => {
   assert.match(macOS, /availableDocumentURL\(markdown: markdown\)/);
 });
 
-test("文稿右键操作、图片预览与主题目录选择由两个桌面宿主共同提供", () => {
+test("both desktop hosts provide document actions, image previews, and theme-folder selection", () => {
   const electron = fs.readFileSync(path.join(root, "Electron", "main.cjs"), "utf8");
   const macOS = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
   const web = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "app.js"), "utf8");
@@ -85,12 +85,12 @@ test("文稿右键操作、图片预览与主题目录选择由两个桌面宿�
   assert.match(web, /firstLevelHeading/);
 });
 
-test("目录树与文稿在三个宿主共享创建、复制、移动和删除契约", () => {
+test("all three hosts share create, copy, move, rename, and delete contracts", () => {
   const electron = fs.readFileSync(path.join(root, "Electron", "main.cjs"), "utf8");
   const macOS = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
   const windows = fs.readFileSync(path.join(root, "internal", "windowshost", "host.go"), "utf8");
   const web = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "app.js"), "utf8");
-  for (const method of ["createDocument", "copyWorkspaceEntry", "moveWorkspaceEntry", "deleteWorkspaceEntry"]) {
+  for (const method of ["createDocument", "copyWorkspaceEntry", "moveWorkspaceEntry", "renameWorkspaceEntry", "deleteWorkspaceEntry"]) {
     assert.match(electron, new RegExp(`"${method}"`));
     assert.match(macOS, new RegExp(`"${method}"`));
     assert.match(windows, new RegExp(`"${method}"`));
@@ -101,7 +101,7 @@ test("目录树与文稿在三个宿主共享创建、复制、移动和删除�
   assert.match(web, /selectedWorkspaceEntry/);
 });
 
-test("macOS PDF 导出使用 WebKit 异步生成并在后台分页", () => {
+test("macOS PDF export uses asynchronous WebKit generation and background pagination", () => {
   const source = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
   const paginator = fs.readFileSync(path.join(root, "Sources", "Mory", "PDFPaginator.swift"), "utf8");
   assert.match(source, /webView\.createPDF\(/);
@@ -112,7 +112,7 @@ test("macOS PDF 导出使用 WebKit 异步生成并在后台分页", () => {
   assert.doesNotMatch(source, /operation\.run\(\)/);
 });
 
-test("macOS 左侧顶部与正文标题栏共用原生窗口放大与还原交互", () => {
+test("macOS sidebar and document title bars share native window zoom behavior", () => {
   const host = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
   const typingSmoke = fs.readFileSync(path.join(root, "Tests", "MacTypingSmoke.swift"), "utf8");
   const web = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "app.js"), "utf8");
@@ -128,10 +128,56 @@ test("macOS 左侧顶部与正文标题栏共用原生窗口放大与还原交�
   assert.match(typingSmoke, /code: document\.querySelector\('#write > pre code'\)\?\.innerText/);
 });
 
-test("知识图谱在 HTML 画布捕获滚轮并按 D3 官方公式归一化", () => {
+test("the macOS bundle declares and generates a complete multi-size ICNS icon", () => {
+  const plist = fs.readFileSync(path.join(root, "macOS", "Info.plist"), "utf8");
+  const build = fs.readFileSync(path.join(root, "scripts", "build-macos.sh"), "utf8");
+  const iconBuild = fs.readFileSync(path.join(root, "scripts", "build-macos-icons.sh"), "utf8");
+  assert.match(plist, /<key>CFBundleIconFile<\/key><string>icon\.icns<\/string>/);
+  assert.match(build, /build-macos-icons\.sh/);
+  assert.match(build, /\.build\/icons\/icon\.icns/);
+  assert.match(iconBuild, /icon_16x16\.png/);
+  assert.match(iconBuild, /icon_512x512@2x\.png/);
+  assert.match(iconBuild, /build-icns\.mjs/);
+  assert.equal(fs.existsSync(path.join(root, "assets", "mory-icon.png")), true);
+});
+
+test("the knowledge graph captures wheel input on HTML and normalizes it with the D3 formula", () => {
   const web = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "app.js"), "utf8");
   assert.match(web, /#graph-canvas"\)\.addEventListener\("wheel", handleGraphWheel, \{ passive: false \}\)/);
   assert.match(web, /event\.deltaMode === 1 \? \.05 : event\.deltaMode \? 1 : \.002/);
   assert.match(web, /state\.graphZoom\.scaleBy/);
   assert.match(web, /svg\.call\(zoom\)\.on\("wheel\.zoom", null\)/);
+});
+
+test("desktop hosts map DPI without scaling typography again on wide viewports", () => {
+  const styles = [
+    fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "styles.css"), "utf8"),
+    ...fs.readdirSync(path.join(root, "Sources", "Mory", "Web", "themes"))
+      .filter(name => name.endsWith(".css"))
+      .map(name => fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "themes", name), "utf8"))
+  ].join("\n");
+  assert.doesNotMatch(styles, /font-size:\s*clamp\([^;]*vw/);
+  assert.match(styles, /--editor-gutter:\s*68px/);
+  assert.match(styles, /width:\s*min\(calc\(100% - var\(--editor-gutter\) - var\(--editor-gutter\)\), var\(--editor-width\)\)/);
+});
+
+test("tables add and delete the current row or column and support Typora-style shortcuts", () => {
+  const web = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "app.js"), "utf8");
+  assert.match(web, /function deleteTableRow\(table\)/);
+  assert.match(web, /function deleteTableColumn\(table\)/);
+  assert.match(web, /\["delete-row", "\u5220\u9664\u884C", deleteTableRow\]/);
+  assert.match(web, /\["delete-column", "\u5220\u9664\u5217", deleteTableColumn\]/);
+  assert.match(web, /command && event\.shiftKey && event\.key === "Backspace"/);
+});
+
+test("GitHub is the default theme and Yuluo warns when its preferred font is unavailable", () => {
+  const html = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "index.html"), "utf8");
+  const web = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "app.js"), "utf8");
+  const yuluo = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "themes", "yuluo-css.css"), "utf8");
+  assert.match(html, /data-doc-theme="github"/);
+  assert.match(html, /href="themes\/github\.css"/);
+  assert.match(web, /documentTheme:\s*"github"/);
+  assert.match(web, /mory\.documentThemeDefaultVersion", "github-v1"/);
+  assert.match(web, /function updateYuluoFontWarning/);
+  assert.doesNotMatch(yuluo, /Segoe Print/);
 });

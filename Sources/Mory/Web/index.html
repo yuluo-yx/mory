@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN" data-doc-theme="yuluo-css">
+<html lang="zh-CN" data-doc-theme="github">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,7 +7,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' data:; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file: https: http:; connect-src 'self' file:">
   <title>Mory</title>
   <link rel="stylesheet" href="styles.css">
-  <link id="document-theme" rel="stylesheet" href="themes/yuluo-css.css">
+  <link id="document-theme" rel="stylesheet" href="themes/github.css">
   <style id="user-document-theme"></style>
 </head>
 <body>
@@ -112,6 +112,7 @@
         <button id="export-button" class="mode-button export-action" data-tooltip="导出文档" aria-label="导出文档"><svg aria-hidden="true"><use href="#i-export"/></svg></button>
       </div>
       <div id="toolbar-tooltip" class="toolbar-tooltip" role="tooltip" aria-hidden="true"></div>
+      <div id="path-suggestions" class="path-suggestions" role="listbox" aria-label="工作区路径候选" aria-hidden="true"></div>
 
       <div id="editor-scroll" class="editor-scroll">
         <article id="write" class="write" contenteditable="true" spellcheck="true" aria-label="Markdown 编辑器"></article>
@@ -161,6 +162,7 @@
     <button type="button" data-entry-action="new-document" data-entry-kind="directory" role="menuitem">在此新建文稿</button>
     <button type="button" data-entry-action="new-folder" data-entry-kind="directory" role="menuitem">在此新建目录</button>
     <button type="button" data-entry-action="reveal" role="menuitem">在文件管理器中显示</button>
+    <button type="button" data-entry-action="rename" role="menuitem">重命名…</button>
     <button type="button" data-entry-action="copy" role="menuitem">复制到…</button>
     <button type="button" data-entry-action="move" role="menuitem">移动到…</button>
     <button type="button" data-entry-action="export" data-entry-kind="file" role="menuitem">导出…</button>
@@ -173,7 +175,8 @@
       <header><div><small>WORKSPACE</small><h2 id="entry-operation-title">选择目标目录</h2></div><button id="entry-operation-close" aria-label="关闭"><svg><use href="#i-close"/></svg></button></header>
       <div class="entry-operation-body">
         <p id="entry-operation-source"></p>
-        <label><span>选择目标目录</span><select id="entry-operation-destination"></select></label>
+        <label id="entry-operation-destination-row"><span>选择目标目录</span><select id="entry-operation-destination"></select></label>
+        <label id="entry-operation-name-row" hidden><span>新名称</span><input id="entry-operation-name" autocomplete="off" spellcheck="false"></label>
       </div>
       <footer><button id="entry-operation-cancel" class="quiet-button">取消</button><button id="entry-operation-confirm" class="primary-button">移动条目</button></footer>
     </section>
@@ -219,7 +222,7 @@
         <div class="settings-section-label">编辑器</div>
         <div class="setting-row"><div><strong>界面语言</strong><p>切换 Mory 的菜单与操作文字</p></div><select id="language-select"><option value="zh-CN">简体中文</option><option value="en">English</option></select></div>
         <div class="setting-row"><div><strong>外观</strong><p>选择编辑器使用的颜色主题</p></div><select id="theme-select"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></div>
-        <div class="setting-row"><div><strong>文档主题</strong><p>独立 CSS 控制正文渲染和导出样式</p></div><select id="document-theme-select"><option value="yuluo-css">Yuluo CSS</option><option value="github">GitHub</option><option value="whitey">Whitey</option><option value="newsprint">Newsprint</option><option value="pixyll">Pixyll</option><option value="gothic">Gothic</option><option value="night">Night</option></select></div>
+        <div class="setting-row"><div><strong>文档主题</strong><p>独立 CSS 控制正文渲染和导出样式</p><p id="theme-font-warning" class="setting-warning" hidden></p></div><select id="document-theme-select"><option value="github" selected>GitHub</option><option value="yuluo-css">Yuluo CSS</option><option value="whitey">Whitey</option><option value="newsprint">Newsprint</option><option value="pixyll">Pixyll</option><option value="gothic">Gothic</option><option value="night">Night</option></select></div>
         <div class="setting-row theme-manager-row"><div><strong>用户主题</strong><p id="custom-theme-summary">导入 CSS，或把主题与资源放入主题目录</p></div><div class="theme-actions"><button id="theme-import" class="quiet-button">导入 CSS</button><button id="theme-choose-folder" class="quiet-button">更改目录</button><button id="theme-folder" class="quiet-button">打开目录</button><button id="theme-refresh" class="quiet-button">刷新</button></div></div>
         <div class="setting-row"><div><strong>编辑器宽度</strong><p>控制正文最大行宽</p></div><select id="width-select"><option value="700">窄</option><option value="820" selected>标准</option><option value="980">宽</option></select></div>
         <div class="setting-row"><div><strong>显示状态栏</strong><p>展示行数、字数与模式开关</p></div><label class="switch"><input id="status-toggle" type="checkbox" checked><span></span></label></div>

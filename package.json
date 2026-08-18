@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "author": "Mory Contributors",
   "private": true,
-  "description": "原生宿主与 Web 编辑器结合的跨平台 Markdown 编辑器",
+  "description": "A cross-platform Markdown editor combining native desktop hosts with a shared web editor",
   "main": "Electron/main.cjs",
   "type": "module",
   "scripts": {
@@ -11,6 +11,7 @@
     "predev": "npm run build:web",
     "dev": "electron .",
     "test": "node --test --experimental-test-coverage",
+    "check:language": "node scripts/check-development-language.mjs",
     "pretest:mac-web": "npm run build:web",
     "test:mac-web": "bash scripts/test-macos-web.sh",
     "pretest:mac-typing": "npm run build:web",
@@ -23,7 +24,7 @@
     "pretest:e2e": "npm run build:web",
     "test:e2e": "electron Tests/electron-export.cjs && electron Tests/button-interactions.cjs",
     "precheck": "npm run build:web",
-    "check": "node scripts/build-web.mjs --check && node --check Electron/main.cjs && node --check Electron/preload.cjs && node --check Electron/workspaces.cjs && node --check Electron/workspace-watcher.cjs && node --check Electron/themes.cjs && node --check Sources/Mory/Web/app.js && node --check Sources/Mory/Web/markdown.js && node --check Sources/Mory/Web/knowledge.js && node --check Sources/Mory/Web/app.bundle.js && node --check Tests/electron-export.cjs && node --check Tests/button-interactions.cjs && node --check Tests/host-regressions.test.cjs && node --check Tests/workspaces.test.cjs && node --check Tests/workspace-watcher.test.cjs && node --check Tests/knowledge.test.js",
+    "check": "npm run check:language && node scripts/build-web.mjs --check && node --check Electron/main.cjs && node --check Electron/preload.cjs && node --check Electron/workspaces.cjs && node --check Electron/workspace-watcher.cjs && node --check Electron/themes.cjs && node --check Sources/Mory/Web/app.js && node --check Sources/Mory/Web/markdown.js && node --check Sources/Mory/Web/knowledge.js && node --check Sources/Mory/Web/app.bundle.js && node --check Tests/electron-export.cjs && node --check Tests/button-interactions.cjs && node --check Tests/host-regressions.test.cjs && node --check Tests/workspaces.test.cjs && node --check Tests/workspace-watcher.test.cjs && node --check Tests/knowledge.test.js",
     "prebuild:mac": "npm run build:web",
     "build:mac": "bash scripts/build-macos.sh",
     "dist:mac": "bash scripts/package-macos-release.sh",
@@ -63,7 +64,7 @@
       "output": "dist/windows"
     },
     "win": {
-      "icon": "build/icon.ico",
+      "icon": "assets/mory-icon.png",
       "target": [
         "nsis",
         "portable"
@@ -71,7 +72,7 @@
       "artifactName": "Mory-${version}-${arch}.${ext}"
     },
     "mac": {
-      "icon": "build/icon.png",
+      "icon": "assets/mory-icon.png",
       "target": "dmg",
       "category": "public.app-category.productivity",
       "artifactName": "Mory-Electron-${version}-${arch}.${ext}"
@@ -96,7 +97,7 @@
           "mdown",
           "mkd"
         ],
-        "name": "Markdown 文档",
+        "name": "Markdown Document",
         "role": "Editor"
       }
     ]

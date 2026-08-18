@@ -155,7 +155,7 @@ type shFileOperation struct {
 var shFileOperationW = windows.NewLazySystemDLL("shell32.dll").NewProc("SHFileOperationW")
 
 func moveToRecycleBin(path string) error {
-	// SHFileOperationW 要求来源列表以两个 NUL 结尾。
+	// SHFileOperationW requires the source list to end with two NUL characters.
 	from, err := windows.UTF16PtrFromString(path + "\x00")
 	if err != nil {
 		return fmt.Errorf("编码回收站路径：%w", err)

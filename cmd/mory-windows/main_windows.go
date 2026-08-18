@@ -31,10 +31,10 @@ func (host *WindowsHost) startup(ctx context.Context) {
 
 func (host *WindowsHost) shutdown(context.Context) { host.core.Stop() }
 
-// Send 保持与 Electron preload 相同的无返回值消息入口。
+// Send mirrors the fire-and-forget entry point exposed by the Electron preload script.
 func (host *WindowsHost) Send(payload map[string]any) error { return host.core.Send(payload) }
 
-// Request 保持与 Electron preload 相同的请求/响应入口。
+// Request mirrors the request-response entry point exposed by the Electron preload script.
 func (host *WindowsHost) Request(method string, args map[string]any) (any, error) {
 	return host.core.Request(method, args)
 }

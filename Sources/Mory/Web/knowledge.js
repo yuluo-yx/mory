@@ -38,7 +38,7 @@ function documentReferences(markdown) {
   for (const match of source.matchAll(/(?<!!)\[[^\]]*\]\((?:<([^>]+)>|([^\s)]+))(?:\s+["'][^"']*["'])?\)/g)) {
     let target = (match[1] || match[2] || "").trim();
     if (!target || /^(?:[a-z][a-z\d+.-]*:|\/|#)/i.test(target)) continue;
-    try { target = decodeURI(target); } catch { /* 使用原始链接继续匹配。 */ }
+    try { target = decodeURI(target); } catch { /* Continue matching with the original link. */ }
     target = target.split("#")[0].split("?")[0];
     if (target) references.push({ type: "markdown", target });
   }

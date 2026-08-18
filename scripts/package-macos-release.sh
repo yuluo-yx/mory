@@ -14,13 +14,13 @@ case "$(uname -m)" in
     RELEASE_ARCH="x64"
     ;;
   *)
-    echo "不支持的 macOS 架构：$(uname -m)" >&2
+    echo "Unsupported macOS architecture: $(uname -m)" >&2
     exit 1
     ;;
 esac
 
 if [[ ! -d "$APP_PATH" ]]; then
-  echo "未找到应用包：$APP_PATH。请先执行 npm run build:mac。" >&2
+  echo "App bundle not found: $APP_PATH. Run npm run build:mac first." >&2
   exit 1
 fi
 
@@ -58,5 +58,5 @@ mv -f "$STAGING_ROOT/${ARTIFACT_BASE}.zip" "$ZIP_PATH"
 ) > "$STAGING_ROOT/$(basename "$CHECKSUM_PATH")"
 mv -f "$STAGING_ROOT/$(basename "$CHECKSUM_PATH")" "$CHECKSUM_PATH"
 
-echo "Mory macOS 分发制品已生成："
+echo "Mory macOS release artifacts generated:"
 ls -lh "$DMG_PATH" "$ZIP_PATH" "$CHECKSUM_PATH"

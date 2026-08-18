@@ -5,12 +5,12 @@ import (
 	"io/fs"
 )
 
-// webAssets 保存 macOS 与 Windows 共用的编辑器前端。
+// webAssets contains the editor frontend shared by macOS and Windows.
 //
 //go:embed Sources/Mory/Web
 var webAssets embed.FS
 
-// WebAssets 返回以 index.html 为根的只读资源文件系统。
+// WebAssets returns a read-only filesystem rooted at index.html.
 func WebAssets() fs.FS {
 	assets, err := fs.Sub(webAssets, "Sources/Mory/Web")
 	if err != nil {

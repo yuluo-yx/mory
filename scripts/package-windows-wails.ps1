@@ -14,8 +14,8 @@ $PublicArchitecture = if ($Architecture -eq "amd64") { "x64" } else { "arm64" }
 
 New-Item -ItemType Directory -Force -Path $Destination | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $Project "build") | Out-Null
-# 复用现有 Mory 图标；Wails 会从 PNG 生成带多种尺寸的 Windows ICO 与资源对象。
-Copy-Item (Join-Path $Repository "build/icon.png") (Join-Path $Project "build/appicon.png") -Force
+# Wails generates the Windows ICO and resources from the canonical PNG source.
+Copy-Item (Join-Path $Repository "assets/mory-icon.png") (Join-Path $Project "build/appicon.png") -Force
 Push-Location $Project
 try {
     go run "github.com/wailsapp/wails/v2/cmd/wails@$WailsVersion" build `

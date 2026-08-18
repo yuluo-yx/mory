@@ -17,13 +17,13 @@ function waitForSnapshot(label, snapshots, waiters, predicate, timeout = 4000) {
     };
     const timer = setTimeout(() => {
       waiters.delete(waiter);
-      reject(new Error(`${label}文件系统事件超时；已观察快照=${JSON.stringify(snapshots)}`));
+      reject(new Error(`${label}Timed out waiting for a file-system event; observed snapshots=${JSON.stringify(snapshots)}`));
     }, timeout);
     waiters.add(waiter);
   });
 }
 
-test("桌面工作区监听新增、重命名和删除事件", async t => {
+test("watches desktop workspaces for create, rename, and delete events", async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "mory-watcher-"));
   const snapshots = [];
   const waiters = new Set();
@@ -44,22 +44,22 @@ test("桌面工作区监听新增、重命名和删除事件", async t => {
   });
   watcher.start(root);
 
-  const first = path.join(root, "第一篇.md");
-  const created = waitForSnapshot("新增", snapshots, waiters, files => files.includes("第一篇.md"));
-  await fs.writeFile(first, "# 第一篇", "utf8");
+  const first = path.join(root, "\u7B2C\u4E00\u7BC7.md");
+  const created = waitForSnapshot("\u65B0\u589E", snapshots, waiters, files => files.includes("\u7B2C\u4E00\u7BC7.md"));
+  await fs.writeFile(first, "# \u7B2C\u4E00\u7BC7", "utf8");
   await created;
 
-  const renamed = path.join(root, "已重命名.md");
+  const renamed = path.join(root, "\u5DF2\u91CD\u547D\u540D.md");
   const moved = waitForSnapshot(
-    "重命名",
+    "\u91CD\u547D\u540D",
     snapshots,
     waiters,
-    files => files.includes("已重命名.md") && !files.includes("第一篇.md"),
+    files => files.includes("\u5DF2\u91CD\u547D\u540D.md") && !files.includes("\u7B2C\u4E00\u7BC7.md"),
   );
   await fs.rename(first, renamed);
   await moved;
 
-  const removed = waitForSnapshot("删除", snapshots, waiters, files => files.length === 0);
+  const removed = waitForSnapshot("\u5220\u9664", snapshots, waiters, files => files.length === 0);
   await fs.unlink(renamed);
   await removed;
 

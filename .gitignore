@@ -1,8 +1,9 @@
 .build/
 .cache/
+/build/
 /cmd/mory-windows/build/
+docs/
 node_modules/
 dist/
 .DS_Store
 npm-debug.log*
-build/*.iconset/

@@ -13,7 +13,7 @@ private func workspaceEventCallback(
     Unmanaged<WorkspaceWatcher>.fromOpaque(context).takeUnretainedValue().scheduleRefresh()
 }
 
-/// 递归监听工作目录，行为与 Typora 在 macOS 上使用的 FSEvents 方案一致。
+/// Recursively monitors the workspace using the native macOS FSEvents service.
 final class WorkspaceWatcher: @unchecked Sendable {
     private var stream: FSEventStreamRef?
     private var watchedPath = ""

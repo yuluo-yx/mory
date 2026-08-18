@@ -5,7 +5,7 @@ PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 APP_BINARY="$PROJECT_DIR/dist/macos/Mory.app/Contents/MacOS/Mory"
 
 if [[ ! -x "$APP_BINARY" ]]; then
-  echo "请先执行 npm run build:mac"
+  echo "Run npm run build:mac before starting the drag smoke test."
   exit 1
 fi
 

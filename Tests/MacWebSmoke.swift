@@ -16,7 +16,7 @@ final class MacWebSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         application.delegate = delegate
         application.setActivationPolicy(.accessory)
         DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
-            delegate.finish(failure: "macOS 导出冒烟测试 30 秒内未完成")
+            delegate.finish(failure: "macOS export smoke test did not finish within 30 seconds")
         }
         application.finishLaunching()
         delegate.start()
@@ -55,11 +55,11 @@ final class MacWebSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        finish(failure: "页面加载失败：\(error.localizedDescription)")
+        finish(failure: "Page load failed: \(error.localizedDescription)")
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        finish(failure: "页面预加载失败：\(error.localizedDescription)")
+        finish(failure: "Page provisional load failed: \(error.localizedDescription)")
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -74,6 +74,18 @@ final class MacWebSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
           result.highlight = window.hljs?.versionString || '';
           result.defaultTheme = document.documentElement.dataset.docTheme;
           result.host = document.documentElement.dataset.host;
+          const folderSample = document.createElement('button');
+          folderSample.className = 'folder-item';
+          const fileSample = document.createElement('button');
+          fileSample.className = 'file-item';
+          document.body.append(folderSample, fileSample);
+          const folderStyle = getComputedStyle(folderSample);
+          const fileStyle = getComputedStyle(fileSample);
+          result.folderTypographyCompensated = parseFloat(folderStyle.fontSize) >= parseFloat(fileStyle.fontSize) + 0.75
+            && parseFloat(folderStyle.fontWeight) >= parseFloat(fileStyle.fontWeight) + 50
+            && Math.abs(parseFloat(folderStyle.minHeight) - parseFloat(fileStyle.minHeight)) < 0.1;
+          folderSample.remove();
+          fileSample.remove();
           window.Mory.loadMarkdown('```go\\npackage main\\nfunc main() {}\\n```');
           result.codeHighlighted = Boolean(document.querySelector('#write pre[data-language="go"] .hljs-keyword'));
           document.querySelector('#export-button')?.click();
@@ -102,23 +114,24 @@ final class MacWebSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         webView.evaluateJavaScript(script) { [weak self] value, error in
             guard let self else { return }
             if let error {
-                finish(failure: "JavaScript 执行失败：\(error.localizedDescription)")
+                finish(failure: "JavaScript execution failed: \(error.localizedDescription)")
                 return
             }
             guard let result = value as? [String: Any],
                   result["mory"] as? String == "object",
                   result["mermaid"] as? String == "object",
                   result["highlight"] as? String == "11.11.1",
-                  result["defaultTheme"] as? String == "yuluo-css",
+                  result["defaultTheme"] as? String == "github",
                   result["codeHighlighted"] as? Bool == true,
                   result["host"] as? String == "mac-native",
                   result["exportOpen"] as? Bool == true,
                   result["preferencesOpen"] as? Bool == true,
                   result["sourceMode"] as? Bool == true,
                   result["statusbarHidden"] as? Bool == true,
+                  result["folderTypographyCompensated"] as? Bool == true,
                   result["openDocuments"] as? Int == 3,
                   result["openDocumentsAfterClose"] as? Int == 2 else {
-                finish(failure: "交互状态异常：\(String(describing: value))；页面错误：\(errors.joined(separator: " | "))")
+                finish(failure: "Interaction state is invalid: \(String(describing: value)); Renderer errors: \(errors.joined(separator: " | "))")
                 return
             }
             Task { @MainActor in
@@ -137,17 +150,17 @@ final class MacWebSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                     )
                     guard let html = exportValue as? String,
                           html.hasPrefix("<!doctype html>"),
-                          html.contains("data-doc-theme=\"yuluo-css\"") else {
-                        self.finish(failure: "macOS 异步导出 HTML 异常：\(String(describing: exportValue))")
+                          html.contains("data-doc-theme=\"github\"") else {
+                        self.finish(failure: "macOS asynchronous HTML export is invalid: \(String(describing: exportValue))")
                         return
                     }
-                    print("macOS WKWebView 冒烟与异步导出 HTML 通过：\(result)，HTML \(html.utf8.count) 字节")
+                    print("macOS WKWebView smoke test and asynchronous HTML export passed: defaultTheme=github, interactions=validated, HTML \(html.utf8.count) bytes")
                     let renderer = WKWebView(frame: NSRect(x: 0, y: 0, width: 900, height: 900))
                     renderer.navigationDelegate = self
                     self.exportWebView = renderer
                     renderer.loadHTMLString(html, baseURL: nil)
                 } catch {
-                    self.finish(failure: "macOS 异步导出 JavaScript 失败：\(error.localizedDescription)；页面错误：\(self.errors.joined(separator: " | "))")
+                    self.finish(failure: "macOS asynchronous export JavaScript failed: \(error.localizedDescription); Renderer errors: \(self.errors.joined(separator: " | "))")
                 }
             }
         }
@@ -156,7 +169,7 @@ final class MacWebSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     private func verifyRenderedFormats(_ renderer: WKWebView) {
         renderer.evaluateJavaScript("Math.max(document.documentElement.scrollHeight, document.body.scrollHeight)") { [weak self] value, error in
             guard let self else { return }
-            if let error { finish(failure: "测量导出页面失败：\(error.localizedDescription)"); return }
+            if let error { finish(failure: "Failed to measure the export page: \(error.localizedDescription)"); return }
             let height = max(300, CGFloat((value as? NSNumber)?.doubleValue ?? 0))
             renderer.frame = NSRect(x: 0, y: 0, width: 900, height: height)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
@@ -181,7 +194,7 @@ final class MacWebSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                                   paginated.starts(with: Data("%PDF".utf8)),
                                   let document = CGPDFDocument(output as CFURL),
                                   document.numberOfPages > 1 else {
-                                self.finish(failure: "macOS 后台 PDF 分页结果无效")
+                                self.finish(failure: "macOS background PDF pagination returned an invalid result")
                                 return
                             }
                             try? FileManager.default.removeItem(at: output)
@@ -191,7 +204,7 @@ final class MacWebSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                                 pageCount: document.numberOfPages
                             )
                         } catch {
-                            self.finish(failure: "macOS 异步 PDF 导出失败：\(error.localizedDescription)")
+                            self.finish(failure: "macOS asynchronous PDF export failed: \(error.localizedDescription)")
                         }
                     }
                 }
@@ -204,17 +217,17 @@ final class MacWebSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         snapshot.rect = renderer.bounds
         renderer.takeSnapshot(with: snapshot) { [weak self] image, error in
             guard let self else { return }
-            if let error { finish(failure: "macOS 图片导出失败：\(error.localizedDescription)"); return }
+            if let error { finish(failure: "macOS image export failed: \(error.localizedDescription)"); return }
             guard let tiff = image?.tiffRepresentation,
                   let bitmap = NSBitmapImageRep(data: tiff),
                   let png = bitmap.representation(using: .png, properties: [:]),
                   let jpeg = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.92]),
                   png.starts(with: Data([0x89, 0x50, 0x4e, 0x47])),
                   jpeg.starts(with: Data([0xff, 0xd8])) else {
-                finish(failure: "macOS PNG/JPEG 数据签名无效")
+                finish(failure: "macOS PNG or JPEG data has an invalid signature")
                 return
             }
-            print("macOS 异步 PDF/PNG/JPEG 导出通过：PDF \(pdfSize) 字节、\(pageCount) 页，PNG \(png.count)，JPEG \(jpeg.count) 字节")
+            print("macOS asynchronous PDF, PNG, and JPEG export passed: PDF \(pdfSize) bytes, \(pageCount) pages, PNG \(png.count), JPEG \(jpeg.count) bytes")
             NSApplication.shared.terminate(nil)
         }
     }

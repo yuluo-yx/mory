@@ -26,7 +26,7 @@ var (
 	unsafeSegment      = regexp.MustCompile(`[<>:"/\\|?*\x00-\x1f\s]+`)
 )
 
-// Document 是文件侧栏与知识图谱共用的文稿快照。
+// Document is a note snapshot shared by the file tree and knowledge graph.
 type Document struct {
 	Name      string            `json:"name"`
 	Path      string            `json:"path"`
@@ -36,21 +36,21 @@ type Document struct {
 	Assets    map[string]string `json:"assets,omitempty"`
 }
 
-// DocumentImage 描述文稿同名资源目录中的一张图片。
+// DocumentImage describes an image stored in a note's matching asset directory.
 type DocumentImage struct {
 	Name     string `json:"name"`
 	Path     string `json:"path"`
 	Relative string `json:"relative"`
 }
 
-// Directory 是工作区内可显示的目录。
+// Directory is a visible directory inside the active workspace.
 type Directory struct {
 	Name      string `json:"name"`
 	Path      string `json:"path"`
 	CreatedAt int64  `json:"createdAt"`
 }
 
-// WorkspaceMutation 描述创建、复制或移动后的工作区条目。
+// WorkspaceMutation describes a workspace entry after creation, copy, or move.
 type WorkspaceMutation struct {
 	Name        string `json:"name"`
 	Path        string `json:"path"`
@@ -416,6 +416,91 @@ func moveWorkspaceEntry(root, source, destination string) (WorkspaceMutation, er
 	}
 	name, _ := filepath.Rel(root, target)
 	return WorkspaceMutation{Name: filepath.ToSlash(name), Path: target, SourcePath: resolved, IsDirectory: info.IsDir()}, nil
+}
+
+func renameWorkspaceEntry(root, source, requestedName string) (WorkspaceMutation, error) {
+	resolved, err := safeExistingPath(root, source)
+	if err != nil {
+		return WorkspaceMutation{}, err
+	}
+	info, err := os.Stat(resolved)
+	if err != nil {
+		return WorkspaceMutation{}, fmt.Errorf("读取工作区条目：%w", err)
+	}
+	requestedName = strings.TrimSpace(requestedName)
+	if requestedName == "" || strings.ContainsAny(requestedName, `/\`) || filepath.Base(requestedName) != requestedName || requestedName == "." || requestedName == ".." {
+		return WorkspaceMutation{}, errors.New("名称不能为空或包含路径分隔符")
+	}
+	extension := ""
+	base := requestedName
+	if !info.IsDir() {
+		extension = filepath.Ext(requestedName)
+		base = strings.TrimSuffix(requestedName, extension)
+		if extension == "" {
+			extension = filepath.Ext(resolved)
+		}
+	}
+	filename := sanitizeSegment(base) + extension
+	target := filepath.Join(filepath.Dir(resolved), filename)
+	if filepath.Clean(target) == filepath.Clean(resolved) {
+		return WorkspaceMutation{}, errors.New("名称没有变化")
+	}
+	if _, err := os.Stat(target); !errors.Is(err, os.ErrNotExist) {
+		if err == nil {
+			return WorkspaceMutation{}, errors.New("同名条目已经存在")
+		}
+		return WorkspaceMutation{}, fmt.Errorf("检查重命名目标：%w", err)
+	}
+	if info.IsDir() {
+		if err := os.Rename(resolved, target); err != nil {
+			return WorkspaceMutation{}, fmt.Errorf("重命名目录：%w", err)
+		}
+		name, _ := filepath.Rel(root, target)
+		return WorkspaceMutation{Name: filepath.ToSlash(name), Path: target, SourcePath: resolved, IsDirectory: true}, nil
+	}
+
+	sourceAssets := companionAssets(resolved)
+	targetAssets := companionAssets(target)
+	_, assetsErr := os.Stat(sourceAssets)
+	hasAssets := assetsErr == nil
+	if assetsErr != nil && !errors.Is(assetsErr, os.ErrNotExist) {
+		return WorkspaceMutation{}, fmt.Errorf("检查文稿图片目录：%w", assetsErr)
+	}
+	if hasAssets {
+		if _, err := os.Stat(targetAssets); !errors.Is(err, os.ErrNotExist) {
+			if err == nil {
+				return WorkspaceMutation{}, errors.New("同名图片目录已经存在")
+			}
+			return WorkspaceMutation{}, fmt.Errorf("检查目标图片目录：%w", err)
+		}
+	}
+	markdown, err := os.ReadFile(resolved)
+	if err != nil {
+		return WorkspaceMutation{}, fmt.Errorf("读取待重命名文稿：%w", err)
+	}
+	nextMarkdown := strings.ReplaceAll(string(markdown), "]("+filepath.Base(sourceAssets)+"/", "]("+filepath.Base(targetAssets)+"/")
+	if err := os.Rename(resolved, target); err != nil {
+		return WorkspaceMutation{}, fmt.Errorf("重命名文稿：%w", err)
+	}
+	assetsMoved := false
+	if hasAssets {
+		if err := os.Rename(sourceAssets, targetAssets); err != nil {
+			_ = os.Rename(target, resolved)
+			return WorkspaceMutation{}, fmt.Errorf("重命名文稿图片目录：%w", err)
+		}
+		assetsMoved = true
+	}
+	if nextMarkdown != string(markdown) {
+		if err := os.WriteFile(target, []byte(nextMarkdown), info.Mode().Perm()); err != nil {
+			if assetsMoved {
+				_ = os.Rename(targetAssets, sourceAssets)
+			}
+			_ = os.Rename(target, resolved)
+			return WorkspaceMutation{}, fmt.Errorf("更新文稿图片引用：%w", err)
+		}
+	}
+	name, _ := filepath.Rel(root, target)
+	return WorkspaceMutation{Name: filepath.ToSlash(name), Path: target, SourcePath: resolved, IsDirectory: false}, nil
 }
 
 func workspaceEntryPaths(root, source, destination string) (string, fs.FileInfo, string, error) {

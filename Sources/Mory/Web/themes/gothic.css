@@ -2,7 +2,7 @@
 [data-doc-theme="gothic"] .write {
   color: #20201f;
   font-family: "Baskerville", "Songti SC", Georgia, serif;
-  font-size: clamp(18px, 1vw, 21px);
+  font-size: 1.125rem;
   line-height: 1.72;
 }
 [data-doc-theme="gothic"] .write h1,

@@ -49,7 +49,7 @@ final class MacTypingSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegat
             for _ in 0..<2 {
                 appendText("#", to: &actions)
                 actions.append { self.sendKey(" ", keyCode: 49) }
-                appendText("你好", to: &actions)
+                appendText("\u{4F60}\u{597D}", to: &actions)
                 actions.append { self.sendKey("\r", keyCode: 36) }
             }
             perform(actions) {
@@ -74,7 +74,7 @@ final class MacTypingSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegat
         """
         webView.evaluateJavaScript(script) { [weak self] _, error in
             if let error {
-                self?.finish(failure: "编辑器聚焦失败：\(error.localizedDescription)")
+                self?.finish(failure: "Failed to focus the editor: \(error.localizedDescription)")
                 return
             }
             self?.window.makeFirstResponder(self?.webView)
@@ -95,17 +95,17 @@ final class MacTypingSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegat
           window.Mory.loadMarkdown('');
           const paragraph = document.querySelector('#write > p');
           paragraph.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
-          paragraph.textContent = '# 你好';
+          paragraph.textContent = '# \u{4F60}\u{597D}';
           const range = document.createRange();
           range.selectNodeContents(paragraph);
           range.collapse(false);
           getSelection().removeAllRanges();
           getSelection().addRange(range);
-          paragraph.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertCompositionText', data: '你好', isComposing: true }));
-          paragraph.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '你好' }));
+          paragraph.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertCompositionText', data: '\u{4F60}\u{597D}', isComposing: true }));
+          paragraph.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '\u{4F60}\u{597D}' }));
           const enter = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Enter' });
           result.immediateCompositionEnter = !paragraph.dispatchEvent(enter)
-            && document.querySelector('#write > h1')?.textContent === '你好'
+            && document.querySelector('#write > h1')?.textContent === '\u{4F60}\u{597D}'
             && Boolean(document.querySelector('#write > h1 + p'));
           return result;
         })()
@@ -113,11 +113,11 @@ final class MacTypingSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegat
         webView.evaluateJavaScript(script) { [weak self] value, error in
             guard let self else { return }
             if let error {
-                finish(failure: "标题状态读取失败：\(error.localizedDescription)")
+                finish(failure: "Failed to read heading state: \(error.localizedDescription)")
                 return
             }
             guard let heading = value as? [String: Any] else {
-                finish(failure: "标题状态格式异常：\(String(describing: value))")
+                finish(failure: "Heading state has an invalid shape: \(String(describing: value))")
                 return
             }
             focusEmptyEditor {
@@ -150,27 +150,27 @@ final class MacTypingSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegat
         webView.evaluateJavaScript(script) { [weak self] value, error in
             guard let self else { return }
             if let error {
-                finish(failure: "代码围栏状态读取失败：\(error.localizedDescription)")
+                finish(failure: "Failed to read code-fence state: \(error.localizedDescription)")
                 return
             }
             guard let fence = value as? [String: Any],
-                  heading["headings"] as? [String] == ["你好", "你好"],
+                  heading["headings"] as? [String] == ["\u{4F60}\u{597D}", "\u{4F60}\u{597D}"],
                   heading["hasParagraphAfterHeadings"] as? Bool == true,
                   heading["immediateCompositionEnter"] as? Bool == true,
                   heading["rawHeading"] as? Bool == false,
                   fence["preCount"] as? Int == 1,
                   fence["code"] as? String == "fmt.Println(one)\nfmt.Println(two)",
                   fence["hasParagraphAfterCode"] as? Bool == true else {
-                finish(failure: "真实输入状态异常：heading=\(heading)；fence=\(String(describing: value))；页面错误=\(errors.joined(separator: " | "))")
+                finish(failure: "Native input state is invalid: heading=\(heading); fence=\(String(describing: value)); Renderer errors=\(errors.joined(separator: " | "))")
                 return
             }
-            print("macOS WKWebView 真实输入通过：连续标题=\(heading)；代码块双回车=\(fence)")
+            print("macOS WKWebView native input passed: consecutiveHeadings=\(heading); doubleEnterCodeExit=\(fence)")
             NSApplication.shared.terminate(nil)
         }
     }
 
     private func appendText(_ text: String, to actions: inout [() -> Void]) {
-        // 以一次原生文本输入事件提交一个语义片段，避免无显示设备的 Intel WebView 丢弃密集逐字符 IPC。
+        // Submit each semantic segment in one native input event; headless Intel WebViews may drop dense IPC keystrokes.
         actions.append { [weak self] in self?.sendKey(text, keyCode: 0) }
     }
 
@@ -182,7 +182,7 @@ final class MacTypingSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegat
             return
         }
         actions[index]()
-        // Intel 托管 runner 的 WKWebView 处理符号键后会异步重排代码块；保留真实打字间隔，避免回车抢在末字符提交前到达。
+        // Intel hosted runners relayout code blocks asynchronously after punctuation; preserve a realistic typing interval.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             self?.perform(actions, index: index + 1, completion: completion)
         }

@@ -1,14 +1,14 @@
 /*
- * Mory 的 Yuluo CSS 文档主题。
- * 依据用户现有 Typora yuluo-css.css 的正文配色与排版迁移，已移除
- * Typora 专属选择器、远程字体和未明确授权的字体文件，保证离线跨平台使用。
+ * Mory's Yuluo CSS document theme.
+ * Adapted from the user's existing Typora theme while excluding Typora-only selectors,
+ * remote fonts, and font files without explicit redistribution permission.
  */
 [data-doc-theme="yuluo-css"] .editor-scroll { background: #fff; }
 
 [data-doc-theme="yuluo-css"] .write {
   color: #333;
-  font-family: "Hannotate SC", "Segoe Print", "Microsoft YaHei UI", "PingFang SC", "Open Sans", "Helvetica Neue", Arial, sans-serif;
-  font-size: clamp(16px, .92vw, 19px);
+  font-family: "Hannotate SC", -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei UI", "PingFang SC", "Open Sans", sans-serif;
+  font-size: 1.0625rem;
   line-height: 1.6;
 }
 

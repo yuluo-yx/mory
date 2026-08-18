@@ -27,7 +27,7 @@ async function inlineThemeAssets(css, directory) {
     const reference = match[2].trim();
     if (!reference || /^(?:data:|https?:|file:|#|\/)/i.test(reference)) continue;
     let decoded = reference;
-    try { decoded = decodeURI(reference); } catch { /* 使用原始相对路径。 */ }
+    try { decoded = decodeURI(reference); } catch { /* Keep the original relative path. */ }
     const resolved = path.resolve(directory, decoded.split(/[?#]/)[0]);
     const relative = path.relative(directory, resolved);
     if (relative === ".." || relative.startsWith(`..${path.sep}`)) continue;

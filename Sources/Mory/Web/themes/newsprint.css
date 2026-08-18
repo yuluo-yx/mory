@@ -2,7 +2,7 @@
 [data-doc-theme="newsprint"] .write {
   color: #2d2b27;
   font-family: "Iowan Old Style", "Songti SC", Georgia, serif;
-  font-size: clamp(18px, 1vw, 21px);
+  font-size: 1.125rem;
   line-height: 1.78;
 }
 [data-doc-theme="newsprint"] .write h1,

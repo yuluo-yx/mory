@@ -88,8 +88,8 @@ final class MacIMEInputSmoke: NSObject, NSApplicationDelegate, WKNavigationDeleg
           getSelection().removeAllRanges();
           getSelection().addRange(range);
           write.focus();
-          // 与用户键入空格相同地经过编辑器 keydown 管线，先即时建立空 H1，
-          // 再把后续中文正文交给系统简体拼音。
+          // Follow the same keydown path as a typed space, create the empty H1 immediately,
+          // then hand subsequent Chinese text to the system Simplified Pinyin input method.
           paragraph.dispatchEvent(new KeyboardEvent('keydown', {
             key: ' ', code: 'Space', bubbles: true, cancelable: true
           }));
@@ -99,14 +99,14 @@ final class MacIMEInputSmoke: NSObject, NSApplicationDelegate, WKNavigationDeleg
         webView.evaluateJavaScript(script) { [weak self] _, error in
             guard let self else { return }
             if let error {
-                finish(failure: "真实输入法测试初始化失败：\(error.localizedDescription)")
+                finish(failure: "Native IME test initialization failed: \(error.localizedDescription)")
                 return
             }
             window.makeKeyAndOrderFront(nil)
             NSApplication.shared.activate(ignoringOtherApps: true)
             window.makeFirstResponder(webView)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                print("真实输入法宿主：active=\(NSApplication.shared.isActive)，key=\(self.window.isKeyWindow)，firstResponder=\(String(describing: self.window.firstResponder))")
+                print("Native IME host: active=\(NSApplication.shared.isActive), key=\(self.window.isKeyWindow), firstResponder=\(String(describing: self.window.firstResponder))")
                 self.clearPendingComposition()
             }
         }
@@ -166,20 +166,20 @@ final class MacIMEInputSmoke: NSObject, NSApplicationDelegate, WKNavigationDeleg
         webView.evaluateJavaScript(script) { [weak self] value, error in
             guard let self else { return }
             if let error {
-                finish(failure: "真实输入法状态读取失败：\(error.localizedDescription)")
+                finish(failure: "Failed to read native IME state: \(error.localizedDescription)")
                 return
             }
             guard let result = value as? [String: Any] else {
-                finish(failure: "真实输入法结果格式异常：\(String(describing: value))")
+                finish(failure: "Native IME result has an invalid shape: \(String(describing: value))")
                 return
             }
-            guard result["heading"] as? String == "你好",
+            guard result["heading"] as? String == "\u{4F60}\u{597D}",
                   result["paragraphAfterHeading"] as? Bool == true,
                   result["activeBlock"] as? String == "P" else {
-                finish(failure: "真实简体拼音标题回车失败：\(result)")
+                finish(failure: "Native Simplified Chinese Pinyin heading Enter failed: \(result)")
                 return
             }
-            print("macOS 简体拼音回归通过：标题=你好，后续块=P，Markdown=# 你好")
+            print("macOS Simplified Chinese Pinyin regression passed: heading=expected CJK text, followingBlock=P")
             NSApplication.shared.terminate(nil)
         }
     }

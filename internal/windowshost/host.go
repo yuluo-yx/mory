@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// ExportRequest 是前端完成 Markdown、Mermaid 与主题渲染后交给 WebView2 的导出任务。
+// ExportRequest is the rendered document payload handed to WebView2 for export.
 type ExportRequest struct {
 	Format     string `json:"format"`
 	Theme      string `json:"theme"`
@@ -24,7 +24,7 @@ type ExportRequest struct {
 	Name       string `json:"name"`
 }
 
-// Platform 隔离 Wails 运行时，使工作区与消息协议可在 macOS 上执行单元测试。
+// Platform isolates Wails runtime services so host behavior can be tested on other platforms.
 type Platform interface {
 	ChooseDirectory(defaultDirectory string) (string, error)
 	ChooseFile(defaultDirectory string, extensions []string) (string, error)
@@ -40,7 +40,7 @@ type Platform interface {
 	Export(ExportRequest) error
 }
 
-// Host 实现前端与 Windows WebView2 宿主之间的稳定消息协议。
+// Host implements the stable protocol between the frontend and the Windows WebView2 host.
 type Host struct {
 	mu              sync.RWMutex
 	platform        Platform
@@ -57,7 +57,7 @@ type Host struct {
 	watchSignature  string
 }
 
-// New 创建 Windows 宿主核心。Start 之后才能处理前端请求。
+// New creates the Windows host core. Call Start before processing frontend requests.
 func New(platform Platform, userDataPath, defaultWorkspace string) *Host {
 	return &Host{
 		platform:    platform,
@@ -68,7 +68,7 @@ func New(platform Platform, userDataPath, defaultWorkspace string) *Host {
 	}
 }
 
-// Start 初始化持久化状态并启动工作区变更轮询。
+// Start initializes persisted state and begins polling for workspace changes.
 func (host *Host) Start(parent context.Context) error {
 	if err := host.workspaces.initialize(); err != nil {
 		return err
@@ -81,14 +81,14 @@ func (host *Host) Start(parent context.Context) error {
 	return nil
 }
 
-// Stop 结束后台工作区监听。
+// Stop terminates background workspace monitoring.
 func (host *Host) Stop() {
 	if host.cancel != nil {
 		host.cancel()
 	}
 }
 
-// Send 处理无需返回值的编辑器事件。
+// Send handles editor events that do not require a return value.
 func (host *Host) Send(payload map[string]any) error {
 	typeName := stringValue(payload, "type")
 	switch typeName {
@@ -167,14 +167,14 @@ func (host *Host) Send(payload map[string]any) error {
 		host.platform.ToggleMaximise()
 		return nil
 	case "windowDragStart", "windowDragMove", "windowDragEnd":
-		// Windows 使用 Wails 的 CSS 拖动区，不需要手工计算屏幕坐标。
+		// Windows uses Wails CSS drag regions and does not need manual screen-coordinate handling.
 		return nil
 	default:
 		return fmt.Errorf("未知宿主消息：%s", typeName)
 	}
 }
 
-// Request 处理需要返回结果的工作区请求。
+// Request handles workspace operations that return a result.
 func (host *Host) Request(method string, args map[string]any) (any, error) {
 	switch method {
 	case "workspaceState":
@@ -247,6 +247,12 @@ func (host *Host) Request(method string, args map[string]any) (any, error) {
 			err = host.refreshWorkspace()
 		}
 		return result, err
+	case "renameWorkspaceEntry":
+		result, err := renameWorkspaceEntry(host.workspaces.activeRoot(), stringValue(args, "path"), stringValue(args, "name"))
+		if err == nil {
+			err = host.refreshWorkspace()
+		}
+		return result, err
 	case "syncWorkspace":
 		action := "pull"
 		if stringValue(args, "action") == "push" {
@@ -309,7 +315,7 @@ func (host *Host) Request(method string, args map[string]any) (any, error) {
 	}
 }
 
-// OpenFile 从磁盘加载文稿并通知前端。
+// OpenFile loads a note from disk and sends it to the frontend.
 func (host *Host) OpenFile(path string) error {
 	return host.openFile(path, true)
 }
@@ -341,7 +347,7 @@ func (host *Host) openFile(path string, requireWorkspace bool) error {
 	return nil
 }
 
-// OpenDocument 显示系统文件选择器。
+// OpenDocument displays the system file picker.
 func (host *Host) OpenDocument() error {
 	path, err := host.platform.ChooseFile(host.workspaces.activeRoot(), []string{"md", "markdown", "mmd", "mdown", "mkd", "txt", "text"})
 	if err != nil || path == "" {
@@ -350,7 +356,7 @@ func (host *Host) OpenDocument() error {
 	return host.openFile(path, false)
 }
 
-// OpenFolder 把选择的目录保存为当前本地工作区。
+// OpenFolder persists the selected directory as the active local workspace.
 func (host *Host) OpenFolder() error {
 	path, err := host.platform.ChooseDirectory(host.workspaces.activeRoot())
 	if err != nil || path == "" {
@@ -365,7 +371,7 @@ func (host *Host) OpenFolder() error {
 	return host.refreshWorkspace()
 }
 
-// NewDocument 清除宿主当前路径并让前端创建独立草稿。
+// NewDocument clears the active host path and asks the frontend to create a standalone draft.
 func (host *Host) NewDocument() {
 	host.mu.Lock()
 	host.currentPath = ""
@@ -376,7 +382,7 @@ func (host *Host) NewDocument() {
 	host.platform.Evaluate("window.Mory.newDocument()")
 }
 
-// Save 保存当前文稿；非隐式工作区中的草稿直接分配不冲突的文件名。
+// Save writes the active note and assigns a collision-free name to drafts in explicit workspaces.
 func (host *Host) Save() error {
 	host.mu.RLock()
 	path, markdown, name := host.currentPath, host.currentMarkdown, host.currentName
@@ -390,7 +396,7 @@ func (host *Host) Save() error {
 	return host.writeDocument(path, markdown)
 }
 
-// SaveAs 显示系统另存为对话框。
+// SaveAs displays the system Save As dialog.
 func (host *Host) SaveAs() error {
 	host.mu.RLock()
 	path, markdown, name := host.currentPath, host.currentMarkdown, host.currentName
@@ -405,7 +411,7 @@ func (host *Host) SaveAs() error {
 	return host.writeDocument(chosen, markdown)
 }
 
-// Evaluate 调用前端公开命令，用于菜单快捷键。
+// Evaluate invokes a public frontend command for menu actions and keyboard shortcuts.
 func (host *Host) Evaluate(script string) { host.platform.Evaluate(script) }
 
 func (host *Host) writeDocument(path, markdown string) error {

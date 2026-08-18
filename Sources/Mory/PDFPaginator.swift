@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 
 enum PDFPaginator {
-    /// 将 WebKit 生成的长页 PDF 切分为标准纸张，避免在主线程执行分页和文件写入。
+    /// Splits a WebKit-generated continuous PDF into standard pages off the main thread.
     nonisolated static func write(_ data: Data, to destination: URL, paperSize: CGSize) throws {
         guard let provider = CGDataProvider(data: data as CFData),
               let document = CGPDFDocument(provider),

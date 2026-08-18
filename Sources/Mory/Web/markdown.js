@@ -15,7 +15,13 @@ function safeURL(value) {
 
 export function inlineMarkdown(source) {
   const tokens = [];
-  let value = escapeHTML(source);
+  const escapedPunctuation = [];
+  const protectedSource = String(source).replace(/\\([!-/:-@[-`{-~])/g, (_, punctuation) => {
+    const token = `\u0000ESC${escapedPunctuation.length}\u0000`;
+    escapedPunctuation.push(escapeHTML(punctuation));
+    return token;
+  });
+  let value = escapeHTML(protectedSource);
 
   value = value.replace(/`([^`\n]+)`/g, (_, code) => {
     const token = `\u0000CODE${tokens.length}\u0000`;
@@ -25,12 +31,16 @@ export function inlineMarkdown(source) {
   value = value.replace(/!\[([^\]]*)\]\(([^\s)]+)(?:\s+(?:&quot;([^&]*?)&quot;|'([^']*)'))?\)/g, (_, alt, url, doubleTitle, singleTitle) => {
     const title = doubleTitle ?? singleTitle;
     const titleAttr = title ? ` title="${escapeHTML(title)}"` : "";
+    if (/\.(?:md|markdown)(?:[?#].*)?$/i.test(url)) {
+      return `<a href="${escapeHTML(safeURL(url))}" class="document-link" data-markdown-image-link="true"${titleAttr}>${alt || url}</a>`;
+    }
     return `<img src="${escapeHTML(safeURL(url))}" alt="${alt}"${titleAttr}>`;
   });
   value = value.replace(/\[([^\]]+)\]\(([^\s)]+)(?:\s+(?:&quot;([^&]*?)&quot;|'([^']*)'))?\)/g, (_, label, url, doubleTitle, singleTitle) => {
     const title = doubleTitle ?? singleTitle;
     const titleAttr = title ? ` title="${escapeHTML(title)}"` : "";
-    return `<a href="${escapeHTML(safeURL(url))}"${titleAttr}>${label}</a>`;
+    const classAttr = /\.(?:md|markdown)(?:[?#].*)?$/i.test(url) ? ' class="document-link"' : "";
+    return `<a href="${escapeHTML(safeURL(url))}"${classAttr}${titleAttr}>${label}</a>`;
   });
   value = value.replace(/\*\*([^*\n]+)\*\*|__([^_\n]+)__/g, "<strong>$1$2</strong>");
   value = value.replace(/~~([^~\n]+)~~/g, "<del>$1</del>");
@@ -38,6 +48,7 @@ export function inlineMarkdown(source) {
   value = value.replace(/(^|[^_])_([^_\n]+)_(?!_)/g, "$1<em>$2</em>");
   value = value.replace(/ {2}\n/g, "<br>");
   value = value.replace(/\u0000CODE(\d+)\u0000/g, (_, index) => tokens[Number(index)]);
+  value = value.replace(/\u0000ESC(\d+)\u0000/g, (_, index) => escapedPunctuation[Number(index)]);
   return value;
 }
 
@@ -71,7 +82,7 @@ function fenceTitle(value) {
 }
 
 export function markdownToHTML(markdown) {
-  // UTF-8 BOM 只可能位于文稿开头；去除它，避免首个块无法匹配 Markdown 标记。
+  // A UTF-8 BOM is valid only at the start; remove it before parsing the first Markdown block.
   const lines = String(markdown ?? "").replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n").split("\n");
   const html = [];
   let index = 0;
@@ -162,26 +173,34 @@ export function markdownToHTML(markdown) {
   return html.join("\n");
 }
 
-function inlineNodeToMarkdown(node) {
-  if (node.nodeType === Node.TEXT_NODE) return (node.nodeValue ?? "").replaceAll("\u200b", "");
+function escapeMarkdownText(value) {
+  return value.replace(/([\\`*_[\]~])/g, "\\$1");
+}
+
+function inlineNodeToMarkdown(node, escapeText = true, inCode = false) {
+  if (node.nodeType === Node.TEXT_NODE) {
+    const value = (node.nodeValue ?? "").replaceAll("\u200b", "");
+    if (!escapeText || inCode) return value;
+    return escapeMarkdownText(value);
+  }
   if (node.nodeType !== Node.ELEMENT_NODE) return "";
   const element = /** @type {HTMLElement} */ (node);
-  const content = [...element.childNodes].map(inlineNodeToMarkdown).join("");
+  const content = [...element.childNodes].map(child => inlineNodeToMarkdown(child, escapeText, inCode || element.tagName === "CODE")).join("");
   switch (element.tagName) {
     case "STRONG": case "B": return `**${content}**`;
     case "EM": case "I": return `*${content}*`;
     case "DEL": case "S": case "STRIKE": return `~~${content}~~`;
     case "CODE": return `\`${content.replaceAll("`", "\\`")}\``;
-    case "A": return `[${content}](${element.getAttribute("href") ?? ""})`;
-    case "IMG": return `![${element.getAttribute("alt") ?? ""}](${element.getAttribute("src") ?? ""})`;
+    case "A": return `${element.dataset.markdownImageLink === "true" ? "!" : ""}[${content}](${element.getAttribute("href") ?? ""})`;
+    case "IMG": return `![${element.getAttribute("alt") ?? ""}](${element.dataset.markdownSrc || element.getAttribute("src") || ""})`;
     case "BR": return "  \n";
     case "INPUT": return element.getAttribute("type") === "checkbox" ? `[${/** @type {HTMLInputElement} */ (element).checked ? "x" : " "}] ` : "";
     default: return content;
   }
 }
 
-function tableToMarkdown(table) {
-  const rows = [...table.querySelectorAll("tr")].map(row => [...row.children].map(cell => inlineNodeToMarkdown(cell).replaceAll("|", "\\|").trim()));
+function tableToMarkdown(table, escapeText) {
+  const rows = [...table.querySelectorAll("tr")].map(row => [...row.children].map(cell => inlineNodeToMarkdown(cell, escapeText).replaceAll("|", "\\|").trim()));
   if (!rows.length) return "";
   const width = Math.max(...rows.map(row => row.length));
   const normalized = rows.map(row => Array.from({ length: width }, (_, index) => row[index] ?? ""));
@@ -189,34 +208,35 @@ function tableToMarkdown(table) {
   return [normalized[0], separator, ...normalized.slice(1)].map(row => `| ${row.join(" | ")} |`).join("\n");
 }
 
-export function editorToMarkdown(root) {
+export function editorToMarkdown(root, { escapeText = true } = {}) {
   const blocks = [];
   for (const node of root.childNodes) {
     if (node.nodeType === Node.TEXT_NODE) {
       const value = (node.nodeValue ?? "").replaceAll("\u200b", "").trim();
-      if (value) blocks.push(value);
+      if (value) blocks.push(escapeText ? escapeMarkdownText(value) : value);
       continue;
     }
     if (node.nodeType !== Node.ELEMENT_NODE) continue;
     const element = /** @type {HTMLElement} */ (node);
-    if (element.matches?.(".code-meta")) continue;
-    if (element.tagName === "DIV" && (element.getAttribute("class") ?? "").split(/\s+/).includes("mermaid-diagram")) {
+    const classNames = (element.getAttribute("class") ?? "").split(/\s+/);
+    if (classNames.includes("code-meta") || classNames.includes("table-tools")) continue;
+    if (element.tagName === "DIV" && classNames.includes("mermaid-diagram")) {
       const source = element.dataset.mermaidSource ?? "";
       blocks.push(`\`\`\`mermaid\n${source}\n\`\`\``);
       continue;
     }
-    const content = [...element.childNodes].map(inlineNodeToMarkdown).join("").trim();
+    const content = [...element.childNodes].map(child => inlineNodeToMarkdown(child, escapeText)).join("").trim();
     switch (element.tagName) {
       case "H1": case "H2": case "H3": case "H4": case "H5": case "H6":
         blocks.push(`${"#".repeat(Number(element.tagName[1]))} ${content}`); break;
       case "P": case "DIV": blocks.push(content); break;
       case "BLOCKQUOTE":
-        blocks.push(element.innerText.split("\n").map(line => `> ${line}`).join("\n")); break;
+        blocks.push(element.innerText.split("\n").map(line => `> ${escapeText ? escapeMarkdownText(line) : line}`).join("\n")); break;
       case "UL": case "OL": {
         const ordered = element.tagName === "OL";
         const items = [...element.children].map((item, index) => {
           const task = item.querySelector(':scope > input[type="checkbox"]');
-          const text = [...item.childNodes].filter(child => child !== task).map(inlineNodeToMarkdown).join("").trim();
+          const text = [...item.childNodes].filter(child => child !== task).map(child => inlineNodeToMarkdown(child, escapeText)).join("").trim();
           if (task) return `- [${task.checked ? "x" : " "}] ${text}`;
           return `${ordered ? `${index + 1}.` : "-"} ${text}`;
         });
@@ -229,7 +249,7 @@ export function editorToMarkdown(root) {
         const code = element.innerText.replaceAll("\u200b", "").replace(/\n$/, "");
         blocks.push(`\`\`\`${language}${title}\n${code}\n\`\`\``); break;
       }
-      case "TABLE": blocks.push(tableToMarkdown(element)); break;
+      case "TABLE": blocks.push(tableToMarkdown(element, escapeText)); break;
       case "HR": blocks.push("---"); break;
       default: if (content) blocks.push(content);
     }

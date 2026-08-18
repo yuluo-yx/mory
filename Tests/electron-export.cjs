@@ -15,7 +15,7 @@ async function loadAndWait(window, load) {
   load();
   await Promise.race([
     finished,
-    new Promise((_, reject) => setTimeout(() => reject(new Error("页面加载超过 10 秒")), 10_000))
+    new Promise((_, reject) => setTimeout(() => reject(new Error("Page load exceeded 10 seconds")), 10_000))
   ]);
 }
 
@@ -31,7 +31,7 @@ app.whenReady().then(async () => {
     await loadAndWait(editor, () => editor.loadFile(path.join(__dirname, "..", "Sources", "Mory", "Web", "index.html")));
     process.stdout.write("[e2e] editor-loaded\n");
 
-    const mermaidMarkdown = "# Mory Markdown 编辑器\n\n## Mermaid\n\n```mermaid\nflowchart LR\n  A[Markdown] --> B[SVG]\n  B --> C[PDF / HTML / 图片]\n```\n\n## 命名代码\n\n```go title=\"main.go\"\npackage main\nfunc main() { fmt.Println(\"export\") }\n```\n\n## 导出验证";
+    const mermaidMarkdown = "# Mory Markdown \u7F16\u8F91\u5668\n\n## Mermaid\n\n```mermaid\nflowchart LR\n  A[Markdown] --> B[SVG]\n  B --> C[PDF / HTML / \u56FE\u7247]\n```\n\n## \u547D\u540D\u4EE3\u7801\n\n```go title=\"main.go\"\npackage main\nfunc main() { fmt.Println(\"export\") }\n```\n\n## \u5BFC\u51FA\u9A8C\u8BC1";
     const invalidMermaidMarkdown = "```mermaid\nthis is not a diagram\n```";
     const result = await editor.webContents.executeJavaScript(`(async () => {
       window.Mory.loadMarkdown(${JSON.stringify(mermaidMarkdown)});
@@ -70,15 +70,15 @@ app.whenReady().then(async () => {
       return snapshot;
     })()`);
 
-    if (!result.html.includes('[data-doc-theme="newsprint"]') || !result.html.includes('Mory Markdown 编辑器') || !result.html.includes('<svg') || result.html.includes('<script')) {
-      throw new Error("导出 HTML 未内联 Newsprint 主题、正文或 Mermaid SVG");
+    if (!result.html.includes('[data-doc-theme="newsprint"]') || !result.html.includes('Mory Markdown \u7F16\u8F91\u5668') || !result.html.includes('<svg') || result.html.includes('<script')) {
+      throw new Error("Exported HTML did not inline the Newsprint theme, document content, or Mermaid SVG");
     }
-    if (!result.mermaidRendered) throw new Error("编辑区 Mermaid 未渲染");
-    if (result.defaultTheme !== "yuluo-css") throw new Error("Yuluo CSS 未成为默认文档主题");
-    if (result.highlightRuntime !== "11.11.1" || !result.codeHighlighted || !result.exportCodeHighlighted) throw new Error("Highlight.js 未覆盖编辑区和导出 HTML");
-    if (!result.namedCodeRoundTrip) throw new Error("代码片段名称未完成 Markdown 与导出往返");
-    if (!result.nightExport) throw new Error("Night 主题 Mermaid 导出失败");
-    if (!result.mermaidError) throw new Error("Mermaid 语法错误未显示可恢复状态");
+    if (!result.mermaidRendered) throw new Error("Mermaid did not render in the editor");
+    if (result.defaultTheme !== "github") throw new Error("GitHub did not become the default document theme");
+    if (result.highlightRuntime !== "11.11.1" || !result.codeHighlighted || !result.exportCodeHighlighted) throw new Error("Highlight.js did not cover both the editor and exported HTML");
+    if (!result.namedCodeRoundTrip) throw new Error("The code snippet title did not round-trip through Markdown and export");
+    if (!result.nightExport) throw new Error("Mermaid export failed with the Night theme");
+    if (!result.mermaidError) throw new Error("Invalid Mermaid syntax did not show a recoverable state");
     process.stdout.write("[e2e] html-generated\n");
 
     exportView = new BrowserWindow({ show: false, width: 900, height: 1000, webPreferences: { sandbox: true, offscreen: true, partition: `mory-export-view-${process.pid}` } });
@@ -96,12 +96,12 @@ app.whenReady().then(async () => {
     await fs.writeFile(`${base}.png`, png);
     await fs.writeFile(`${base}.pdf`, pdf);
 
-    if (png.subarray(1, 4).toString("ascii") !== "PNG") throw new Error("PNG 签名无效");
-    if (pdf.subarray(0, 4).toString("ascii") !== "%PDF") throw new Error("PDF 签名无效");
+    if (png.subarray(1, 4).toString("ascii") !== "PNG") throw new Error("Invalid PNG signature");
+    if (pdf.subarray(0, 4).toString("ascii") !== "%PDF") throw new Error("Invalid PDF signature");
 
     process.stdout.write(JSON.stringify({
       status: "passed",
-      heading: result.heading,
+      headingValidated: result.heading === "Mory Markdown \u7F16\u8F91\u5668",
       outlineCount: result.outlineCount,
       theme: result.theme,
       defaultTheme: result.defaultTheme,

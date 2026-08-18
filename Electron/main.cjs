@@ -1,7 +1,7 @@
 const { app, BrowserWindow, dialog, ipcMain, Menu, shell } = require("electron");
 const fs = require("node:fs/promises");
 const path = require("node:path");
-const { copyWorkspaceEntry, createWorkspaceDirectory, createWorkspaceDocument, createWorkspaceManager, importImage, listDirectories, listDocuments, loadDocumentAssets, moveWorkspaceEntry, readDocumentImage, readWorkspaceDocuments, relocateDocumentAssets, sanitizeSegment, workspaceEntryPath } = require("./workspaces.cjs");
+const { copyWorkspaceEntry, createWorkspaceDirectory, createWorkspaceDocument, createWorkspaceManager, importImage, listDirectories, listDocuments, loadDocumentAssets, moveWorkspaceEntry, readDocumentImage, readWorkspaceDocuments, relocateDocumentAssets, renameWorkspaceEntry, sanitizeSegment, workspaceEntryPath } = require("./workspaces.cjs");
 const { createThemeManager } = require("./themes.cjs");
 const { createWorkspaceWatcher } = require("./workspace-watcher.cjs");
 
@@ -239,6 +239,11 @@ async function handleWorkspaceRequest(method, args = {}) {
     }
     case "moveWorkspaceEntry": {
       const result = await moveWorkspaceEntry(workspaceManager.activeRoot(), args.path, args.destinationPath);
+      await refreshWorkspace();
+      return result;
+    }
+    case "renameWorkspaceEntry": {
+      const result = await renameWorkspaceEntry(workspaceManager.activeRoot(), args.path, args.name);
       await refreshWorkspace();
       return result;
     }

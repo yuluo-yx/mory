@@ -44,39 +44,39 @@ func TestConfigValidate(t *testing.T) {
 func TestLocalFilesAndSafePath(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, "专题", ".git"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, "\u4E13\u9898", ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "专题", "文章.md"), []byte("# 文章"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "\u4E13\u9898", "article.md"), []byte("# \u6587\u7AE0"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "专题", ".git", "ignored"), []byte("x"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "\u4E13\u9898", ".git", "ignored"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	files, err := localFiles(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(files) != 1 || files[0].Relative != "专题/文章.md" {
+	if len(files) != 1 || files[0].Relative != "\u4E13\u9898/article.md" {
 		t.Fatalf("unexpected files: %#v", files)
 	}
 	if _, err := safeLocalPath(root, "../escape"); err == nil {
 		t.Fatal("expected traversal error")
 	}
-	if err := writeLocalFile(root, "文章/image.png", []byte("image")); err != nil {
+	if err := writeLocalFile(root, "\u6587\u7AE0/image.png", []byte("image")); err != nil {
 		t.Fatal(err)
 	}
-	if data, err := os.ReadFile(filepath.Join(root, "文章", "image.png")); err != nil || string(data) != "image" {
+	if data, err := os.ReadFile(filepath.Join(root, "\u6587\u7AE0", "image.png")); err != nil || string(data) != "image" {
 		t.Fatalf("unexpected file: %q, %v", data, err)
 	}
 }
 
 func TestObjectPaths(t *testing.T) {
 	t.Parallel()
-	if got := objectKey("docs/", "专题\\文章.md"); got != "docs/专题/文章.md" {
+	if got := objectKey("docs/", "\u4E13\u9898\\article.md"); got != "docs/\u4E13\u9898/article.md" {
 		t.Fatalf("objectKey = %q", got)
 	}
-	if got, ok := objectRelative("docs", "docs/专题/文章.md"); !ok || got != "专题/文章.md" {
+	if got, ok := objectRelative("docs", "docs/\u4E13\u9898/article.md"); !ok || got != "\u4E13\u9898/article.md" {
 		t.Fatalf("objectRelative = %q, %v", got, ok)
 	}
 	if _, ok := objectRelative("docs", "other/file"); ok {
@@ -87,7 +87,7 @@ func TestObjectPaths(t *testing.T) {
 func TestGitHubPullAndPush(t *testing.T) {
 	var createdTree map[string]any
 	requests := make(map[string]int)
-	remoteContent := []byte("# 远端")
+	remoteContent := []byte("# \u8FDC\u7AEF")
 	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		if request.Header.Get("Authorization") != "Bearer token" {
 			t.Errorf("missing authorization")
@@ -97,13 +97,13 @@ func TestGitHubPullAndPush(t *testing.T) {
 		body := ""
 		switch {
 		case request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/git/trees/main"):
-			body = `{"sha":"tree-pull","tree":[{"path":"docs/文章.md","type":"blob","sha":"remote-blob"}]}`
+			body = `{"sha":"tree-pull","tree":[{"path":"docs/article.md","type":"blob","sha":"remote-blob"}]}`
 		case request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/git/blobs/remote-blob"):
 			body = string(remoteContent)
 		case request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/git/ref/heads/main"):
 			body = `{"ref":"refs/heads/main","object":{"type":"commit","sha":"commit-old"}}`
 		case request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/git/trees/commit-old"):
-			body = `{"sha":"tree-old","tree":[{"path":"docs/文章.md","type":"blob","sha":"remote-blob"}]}`
+			body = `{"sha":"tree-old","tree":[{"path":"docs/article.md","type":"blob","sha":"remote-blob"}]}`
 		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/git/blobs"):
 			status = http.StatusCreated
 			body = `{"sha":"blob-new"}`
@@ -140,13 +140,13 @@ func TestGitHubPullAndPush(t *testing.T) {
 	if summary.Files != 1 {
 		t.Fatalf("pull summary = %#v", summary)
 	}
-	if data, err := os.ReadFile(filepath.Join(root, "文章.md")); err != nil || string(data) != "# 远端" {
+	if data, err := os.ReadFile(filepath.Join(root, "article.md")); err != nil || string(data) != "# \u8FDC\u7AEF" {
 		t.Fatalf("pull file = %q, %v", data, err)
 	}
-	if err := os.Remove(filepath.Join(root, "文章.md")); err != nil {
+	if err := os.Remove(filepath.Join(root, "article.md")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "new.md"), []byte("# 本地"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "new.md"), []byte("# \u672C\u5730"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	summary, err = backend.Push(context.Background(), root)
@@ -163,7 +163,7 @@ func TestGitHubPullAndPush(t *testing.T) {
 
 func TestGitHubPushSkipsUnchangedFiles(t *testing.T) {
 	root := t.TempDir()
-	data := []byte("# 未变化")
+	data := []byte("# \u672A\u53D8\u5316")
 	if err := os.WriteFile(filepath.Join(root, "same.md"), data, 0o644); err != nil {
 		t.Fatal(err)
 	}

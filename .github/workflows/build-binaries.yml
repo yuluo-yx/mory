@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  # 普通提交校验和手动发布可以指向同一提交；按触发类型隔离，避免发布任务把提交检查取消成红叉。
+  # Commit validation and manual releases may target the same revision; isolate them by trigger type.
   group: mory-build-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 

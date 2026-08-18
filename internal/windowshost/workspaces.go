@@ -16,14 +16,14 @@ import (
 	"github.com/yuluo-yx/mory/internal/storage"
 )
 
-// Workspace 是 Windows 宿主持久化的工作区配置。敏感字段只写入本地配置，不返回前端。
+// Workspace is the persisted Windows host configuration. Secret fields never return to the frontend.
 type Workspace struct {
 	storage.Config
 	LocalPath  string `json:"localPath,omitempty"`
 	IsImplicit bool   `json:"isImplicit,omitempty"`
 }
 
-// PublicWorkspace 是可安全返回设置页的工作区配置。
+// PublicWorkspace is the redacted workspace configuration exposed to the settings UI.
 type PublicWorkspace struct {
 	ID                        string `json:"id"`
 	Name                      string `json:"name"`
@@ -49,7 +49,7 @@ type PublicWorkspace struct {
 	AccessKeyIDConfigured     bool   `json:"accessKeyIdConfigured"`
 }
 
-// WorkspaceState 是前端工作区切换器使用的稳定数据结构。
+// WorkspaceState is the stable data contract consumed by the frontend workspace switcher.
 type WorkspaceState struct {
 	ActiveID   string            `json:"activeId"`
 	Workspaces []PublicWorkspace `json:"workspaces"`

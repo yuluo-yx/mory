@@ -22,7 +22,7 @@ const (
 
 var cssURL = regexp.MustCompile(`(?i)url\(\s*(["']?)([^"')]+)["']?\s*\)`)
 
-// Theme 是设置页可选择的用户 CSS 主题。
+// Theme is a user-provided CSS theme available to the settings UI.
 type Theme struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`

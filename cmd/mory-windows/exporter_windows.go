@@ -96,7 +96,7 @@ func exportWithEdge(ctx context.Context, request windowshost.ExportRequest, dest
 	if err := client.waitEvent(ctx, "Page.loadEventFired"); err != nil {
 		return err
 	}
-	// 等待字体与所有 data URL 图片解码，避免首次导出缺图或字体跳变。
+	// Wait for fonts and data URL images to decode before capturing the first export frame.
 	readyExpression := `(async()=>{await document.fonts.ready;await Promise.all([...document.images].map(img=>img.complete?Promise.resolve():new Promise(resolve=>{img.addEventListener('load',resolve,{once:true});img.addEventListener('error',resolve,{once:true})})));return Math.max(document.documentElement.scrollHeight,document.body.scrollHeight)})()`
 	ready, err := client.call(ctx, "Runtime.evaluate", map[string]any{"expression": readyExpression, "awaitPromise": true, "returnByValue": true})
 	if err != nil {
