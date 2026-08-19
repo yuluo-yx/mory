@@ -29,6 +29,15 @@
     <symbol id="i-graph" viewBox="0 0 24 24"><circle cx="6" cy="7" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="15" cy="18" r="2.4"/><circle cx="5" cy="17" r="2.4"/><path d="m8.3 6.8 7.3-.6M7.2 9l6.6 7.1M16.9 8.2l-1.3 7.4M7.4 17.2l5.2.5"/></symbol>
     <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18M8 14h2M14 14h2M8 18h2M14 18h2"/></symbol>
     <symbol id="i-typography" viewBox="0 0 24 24"><path d="M4 6h10M9 6v13M6 19h6M15 10h5M17.5 8v10M14.5 18h6"/></symbol>
+    <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0 0 18h1.4a1.8 1.8 0 0 0 1.2-3.1 1.8 1.8 0 0 1 1.2-3.1H18A3 3 0 0 0 21 12a9 9 0 0 0-9-9Z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="15" cy="7.5" r="1"/></symbol>
+    <symbol id="i-panel-left-close" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16m6-5-3-3 3-3"/></symbol>
+    <symbol id="i-panel-left-open" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16m3-5 3-3-3-3"/></symbol>
+    <symbol id="i-maximize-2" viewBox="0 0 24 24"><path d="M15 3h6v6m0-6-7 7M9 21H3v-6m0 6 7-7"/></symbol>
+    <symbol id="i-minimize-2" viewBox="0 0 24 24"><path d="M4 14h6v6m0-6-7 7m17-11h-6V4m0 6 7-7"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M13.5 6.5 17.5 10.5M4 20l3.7-.8L19 7.9a2.8 2.8 0 0 0-4-4L3.8 15.2z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 3h6l1 4H8zM7 7l1 14h8l1-14M10 11v6M14 11v6"/></symbol>
+    <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
   </svg>
 
   <main id="app" class="app-shell">
@@ -247,6 +256,69 @@
         <label class="check-setting"><span><strong>保留主题背景</strong><small>PDF 与图片包含当前主题的纸张颜色</small></span><input id="export-background" type="checkbox" checked></label>
       </div>
       <footer><span id="export-hint">HTML、PDF 不需要 Pandoc</span><button id="export-confirm">选择位置并导出</button></footer>
+    </section>
+  </div>
+
+  <div id="calendar-dialog" class="modal-backdrop calendar-dialog" aria-hidden="true">
+    <section class="calendar-editor-card" role="dialog" aria-modal="true" aria-labelledby="calendar-editor-title">
+      <header class="calendar-editor-header">
+        <div><small>CALENDAR</small><h2 id="calendar-editor-title">编辑日历</h2></div>
+        <button id="calendar-close" class="calendar-icon-button" type="button" aria-label="关闭"><svg><use href="#i-close"/></svg></button>
+      </header>
+      <div class="calendar-editor-body">
+        <section class="calendar-editor-preview" aria-label="日历预览">
+          <div class="calendar-editor-nav">
+            <button id="calendar-previous-month" class="calendar-icon-button" type="button" aria-label="上个月"><svg><use href="#i-arrow-left"/></svg></button>
+            <h3 id="calendar-editor-month"></h3>
+            <button id="calendar-next-month" class="calendar-icon-button" type="button" aria-label="下个月"><svg><use href="#i-arrow-right"/></svg></button>
+            <button id="calendar-today" class="quiet-button" type="button">今天</button>
+          </div>
+          <div id="calendar-editor-weekdays" class="calendar-editor-weekdays" aria-hidden="true"></div>
+          <div id="calendar-editor-days" class="calendar-editor-days" role="grid"></div>
+        </section>
+        <aside class="calendar-editor-controls">
+          <nav class="calendar-mode-tabs" aria-label="日历编辑模式">
+            <button type="button" data-calendar-mode="mark" class="is-active">日期标记</button>
+            <button type="button" data-calendar-mode="range">日期范围</button>
+            <button type="button" data-calendar-mode="items">日期事项</button>
+          </nav>
+          <div id="calendar-active-date" class="calendar-active-date"></div>
+
+          <section class="calendar-mode-panel is-active" data-calendar-panel="mark">
+            <label class="calendar-field"><span>标题</span><input id="calendar-mark-title" maxlength="120" autocomplete="off" placeholder="重要日期"></label>
+            <fieldset id="calendar-mark-colors" class="calendar-color-field"><legend>颜色</legend></fieldset>
+            <div class="calendar-panel-actions">
+              <button id="calendar-remove-mark" class="quiet-button" type="button">移除标记</button>
+              <button id="calendar-save-mark" class="primary-button" type="button">保存标记</button>
+            </div>
+          </section>
+
+          <section class="calendar-mode-panel" data-calendar-panel="range">
+            <div id="calendar-range-selection" class="calendar-range-selection"></div>
+            <label class="calendar-field"><span>标题</span><input id="calendar-range-title" maxlength="120" autocomplete="off" placeholder="前端开发"></label>
+            <fieldset id="calendar-range-colors" class="calendar-color-field"><legend>颜色</legend></fieldset>
+            <div class="calendar-panel-actions">
+              <button id="calendar-reset-range" class="quiet-button" type="button">重新选择</button>
+              <button id="calendar-save-range" class="primary-button" type="button">添加范围</button>
+            </div>
+            <div id="calendar-range-list" class="calendar-record-list"></div>
+          </section>
+
+          <section class="calendar-mode-panel" data-calendar-panel="items">
+            <form id="calendar-item-form" class="calendar-item-form">
+              <input id="calendar-item-text" maxlength="240" autocomplete="off" placeholder="添加事项">
+              <button class="primary-button" type="submit">添加</button>
+            </form>
+            <div id="calendar-item-list" class="calendar-record-list"></div>
+          </section>
+        </aside>
+      </div>
+      <footer class="calendar-editor-footer">
+        <button id="calendar-delete" class="danger-button" type="button">删除日历</button>
+        <span></span>
+        <button id="calendar-cancel" class="quiet-button" type="button">取消</button>
+        <button id="calendar-apply" class="primary-button" type="button">保存日历</button>
+      </footer>
     </section>
   </div>
 

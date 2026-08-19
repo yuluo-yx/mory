@@ -18,3 +18,20 @@
 [data-doc-theme="github"] .write th { background: #f6f8fa; }
 [data-doc-theme="github"] .write th,
 [data-doc-theme="github"] .write td { border-color: #d0d7de; }
+
+:root[data-appearance="dark"][data-doc-theme="github"] .editor-scroll { background: #0d1117; }
+:root[data-appearance="dark"][data-doc-theme="github"] .write { color: #e6edf3; }
+:root[data-appearance="dark"][data-doc-theme="github"] .write h1,
+:root[data-appearance="dark"][data-doc-theme="github"] .write h2,
+:root[data-appearance="dark"][data-doc-theme="github"] .write h3,
+:root[data-appearance="dark"][data-doc-theme="github"] .write h4 { color: #f0f6fc; }
+:root[data-appearance="dark"][data-doc-theme="github"] .write h1,
+:root[data-appearance="dark"][data-doc-theme="github"] .write h2 { border-color: #30363d; }
+:root[data-appearance="dark"][data-doc-theme="github"] .write a { color: #58a6ff; }
+:root[data-appearance="dark"][data-doc-theme="github"] .write code,
+:root[data-appearance="dark"][data-doc-theme="github"] .write pre,
+:root[data-appearance="dark"][data-doc-theme="github"] .write th { background: #161b22; }
+:root[data-appearance="dark"][data-doc-theme="github"] .write blockquote { border-color: #3b434b; color: #8b949e; }
+:root[data-appearance="dark"][data-doc-theme="github"] .write th,
+:root[data-appearance="dark"][data-doc-theme="github"] .write td,
+:root[data-appearance="dark"][data-doc-theme="github"] .write hr { border-color: #30363d; }

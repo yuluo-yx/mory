@@ -14,3 +14,17 @@
 [data-doc-theme="whitey"] .write code,
 [data-doc-theme="whitey"] .write pre { background: #f5f5f3; }
 [data-doc-theme="whitey"] .write blockquote { border-color: #d9d9d5; color: #8a8a85; }
+
+:root[data-appearance="dark"][data-doc-theme="whitey"] .editor-scroll { background: #1f2020; }
+:root[data-appearance="dark"][data-doc-theme="whitey"] .write { color: #deded9; }
+:root[data-appearance="dark"][data-doc-theme="whitey"] .write h1,
+:root[data-appearance="dark"][data-doc-theme="whitey"] .write h2,
+:root[data-appearance="dark"][data-doc-theme="whitey"] .write h3 { color: #f0f0eb; }
+:root[data-appearance="dark"][data-doc-theme="whitey"] .write a { color: #72b1d2; }
+:root[data-appearance="dark"][data-doc-theme="whitey"] .write code,
+:root[data-appearance="dark"][data-doc-theme="whitey"] .write pre,
+:root[data-appearance="dark"][data-doc-theme="whitey"] .write th { background: #292a29; }
+:root[data-appearance="dark"][data-doc-theme="whitey"] .write blockquote { border-color: #555752; color: #a5a69f; }
+:root[data-appearance="dark"][data-doc-theme="whitey"] .write th,
+:root[data-appearance="dark"][data-doc-theme="whitey"] .write td,
+:root[data-appearance="dark"][data-doc-theme="whitey"] .write hr { border-color: #3f413e; }

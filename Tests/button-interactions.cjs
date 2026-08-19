@@ -144,6 +144,11 @@ app.whenReady().then(async () => {
     await expect(window, "sidebar search tab is removed", "!document.querySelector('.tab[data-panel=\"search\"]') && !document.querySelector('#search-panel-side') && !document.querySelector('#side-search-input')");
     const screenshotPath = path.join(os.tmpdir(), "mory-ui-e2e.png");
     const codeMetaScreenshotPath = path.join(os.tmpdir(), "mory-code-meta-e2e.png");
+    const darkThemeScreenshotPath = path.join(os.tmpdir(), "mory-dark-theme-e2e.png");
+    const mermaidScreenshotPath = path.join(os.tmpdir(), "mory-mermaid-e2e.png");
+    const mermaidExpandedScreenshotPath = path.join(os.tmpdir(), "mory-mermaid-expanded-e2e.png");
+    const mermaidNarrowScreenshotPath = path.join(os.tmpdir(), "mory-mermaid-narrow-e2e.png");
+    const calendarDirectScreenshotPath = path.join(os.tmpdir(), "mory-calendar-direct-e2e.png");
     await fs.writeFile(screenshotPath, (await window.webContents.capturePage()).toPNG());
 
     await click(window, ".tab[data-panel='outline']");
@@ -423,9 +428,27 @@ app.whenReady().then(async () => {
     await expectEventually(window, "light sidebar uses high-contrast semantic colors", "(() => { const style = getComputedStyle(document.documentElement); return document.documentElement.dataset.appearance === 'light' && style.getPropertyValue('--sidebar-text').trim() === '#272a27' && style.getPropertyValue('--sidebar-muted').trim() === '#626762' && style.getPropertyValue('--sidebar-faint').trim() === '#7b817b'; })()");
     await inspect(window, "(() => { const documentTheme = document.querySelector('#document-theme-select'); documentTheme.value = 'yuluo-css'; documentTheme.dispatchEvent(new Event('change', { bubbles: true })); const appearance = document.querySelector('#theme-select'); appearance.value = 'dark'; appearance.dispatchEvent(new Event('change', { bubbles: true })); })()");
     await expect(window, "Yuluo uses system fonts and shows a lightweight notice when its font is missing", "(() => { const available = window.Mory.fontAvailable('Hannotate SC'); const warning = document.querySelector('#theme-font-warning'); return available ? warning.hidden : (!warning.hidden && document.documentElement.dataset.yuluoFont === 'fallback' && warning.textContent.includes('\u7CFB\u7EDF\u5B57\u4F53')); })()");
-    await expectEventually(window, "dark appearance remains coherent with the document canvas", "document.documentElement.dataset.appearance === 'dark' && getComputedStyle(document.querySelector('#editor-scroll')).backgroundColor === 'rgb(31, 34, 36)' && getComputedStyle(document.querySelector('#write')).color === 'rgb(221, 226, 229)'");
+    const darkThemeColors = [
+      ["yuluo-css", "rgb(31, 34, 36)", "rgb(221, 226, 229)"],
+      ["github", "rgb(13, 17, 23)", "rgb(230, 237, 243)"],
+      ["whitey", "rgb(31, 32, 32)", "rgb(222, 222, 217)"],
+      ["newsprint", "rgb(36, 34, 30)", "rgb(222, 216, 202)"],
+      ["pixyll", "rgb(33, 31, 32)", "rgb(222, 217, 216)"],
+      ["gothic", "rgb(28, 28, 27)", "rgb(216, 215, 210)"],
+      ["night", "rgb(23, 26, 31)", "rgb(220, 226, 232)"]
+    ];
+    for (const [theme, paper, text] of darkThemeColors) {
+      await inspect(window, `(() => { const select = document.querySelector('#document-theme-select'); select.value = ${JSON.stringify(theme)}; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+      await expectEventually(window, `${theme} provides a coherent dark document canvas`, `(() => { const paper = getComputedStyle(document.querySelector('#editor-scroll')).backgroundColor; const text = getComputedStyle(document.querySelector('#write')).color; return document.documentElement.dataset.appearance === 'dark' && paper === ${JSON.stringify(paper)} && text === ${JSON.stringify(text)}; })()`);
+      if (theme === "github") {
+        await click(window, "#preferences-close");
+        await fs.writeFile(darkThemeScreenshotPath, (await window.webContents.capturePage()).toPNG());
+        await click(window, "#settings-button");
+      }
+    }
+    await expect(window, "Mermaid uses a dark palette with the dark appearance", "(() => { const palette = mermaidTheme('github', 'dark'); return palette.theme === 'dark' && palette.background === '#0d1117' && palette.primaryTextColor === '#e6edf3'; })()");
     await expectEventually(window, "dark sidebar uses high-contrast semantic colors", "(() => { const style = getComputedStyle(document.documentElement); return style.getPropertyValue('--sidebar-text').trim() === '#f0f1ee' && style.getPropertyValue('--sidebar-muted').trim() === '#bdc1ba' && style.getPropertyValue('--sidebar-faint').trim() === '#9da39b'; })()");
-    await inspect(window, "(() => { const appearance = document.querySelector('#theme-select'); appearance.value = 'light'; appearance.dispatchEvent(new Event('change', { bubbles: true })); })()");
+    await inspect(window, "(() => { const documentTheme = document.querySelector('#document-theme-select'); documentTheme.value = 'yuluo-css'; documentTheme.dispatchEvent(new Event('change', { bubbles: true })); const appearance = document.querySelector('#theme-select'); appearance.value = 'light'; appearance.dispatchEvent(new Event('change', { bubbles: true })); })()");
     await expectEventually(window, "switching back to light appearance restores the default paper", "document.documentElement.dataset.appearance === 'light' && getComputedStyle(document.querySelector('#editor-scroll')).backgroundColor === 'rgb(255, 255, 255)'");
     await inspect(window, "window.Mory.setCustomThemes([{ id: 'user-paper-test', name: '\u7EB8\u5F20', css: '#write{letter-spacing:1px}' }])");
     await inspect(window, "(() => { const select = document.querySelector('#document-theme-select'); select.value = 'user-paper-test'; select.dispatchEvent(new Event('change', { bubbles: true })); })()");
@@ -680,6 +703,64 @@ app.whenReady().then(async () => {
     await expect(window, "multiline code stays in one fence and returns to text after closing", "document.querySelectorAll('#write > pre').length === 1 && document.querySelector('#write > pre code')?.textContent === 'fmt.Println(\"hi\")\\nfmt.Println(\"bye\")' && !document.querySelector('#write > pre code')?.textContent.includes('```') && document.querySelector('#write > pre + p') !== null");
 
     await inspect(window, `(() => {
+      window.Mory.loadMarkdown('');
+      const paragraph = document.querySelector('#write p');
+      const range = document.createRange();
+      range.setStart(paragraph, 0);
+      range.collapse(true);
+      getSelection().removeAllRanges();
+      getSelection().addRange(range);
+      document.querySelector('#write').focus();
+    })()`);
+    await window.webContents.insertText("```mermaid");
+    window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Enter" });
+    window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Enter" });
+    await wait(100);
+    await expect(window, "Mermaid fences open a focused split workbench instead of a plain code block", "(() => { const grid = document.querySelector('#write > .mermaid-diagram .mermaid-workbench-grid'); const panes = grid ? [...grid.children].map(item => item.getBoundingClientRect().width) : []; return grid && !document.querySelector('#write > pre') && document.activeElement?.classList.contains('mermaid-source-editor') && panes.length === 2 && Math.abs(panes[0] - panes[1]) <= 2; })()");
+    await inspect(window, `(() => {
+      const input = document.querySelector('.mermaid-source-editor');
+      input.value = 'flowchart TD\\n  A[Start] --> B{Ready?}\\n  B -->|Yes| C[Ship]';
+      input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+    })()`);
+    await expectEventually(window, "Mermaid source edits render an SVG and update Markdown immediately", "document.querySelector('.mermaid-diagram[data-mermaid-state=\"rendered\"] .mermaid-preview-canvas svg') && window.Mory.getMarkdown().includes('A[Start] --> B{Ready?}')", 4000);
+    await wait(120);
+    await fs.writeFile(mermaidScreenshotPath, (await window.webContents.capturePage()).toPNG());
+    await inspect(window, "(() => { window.__mermaidMarkdownBeforeLayout = window.Mory.getMarkdown(); window.__mermaidCanvasHeight = document.querySelector('.mermaid-preview-canvas').getBoundingClientRect().height; })()");
+    await click(window, ".mermaid-source-toggle");
+    await expect(window, "the divider control collapses the source pane without changing Markdown", "(() => { const diagram = document.querySelector('.mermaid-diagram'); const grid = diagram.querySelector('.mermaid-workbench-grid').getBoundingClientRect(); const source = diagram.querySelector('.mermaid-source-pane').getBoundingClientRect(); const preview = diagram.querySelector('.mermaid-preview-pane').getBoundingClientRect(); return diagram.classList.contains('is-source-collapsed') && source.width < 1 && Math.abs(preview.width - grid.width) <= 1 && window.Mory.getMarkdown() === window.__mermaidMarkdownBeforeLayout && diagram.querySelector('.mermaid-source-toggle').getAttribute('aria-expanded') === 'false'; })()");
+    await click(window, ".mermaid-source-toggle");
+    await expect(window, "the divider control restores an even source and preview split", "(() => { const diagram = document.querySelector('.mermaid-diagram'); const panes = [...diagram.querySelector('.mermaid-workbench-grid').children].map(item => item.getBoundingClientRect().width); return !diagram.classList.contains('is-source-collapsed') && Math.abs(panes[0] - panes[1]) <= 2 && diagram.querySelector('.mermaid-source-toggle').getAttribute('aria-expanded') === 'true'; })()");
+    await click(window, ".mermaid-expand-button");
+    await expect(window, "the enlarge control opens a viewport-sized preview and keeps the rendered SVG visible", "(() => { const diagram = document.querySelector('.mermaid-diagram'); const canvas = diagram.querySelector('.mermaid-preview-canvas').getBoundingClientRect(); const svg = diagram.querySelector('.mermaid-preview-canvas svg').getBoundingClientRect(); return diagram.classList.contains('is-preview-expanded') && document.body.classList.contains('mermaid-preview-open') && getComputedStyle(diagram.querySelector('.mermaid-source-pane')).display === 'none' && canvas.height > window.__mermaidCanvasHeight + 200 && svg.width > 0 && svg.height > 0 && diagram.querySelector('.mermaid-expand-button').getAttribute('aria-pressed') === 'true'; })()");
+    await fs.writeFile(mermaidExpandedScreenshotPath, (await window.webContents.capturePage()).toPNG());
+    window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
+    window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
+    await wait(80);
+    await expect(window, "Escape exits the enlarged Mermaid preview", "(() => { const diagram = document.querySelector('.mermaid-diagram'); return !diagram.classList.contains('is-preview-expanded') && !document.body.classList.contains('mermaid-preview-open') && document.activeElement === diagram.querySelector('.mermaid-expand-button'); })()");
+    window.setSize(720, 790);
+    await wait(140);
+    await expect(window, "narrow viewports stack Mermaid source above the preview", "(() => { const source = document.querySelector('.mermaid-source-pane').getBoundingClientRect(); const preview = document.querySelector('.mermaid-preview-pane').getBoundingClientRect(); return source.bottom <= preview.top + 1 && Math.abs(source.left - preview.left) <= 1 && Math.abs(source.width - preview.width) <= 1; })()");
+    await fs.writeFile(mermaidNarrowScreenshotPath, (await window.webContents.capturePage()).toPNG());
+    window.setSize(1180, 790);
+    await wait(140);
+    await click(window, ".mermaid-theme-button");
+    await expectEventually(window, "the palette icon cycles diagram colors and persists the choice", "document.querySelector('.mermaid-diagram')?.dataset.mermaidTheme === 'ocean' && document.querySelector('.mermaid-theme-button')?.dataset.mermaidTheme === 'ocean' && window.Mory.getMarkdown().includes('```mermaid theme=ocean')", 4000);
+    await inspect(window, `(() => {
+      const input = document.querySelector('.mermaid-source-editor');
+      input.value = 'flowchart TD\\n  A -->';
+      input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+    })()`);
+    await expectEventually(window, "invalid Mermaid syntax reports an inline preview error without losing source", "(() => { const diagram = document.querySelector('.mermaid-diagram'); return diagram?.dataset.mermaidState === 'error' && !diagram.querySelector('.mermaid-preview-error').hidden && diagram.querySelector('.mermaid-preview-error small').textContent.length > 0 && window.Mory.getMarkdown().includes('A -->'); })()", 4000);
+    await inspect(window, `(() => {
+      const input = document.querySelector('.mermaid-source-editor');
+      input.value = 'flowchart LR\\n  Source --> Preview';
+      input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+    })()`);
+    await expectEventually(window, "corrected Mermaid syntax recovers the live preview", "document.querySelector('.mermaid-diagram[data-mermaid-state=\"rendered\"] .mermaid-preview-canvas svg')", 4000);
+    await inspect(window, "window.Mory.loadMarkdown(window.Mory.getMarkdown())");
+    await expectEventually(window, "Mermaid source and color survive a Markdown reload", "document.querySelector('.mermaid-source-editor')?.value.includes('Source --> Preview') && document.querySelector('.mermaid-diagram')?.dataset.mermaidTheme === 'ocean' && document.querySelector('.mermaid-preview-canvas svg')", 4000);
+
+    await inspect(window, `(() => {
       window.Mory.loadMarkdown(${JSON.stringify('```go\nfmt.Println("double")\n```')});
       const code = document.querySelector('#write > pre code');
       const range = document.createRange();
@@ -815,7 +896,87 @@ app.whenReady().then(async () => {
       document.querySelector('#write').focus();
     })()`);
     await click(window, "#toolbar [data-command='calendar']");
-    await expect(window, "calendar toolbar action inserts an editable seven-column table", "document.querySelectorAll('#write > table thead th').length === 7 && document.querySelector('#write > .table-tools') && window.Mory.getMarkdown().includes('| --- | --- | --- | --- | --- | --- | --- |')");
+    await expect(window, "calendar toolbar action opens the structured calendar editor", "document.querySelector('#calendar-dialog').classList.contains('is-open') && document.querySelectorAll('#calendar-editor-days .calendar-editor-day').length === 42 && !document.querySelector('#write > table')");
+    await inspect(window, `(() => {
+      const currentDays = [...document.querySelectorAll('#calendar-editor-days .calendar-editor-day:not(.is-outside)')];
+      window.__calendarTestDates = {
+        day24: currentDays.find(day => day.querySelector(':scope > span')?.textContent === '24').dataset.date,
+        day25: currentDays.find(day => day.querySelector(':scope > span')?.textContent === '25').dataset.date,
+        day27: currentDays.find(day => day.querySelector(':scope > span')?.textContent === '27').dataset.date
+      };
+    })()`);
+    await inspect(window, "document.querySelector(`#calendar-editor-days [data-date=\"${window.__calendarTestDates.day24}\"]`).click()");
+    await inspect(window, `(() => { const input = document.querySelector('#calendar-mark-title'); input.value = 'Important day'; input.dispatchEvent(new InputEvent('input', { bubbles: true, data: 'Important day' })); })()`);
+    await click(window, "#calendar-mark-colors [data-calendar-color='red']");
+    await click(window, "#calendar-save-mark");
+    await click(window, "[data-calendar-mode='range']");
+    await inspect(window, "document.querySelector(`#calendar-editor-days [data-date=\"${window.__calendarTestDates.day24}\"]`).click()");
+    await inspect(window, "document.querySelector(`#calendar-editor-days [data-date=\"${window.__calendarTestDates.day27}\"]`).click()");
+    await expect(window, "calendar ranges use a closed interval with an explicit day count", "document.querySelector('#calendar-range-selection').textContent.includes('4 \u5929')");
+    await inspect(window, `(() => { const input = document.querySelector('#calendar-range-title'); input.value = 'Frontend delivery'; input.dispatchEvent(new InputEvent('input', { bubbles: true, data: 'Frontend delivery' })); })()`);
+    await click(window, "#calendar-range-colors [data-calendar-color='green']");
+    await click(window, "#calendar-save-range");
+    await click(window, "[data-calendar-mode='items']");
+    await inspect(window, "document.querySelector(`#calendar-editor-days [data-date=\"${window.__calendarTestDates.day25}\"]`).click()");
+    await inspect(window, `(() => { const input = document.querySelector('#calendar-item-text'); input.value = 'Review interaction'; })()`);
+    await click(window, "#calendar-item-form button[type='submit']");
+    await click(window, "#calendar-apply");
+    await expect(window, "calendar saves marks, continuous ranges, and collapsed date items", "(() => { const block = document.querySelector('#write > .calendar-block'); const markdown = window.Mory.getMarkdown(); return block && block.querySelectorAll('.calendar-day-cell').length === 42 && block.querySelector('.calendar-day-cell[data-calendar-color=\"red\"]') && block.querySelectorAll('.calendar-range-bar[data-calendar-color=\"green\"]').length === 4 && block.querySelector('.calendar-day-items:not([open]) summary').textContent.includes('1') && markdown.startsWith('```calendar') && markdown.includes('Important day') && markdown.includes('Frontend delivery') && markdown.includes('Review interaction') && !markdown.includes('| --- |'); })()");
+    await inspect(window, `(() => {
+      const day24 = document.querySelector('#write .calendar-day-cell[data-date="' + window.__calendarTestDates.day24 + '"]');
+      day24.click();
+    })()`);
+    await expectEventually(window, "clicking a rendered date opens its compact title and item editor", "document.querySelector('.calendar-date-quick-editor') && !document.querySelector('#calendar-dialog').classList.contains('is-open') && document.activeElement === document.querySelector('.calendar-date-quick-editor .calendar-quick-field input')");
+    await inspect(window, `(() => {
+      const title = document.querySelector('.calendar-date-quick-editor .calendar-quick-field input');
+      title.value = 'Launch day';
+      title.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+      document.querySelector('.calendar-date-quick-editor .calendar-quick-colors [data-calendar-color="amber"]').click();
+      const item = document.querySelector('.calendar-date-quick-editor .calendar-quick-item-form input');
+      item.value = 'Publish release notes';
+      item.closest('form').requestSubmit();
+    })()`);
+    await expect(window, "date items can be added without opening the full calendar editor", "document.querySelectorAll('.calendar-date-quick-editor .calendar-quick-item').length === 1 && document.querySelector('.calendar-date-quick-editor .calendar-quick-item span').textContent === 'Publish release notes'");
+    await click(window, ".calendar-date-quick-editor > footer .primary-button");
+    await expect(window, "the compact date editor saves its title, color, and item to Markdown", "(() => { const cell = document.querySelector(`#write .calendar-day-cell[data-date=\"${window.__calendarTestDates.day24}\"]`); const markdown = window.Mory.getMarkdown(); return !document.querySelector('.calendar-quick-editor') && cell.dataset.calendarColor === 'amber' && cell.textContent.includes('Launch day') && markdown.includes('Launch day') && markdown.includes('Publish release notes'); })()");
+    await inspect(window, `(() => {
+      const currentDays = [...document.querySelectorAll('#write .calendar-day-cell:not(.is-outside)')];
+      window.__calendarTestDates.day28 = currentDays.find(day => day.querySelector('.calendar-date-number')?.textContent === '28').dataset.date;
+      window.__calendarTestDates.day30 = currentDays.find(day => day.querySelector('.calendar-date-number')?.textContent === '30').dataset.date;
+      const start = document.querySelector('#write .calendar-day-cell[data-date="' + window.__calendarTestDates.day30 + '"]');
+      const end = document.querySelector('#write .calendar-day-cell[data-date="' + window.__calendarTestDates.day28 + '"]');
+      const startRect = start.getBoundingClientRect();
+      const endRect = end.getBoundingClientRect();
+      const pointer = (type, target, rect) => target.dispatchEvent(new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        pointerId: 47,
+        pointerType: 'mouse',
+        button: 0,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2
+      }));
+      pointer('pointerdown', start, startRect);
+      pointer('pointermove', document, endRect);
+      window.__calendarDragPreviewCount = document.querySelectorAll('#write .calendar-day-cell.is-drag-selected').length;
+      pointer('pointerup', document, endRect);
+    })()`);
+    await expect(window, "dragging backward previews and opens a normalized closed range", "(() => { const panel = document.querySelector('.calendar-range-quick-editor'); return window.__calendarDragPreviewCount === 3 && panel && panel.querySelector('header strong').textContent.includes('3 \u5929') && panel.querySelector('header strong').textContent.indexOf('28') < panel.querySelector('header strong').textContent.indexOf('30'); })()");
+    await fs.writeFile(calendarDirectScreenshotPath, (await window.webContents.capturePage()).toPNG());
+    await inspect(window, `(() => {
+      const title = document.querySelector('.calendar-range-quick-editor .calendar-quick-field input');
+      title.value = 'Direct planning';
+      title.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+      document.querySelector('.calendar-range-quick-editor .calendar-quick-colors [data-calendar-color="blue"]').click();
+    })()`);
+    await click(window, ".calendar-range-quick-editor > footer .primary-button");
+    await expect(window, "drag-created ranges render continuously and persist without the full editor", "(() => { const markdown = window.Mory.getMarkdown(); return document.querySelectorAll('#write .calendar-range-bar[data-calendar-color=\"blue\"]').length === 3 && markdown.includes('Direct planning') && markdown.includes(window.__calendarTestDates.day28) && markdown.includes(window.__calendarTestDates.day30); })()");
+    await inspect(window, `(() => { const cell = document.querySelector('.calendar-day-cell:has(.calendar-day-items)'); window.__calendarCellHeight = cell.getBoundingClientRect().height; cell.querySelector('summary').click(); })()`);
+    await expect(window, "expanded date items do not resize the calendar grid", "(() => { const cell = document.querySelector('.calendar-day-cell:has(.calendar-day-items)'); return cell.querySelector('details').open && cell.getBoundingClientRect().height === window.__calendarCellHeight; })()");
+    await inspect(window, `(() => { const markdown = window.Mory.getMarkdown(); window.Mory.loadMarkdown(markdown); })()`);
+    await expect(window, "calendar data survives a Markdown reload", "document.querySelectorAll('#write > .calendar-block .calendar-range-bar[data-calendar-color=\"green\"]').length === 4 && window.Mory.getMarkdown().includes('```calendar')");
+    await inspect(window, "window.Mory.exportDocument({ theme: 'current' }).then(html => { window.__calendarExportHTML = html; })");
+    await expectEventually(window, "calendar exports as a rendered month without embedded JSON", "window.__calendarExportHTML.includes('class=\"calendar-block\"') && window.__calendarExportHTML.includes('Frontend delivery') && !window.__calendarExportHTML.includes('data-calendar-source') && !window.__calendarExportHTML.includes('&quot;version&quot;')");
 
     await inspect(window, `window.Mory.loadMarkdown(${JSON.stringify("# Mory\u7F16\u8F91\u5668\n\n**\u4E2D\u6587English**\n\n\`const value=1\`")})`);
     await click(window, "#toolbar [data-command='typography']");
@@ -916,7 +1077,7 @@ app.whenReady().then(async () => {
     await expect(window, "format button is clickable", "document.querySelector('#write strong, #write b') !== null");
 
     if (errors.length) throw new Error(`Renderer errors: ${errors.join(" | ")}`);
-    process.stdout.write(JSON.stringify({ status: "passed", interactions: interactionCount, rendererErrors: 0, dpiStableTypography: true, tableRowColumnDeletion: true, yuluoFontFallbackNotice: true, multipleUntitledDocuments: true, draftSwitchingPreservesContent: true, removableUntitledDocuments: true, savedDocumentTrash: true, deleteCancellation: true, activeDocumentCloseFallback: true, lastCloseCreatesBlankDocument: true, emptyWorkspacePlaceholder: true, nonEmptyWorkspaceAutoOpen: true, deletedWorkspaceFileReconciled: true, headingEnterCreatesParagraph: true, compositionHeadingRendering: true, immediateCompositionEnter: true, separateConsecutiveHeadings: true, staleHeadingRecovery: true, liveBold: true, pastedMarkdownRendering: true, liveFencedCode: true, multiLineFencedCode: true, fencedCodeExit: true, doubleEnterCodeExit: true, codeMetadataNavigation: true, liveInlineCode: true, instantHeading: true, liveUnsavedOutline: true, workspaceCreationOrder: true, stableOpenedFilePosition: true, statusbarSetting: true, zoomedStatusbar: true, readableSidebarContrast: true, coherentDarkDocument: true, iconOnlyToolbar: true, hoverTooltip: true, sidebarSearchRemoved: true, verticalFloatingToolbar: true, singleSettingsEntry: true, macTrafficLightSafeArea: true, screenshot: screenshotPath, codeMetaScreenshot: codeMetaScreenshotPath }, null, 2) + "\n");
+    process.stdout.write(JSON.stringify({ status: "passed", interactions: interactionCount, rendererErrors: 0, dpiStableTypography: true, tableRowColumnDeletion: true, yuluoFontFallbackNotice: true, multipleUntitledDocuments: true, draftSwitchingPreservesContent: true, removableUntitledDocuments: true, savedDocumentTrash: true, deleteCancellation: true, activeDocumentCloseFallback: true, lastCloseCreatesBlankDocument: true, emptyWorkspacePlaceholder: true, nonEmptyWorkspaceAutoOpen: true, deletedWorkspaceFileReconciled: true, headingEnterCreatesParagraph: true, compositionHeadingRendering: true, immediateCompositionEnter: true, separateConsecutiveHeadings: true, staleHeadingRecovery: true, liveBold: true, pastedMarkdownRendering: true, liveFencedCode: true, multiLineFencedCode: true, fencedCodeExit: true, doubleEnterCodeExit: true, codeMetadataNavigation: true, liveInlineCode: true, instantHeading: true, liveUnsavedOutline: true, workspaceCreationOrder: true, stableOpenedFilePosition: true, statusbarSetting: true, zoomedStatusbar: true, readableSidebarContrast: true, coherentDarkDocument: true, iconOnlyToolbar: true, hoverTooltip: true, sidebarSearchRemoved: true, verticalFloatingToolbar: true, singleSettingsEntry: true, macTrafficLightSafeArea: true, screenshot: screenshotPath, codeMetaScreenshot: codeMetaScreenshotPath, darkThemeScreenshot: darkThemeScreenshotPath, mermaidScreenshot: mermaidScreenshotPath, mermaidExpandedScreenshot: mermaidExpandedScreenshotPath, mermaidNarrowScreenshot: mermaidNarrowScreenshotPath, calendarDirectScreenshot: calendarDirectScreenshotPath }, null, 2) + "\n");
   } catch (error) {
     process.stderr.write(`${error.stack || error}${errors.length ? `\nRenderer errors: ${errors.join(" | ")}` : ""}\n`);
     exitCode = 1;

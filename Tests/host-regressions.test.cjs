@@ -5,6 +5,12 @@ const test = require("node:test");
 
 const root = path.join(__dirname, "..");
 
+test("the classic web bundle removes local module imports", () => {
+  const bundle = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "app.bundle.js"), "utf8");
+  assert.doesNotMatch(bundle, /^import\s/m);
+  assert.match(bundle, /function parseCalendarSource/);
+});
+
 test("desktop hosts use atomic workspace snapshots to avoid file-list races", () => {
   const electron = fs.readFileSync(path.join(root, "Electron", "main.cjs"), "utf8");
   const macOS = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
@@ -206,4 +212,43 @@ test("GitHub is the default theme and Yuluo warns when its preferred font is una
   assert.match(web, /mory\.documentThemeDefaultVersion", "github-v1"/);
   assert.match(web, /function updateYuluoFontWarning/);
   assert.doesNotMatch(yuluo, /Segoe Print/);
+});
+
+test("every built-in document theme provides a readable dark appearance", () => {
+  const themeDirectory = path.join(root, "Sources", "Mory", "Web", "themes");
+  const themes = ["yuluo-css", "github", "whitey", "newsprint", "pixyll", "gothic", "night"];
+  const channel = value => {
+    const normalized = value / 255;
+    return normalized <= .04045 ? normalized / 12.92 : ((normalized + .055) / 1.055) ** 2.4;
+  };
+  const luminance = hex => {
+    const values = hex.match(/[0-9a-f]{2}/gi).map(value => Number.parseInt(value, 16));
+    return .2126 * channel(values[0]) + .7152 * channel(values[1]) + .0722 * channel(values[2]);
+  };
+  const contrast = (foreground, background) => {
+    const values = [luminance(foreground), luminance(background)].sort((left, right) => right - left);
+    return (values[0] + .05) / (values[1] + .05);
+  };
+
+  for (const theme of themes) {
+    const css = fs.readFileSync(path.join(themeDirectory, `${theme}.css`), "utf8");
+    const selector = `:root[data-appearance="dark"][data-doc-theme="${theme}"]`;
+    const paper = css.match(new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\.editor-scroll \\{ background: (#[0-9a-f]{6}); \\}`, "i"));
+    const text = css.match(new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\.write \\{ color: (#[0-9a-f]{6}); \\}`, "i"));
+    assert.ok(paper, `${theme} must define a dark paper color`);
+    assert.ok(text, `${theme} must define a dark text color`);
+    assert.ok(contrast(text[1], paper[1]) >= 4.5, `${theme} dark text must meet WCAG AA contrast`);
+  }
+});
+
+test("Mermaid follows editor appearance while exports retain document paper colors", () => {
+  const web = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "app.js"), "utf8");
+  assert.match(web, /function mermaidTheme\(theme, appearance = document\.documentElement\.dataset\.appearance, colorTheme = "auto"\)/);
+  assert.match(web, /appearance === "dark" \? darkPalettes : lightPalettes/);
+  assert.match(web, /colorPalettes\[normalizedTheme\]\[appearance === "dark" \? "dark" : "light"\]/);
+  assert.match(web, /function ensureMermaidWorkbench/);
+  assert.match(web, /className = "mermaid-source-editor"/);
+  assert.match(web, /className = "mermaid-preview-canvas"/);
+  assert.match(web, /renderMermaidDiagrams\(write, state\.documentTheme\)/);
+  assert.match(web, /renderMermaidDiagrams\(exportRoot, theme, theme === "night" \? "dark" : "light"\)/);
 });

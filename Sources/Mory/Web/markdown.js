@@ -1,3 +1,5 @@
+import { normalizeMermaidColorTheme, parseCalendarSource, serializeCalendarDocument } from "./editor-features.js";
+
 const blockStart = /^(#{1,6}\s|>|[-*+]\s|\d+[.)]\s|```|~~~| {0,3}([-*_])(?:\s*\2){2,}\s*$)/;
 
 export function escapeHTML(value) {
@@ -62,23 +64,28 @@ function splitTableRow(line) {
 
 function parseFenceInfo(value) {
   const info = String(value ?? "").trim();
-  const titleMatch = info.match(/(?:^|\s)title=("(?:\\.|[^"])*"|'[^']*'|\S+)/i);
   let title = "";
-  if (titleMatch) {
-    const token = titleMatch[1];
+  let theme = "";
+  const languagePart = info.replace(/(^|\s)(title|theme)=("(?:\\.|[^"])*"|'[^']*'|\S+)/gi, (_match, leading, name, token) => {
+    let decoded = token;
     if (token.startsWith('"')) {
-      try { title = JSON.parse(token); } catch { title = token.slice(1, -1); }
-    } else {
-      title = token.startsWith("'") ? token.slice(1, -1) : token;
-    }
-  }
-  const languagePart = (titleMatch ? `${info.slice(0, titleMatch.index)} ${info.slice((titleMatch.index ?? 0) + titleMatch[0].length)}` : info).trim();
+      try { decoded = JSON.parse(token); } catch { decoded = token.slice(1, -1); }
+    } else if (token.startsWith("'")) decoded = token.slice(1, -1);
+    if (name.toLocaleLowerCase() === "title") title = decoded;
+    else theme = decoded;
+    return leading;
+  }).trim();
   const attributeLanguage = languagePart.match(/^\{\s*\.([^\s}]+)/)?.[1];
-  return { language: attributeLanguage || languagePart.split(/\s+/)[0] || "", title };
+  return { language: attributeLanguage || languagePart.split(/\s+/)[0] || "", title, theme };
 }
 
 function fenceTitle(value) {
   return value ? ` title=${JSON.stringify(String(value))}` : "";
+}
+
+function mermaidFenceTheme(value) {
+  const theme = normalizeMermaidColorTheme(value);
+  return theme === "auto" ? "" : ` theme=${theme}`;
 }
 
 export function markdownToHTML(markdown) {
@@ -94,14 +101,22 @@ export function markdownToHTML(markdown) {
     const fence = line.match(/^\s*(```|~~~)\s*(.*?)\s*$/);
     if (fence) {
       const marker = fence[1];
-      const { language, title } = parseFenceInfo(fence[2]);
+      const { language, title, theme } = parseFenceInfo(fence[2]);
       const code = [];
       index += 1;
       while (index < lines.length && !new RegExp(`^\\s*${marker}`).test(lines[index])) code.push(lines[index++]);
       if (index < lines.length) index += 1;
-      const source = escapeHTML(code.join("\n"));
+      const rawSource = code.join("\n");
+      const source = escapeHTML(rawSource);
       if (language.toLocaleLowerCase() === "mermaid") {
-        html.push(`<div class="mermaid-diagram" data-mermaid-source="${source}" data-mermaid-state="pending" contenteditable="false"><pre class="mermaid-source"><code>${source}</code></pre></div>`);
+        html.push(`<div class="mermaid-diagram" data-mermaid-source="${source}" data-mermaid-theme="${normalizeMermaidColorTheme(theme)}" data-mermaid-state="pending" contenteditable="false"></div>`);
+      } else if (language.toLocaleLowerCase() === "calendar") {
+        const calendar = parseCalendarSource(rawSource);
+        if (calendar) {
+          html.push(`<div class="calendar-block" data-calendar-source="${escapeHTML(serializeCalendarDocument(calendar))}" contenteditable="false"></div>`);
+        } else {
+          html.push(`<pre data-language="calendar"><code>${source}</code></pre>`);
+        }
       } else {
         const titleAttribute = title ? ` data-title="${escapeHTML(title)}"` : "";
         html.push(`<pre data-language="${escapeHTML(language)}"${titleAttribute}><code>${source}</code></pre>`);
@@ -222,7 +237,12 @@ export function editorToMarkdown(root, { escapeText = true } = {}) {
     if (classNames.includes("code-meta") || classNames.includes("table-tools")) continue;
     if (element.tagName === "DIV" && classNames.includes("mermaid-diagram")) {
       const source = element.dataset.mermaidSource ?? "";
-      blocks.push(`\`\`\`mermaid\n${source}\n\`\`\``);
+      blocks.push(`\`\`\`mermaid${mermaidFenceTheme(element.dataset.mermaidTheme)}\n${source}\n\`\`\``);
+      continue;
+    }
+    if (element.tagName === "DIV" && classNames.includes("calendar-block")) {
+      const calendar = parseCalendarSource(element.dataset.calendarSource ?? "");
+      if (calendar) blocks.push(`\`\`\`calendar\n${serializeCalendarDocument(calendar)}\n\`\`\``);
       continue;
     }
     const content = [...element.childNodes].map(child => inlineNodeToMarkdown(child, escapeText)).join("").trim();

@@ -15,3 +15,17 @@
 [data-doc-theme="pixyll"] .write pre,
 [data-doc-theme="pixyll"] .write th { background: #f8eeea; }
 [data-doc-theme="pixyll"] .write blockquote { border-color: #e5aaa6; color: #796c67; }
+
+:root[data-appearance="dark"][data-doc-theme="pixyll"] .editor-scroll { background: #211f20; }
+:root[data-appearance="dark"][data-doc-theme="pixyll"] .write { color: #ded9d8; }
+:root[data-appearance="dark"][data-doc-theme="pixyll"] .write h1 { color: #f27972; }
+:root[data-appearance="dark"][data-doc-theme="pixyll"] .write h2 { color: #e87872; }
+:root[data-appearance="dark"][data-doc-theme="pixyll"] .write h3 { color: #eee8e6; }
+:root[data-appearance="dark"][data-doc-theme="pixyll"] .write a { color: #ef817a; border-color: #8e514e; }
+:root[data-appearance="dark"][data-doc-theme="pixyll"] .write code,
+:root[data-appearance="dark"][data-doc-theme="pixyll"] .write pre,
+:root[data-appearance="dark"][data-doc-theme="pixyll"] .write th { background: #302728; }
+:root[data-appearance="dark"][data-doc-theme="pixyll"] .write blockquote { border-color: #8f5351; color: #b8a9a5; }
+:root[data-appearance="dark"][data-doc-theme="pixyll"] .write th,
+:root[data-appearance="dark"][data-doc-theme="pixyll"] .write td,
+:root[data-appearance="dark"][data-doc-theme="pixyll"] .write hr { border-color: #4e3c3d; }

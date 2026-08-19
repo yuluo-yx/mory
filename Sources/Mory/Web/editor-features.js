@@ -25,21 +25,143 @@ export function optimizeMarkdownTypography(markdown, spacingText) {
   return protectedMarkdown.restore(spacingText(protectedMarkdown.source));
 }
 
-export function calendarMarkdown(date = new Date(), locale = "zh-CN") {
-  const selected = new Date(date);
-  if (Number.isNaN(selected.getTime())) throw new TypeError("A valid calendar date is required");
-  const year = selected.getFullYear();
-  const month = selected.getMonth();
-  const labels = locale === "en"
-    ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-    : ["一", "二", "三", "四", "五", "六", "日"];
-  const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7;
-  const days = new Date(year, month + 1, 0).getDate();
-  const cells = [...Array(firstWeekday).fill(""), ...Array.from({ length: days }, (_, index) => String(index + 1))];
-  while (cells.length % 7) cells.push("");
-  const rows = [];
-  for (let index = 0; index < cells.length; index += 7) rows.push(`| ${cells.slice(index, index + 7).join(" | ")} |`);
-  return `| ${labels.join(" | ")} |\n| ${labels.map(() => "---").join(" | ")} |\n${rows.join("\n")}`;
+export const calendarColors = ["red", "amber", "green", "blue", "violet", "gray"];
+export const mermaidColorThemes = ["auto", "ocean", "forest", "sunset", "mono"];
+
+export function normalizeMermaidColorTheme(value) {
+  return mermaidColorThemes.includes(String(value || "").toLocaleLowerCase())
+    ? String(value).toLocaleLowerCase()
+    : "auto";
+}
+
+const calendarDatePattern = /^(\d{4})-(\d{2})-(\d{2})$/;
+const calendarMonthPattern = /^(\d{4})-(\d{2})$/;
+
+function normalizedCalendarText(value, maximum = 120) {
+  return typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, maximum) : "";
+}
+
+function calendarLocalDate(year, month, day) {
+  const date = new Date(0);
+  date.setHours(0, 0, 0, 0);
+  date.setFullYear(year, month, day);
+  return date;
+}
+
+export function localDateKey(value = new Date()) {
+  const localMatch = typeof value === "string" ? value.match(calendarDatePattern) : null;
+  const date = localMatch
+    ? calendarLocalDate(Number(localMatch[1]), Number(localMatch[2]) - 1, Number(localMatch[3]))
+    : new Date(value);
+  if (Number.isNaN(date.getTime())) throw new TypeError("A valid calendar date is required");
+  const year = String(date.getFullYear()).padStart(4, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function calendarDateFromKey(value) {
+  const match = String(value ?? "").match(calendarDatePattern);
+  if (!match) return null;
+  const [, year, month, day] = match.map(Number);
+  const date = calendarLocalDate(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date : null;
+}
+
+function validCalendarMonth(value) {
+  const match = String(value ?? "").match(calendarMonthPattern);
+  if (!match) return "";
+  const month = Number(match[2]);
+  return month >= 1 && month <= 12 ? `${match[1]}-${match[2]}` : "";
+}
+
+function normalizedCalendarColor(value) {
+  return calendarColors.includes(value) ? value : "blue";
+}
+
+export function normalizeCalendarDocument(value, fallbackDate = new Date()) {
+  const source = value && typeof value === "object" ? value : {};
+  const fallbackMonth = localDateKey(fallbackDate).slice(0, 7);
+  const marksByDate = new Map();
+  for (const mark of Array.isArray(source.marks) ? source.marks : []) {
+    if (!calendarDateFromKey(mark?.date)) continue;
+    marksByDate.set(mark.date, {
+      date: mark.date,
+      color: normalizedCalendarColor(mark.color),
+      title: normalizedCalendarText(mark.title)
+    });
+  }
+  const ranges = [];
+  for (const range of Array.isArray(source.ranges) ? source.ranges : []) {
+    if (!calendarDateFromKey(range?.start) || !calendarDateFromKey(range?.end)) continue;
+    const [start, end] = range.start <= range.end ? [range.start, range.end] : [range.end, range.start];
+    const title = normalizedCalendarText(range.title);
+    if (!title) continue;
+    ranges.push({ start, end, color: normalizedCalendarColor(range.color), title });
+  }
+  const items = [];
+  for (const item of Array.isArray(source.items) ? source.items : []) {
+    if (!calendarDateFromKey(item?.date)) continue;
+    const text = normalizedCalendarText(item.text, 240);
+    if (!text) continue;
+    items.push({ date: item.date, text, done: Boolean(item.done) });
+  }
+  return {
+    version: 1,
+    month: validCalendarMonth(source.month) || fallbackMonth,
+    marks: [...marksByDate.values()].sort((left, right) => left.date.localeCompare(right.date)),
+    ranges: ranges.sort((left, right) => left.start.localeCompare(right.start) || left.end.localeCompare(right.end) || left.title.localeCompare(right.title)),
+    items: items.sort((left, right) => left.date.localeCompare(right.date) || left.text.localeCompare(right.text))
+  };
+}
+
+export function parseCalendarSource(source) {
+  try {
+    const value = JSON.parse(String(source ?? ""));
+    if (!value || typeof value !== "object" || Array.isArray(value) || value.version !== 1) return null;
+    return normalizeCalendarDocument(value);
+  } catch {
+    return null;
+  }
+}
+
+export function serializeCalendarDocument(value) {
+  return JSON.stringify(normalizeCalendarDocument(value), null, 2);
+}
+
+export function calendarMarkdown(value = new Date()) {
+  const document = value instanceof Date || typeof value === "number" || typeof value === "string"
+    ? normalizeCalendarDocument({}, value)
+    : normalizeCalendarDocument(value);
+  return `\`\`\`calendar\n${serializeCalendarDocument(document)}\n\`\`\``;
+}
+
+export function calendarMonthDays(month) {
+  const normalizedMonth = validCalendarMonth(month);
+  if (!normalizedMonth) throw new TypeError("A valid calendar month is required");
+  const [year, monthNumber] = normalizedMonth.split("-").map(Number);
+  const first = calendarLocalDate(year, monthNumber - 1, 1);
+  const start = calendarLocalDate(year, monthNumber - 1, 1 - ((first.getDay() + 6) % 7));
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = calendarLocalDate(start.getFullYear(), start.getMonth(), start.getDate() + index);
+    return {
+      date: localDateKey(date),
+      day: date.getDate(),
+      currentMonth: date.getFullYear() === year && date.getMonth() === monthNumber - 1,
+      weekday: index % 7,
+      week: Math.floor(index / 7)
+    };
+  });
+}
+
+export function calendarRangeDayCount(start, end) {
+  const first = calendarDateFromKey(start);
+  const last = calendarDateFromKey(end);
+  if (!first || !last) return 0;
+  const [minimum, maximum] = first <= last ? [first, last] : [last, first];
+  const utcStart = Date.UTC(minimum.getFullYear(), minimum.getMonth(), minimum.getDate());
+  const utcEnd = Date.UTC(maximum.getFullYear(), maximum.getMonth(), maximum.getDate());
+  return Math.round((utcEnd - utcStart) / 86400000) + 1;
 }
 
 export function formatFileSize(bytes) {

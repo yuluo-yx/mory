@@ -26,3 +26,18 @@
 [data-doc-theme="night"] .write .hljs-number,
 [data-doc-theme="night"] .write .hljs-literal,
 [data-doc-theme="night"] .write .hljs-built_in { color: #79c0ff; }
+
+:root[data-appearance="dark"][data-doc-theme="night"] .editor-scroll { background: #171a1f; }
+:root[data-appearance="dark"][data-doc-theme="night"] .write { color: #dce2e8; }
+:root[data-appearance="dark"][data-doc-theme="night"] .write h1,
+:root[data-appearance="dark"][data-doc-theme="night"] .write h2,
+:root[data-appearance="dark"][data-doc-theme="night"] .write h3,
+:root[data-appearance="dark"][data-doc-theme="night"] .write h4 { border-color: #343b44; color: #f0f3f6; }
+:root[data-appearance="dark"][data-doc-theme="night"] .write a { color: #83c2ef; border-color: #416b89; }
+:root[data-appearance="dark"][data-doc-theme="night"] .write code,
+:root[data-appearance="dark"][data-doc-theme="night"] .write pre,
+:root[data-appearance="dark"][data-doc-theme="night"] .write th { background: #22272e; }
+:root[data-appearance="dark"][data-doc-theme="night"] .write blockquote { border-color: #4b5662; color: #9da7b1; }
+:root[data-appearance="dark"][data-doc-theme="night"] .write th,
+:root[data-appearance="dark"][data-doc-theme="night"] .write td,
+:root[data-appearance="dark"][data-doc-theme="night"] .write hr { border-color: #343b44; }

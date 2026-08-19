@@ -18,3 +18,18 @@
 [data-doc-theme="newsprint"] .write blockquote { border-color: #9d9587; color: #6d685f; font-style: italic; }
 [data-doc-theme="newsprint"] .write th,
 [data-doc-theme="newsprint"] .write td { border-color: #c9c1b3; }
+
+:root[data-appearance="dark"][data-doc-theme="newsprint"] .editor-scroll { background: #24221e; }
+:root[data-appearance="dark"][data-doc-theme="newsprint"] .write { color: #ded8ca; }
+:root[data-appearance="dark"][data-doc-theme="newsprint"] .write h1,
+:root[data-appearance="dark"][data-doc-theme="newsprint"] .write h2,
+:root[data-appearance="dark"][data-doc-theme="newsprint"] .write h3 { color: #f0eadc; }
+:root[data-appearance="dark"][data-doc-theme="newsprint"] .write h1::after { border-color: #807768; }
+:root[data-appearance="dark"][data-doc-theme="newsprint"] .write a { color: #d69a78; border-color: #805d49; }
+:root[data-appearance="dark"][data-doc-theme="newsprint"] .write code,
+:root[data-appearance="dark"][data-doc-theme="newsprint"] .write pre,
+:root[data-appearance="dark"][data-doc-theme="newsprint"] .write th { background: #302d27; }
+:root[data-appearance="dark"][data-doc-theme="newsprint"] .write blockquote { border-color: #6d665a; color: #aaa193; }
+:root[data-appearance="dark"][data-doc-theme="newsprint"] .write th,
+:root[data-appearance="dark"][data-doc-theme="newsprint"] .write td,
+:root[data-appearance="dark"][data-doc-theme="newsprint"] .write hr { border-color: #514c43; }

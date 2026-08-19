@@ -59,8 +59,28 @@ test("marks Mermaid fences for diagram rendering", () => {
   const html = markdownToHTML("```mermaid\nflowchart LR\n  A[\u8F93\u5165] --> B[\u8F93\u51FA]\n```");
   assert.match(html, /class="mermaid-diagram"/);
   assert.match(html, /data-mermaid-source="flowchart LR\n  A\[\u8F93\u5165\] --&gt; B\[\u8F93\u51FA\]"/);
+  assert.match(html, /data-mermaid-theme="auto"/);
   assert.match(html, /contenteditable="false"/);
   assert.doesNotMatch(html, /<pre data-language="mermaid">/);
+});
+
+test("preserves Mermaid color themes and falls back from unknown values", () => {
+  assert.match(markdownToHTML("```mermaid theme=forest\nflowchart LR\nA-->B\n```"), /data-mermaid-theme="forest"/);
+  assert.match(markdownToHTML("```mermaid theme=unknown\nflowchart LR\nA-->B\n```"), /data-mermaid-theme="auto"/);
+});
+
+test("renders valid calendar fences as non-editable calendar blocks", () => {
+  const source = '```calendar\n{"version":1,"month":"2026-08","marks":[{"date":"2026-08-24","color":"red","title":"Important"}],"ranges":[],"items":[]}\n```';
+  const html = markdownToHTML(source);
+  assert.match(html, /class="calendar-block"/);
+  assert.match(html, /data-calendar-source="\{/);
+  assert.match(html, /&quot;month&quot;: &quot;2026-08&quot;/);
+  assert.match(html, /contenteditable="false"/);
+});
+
+test("keeps invalid calendar fences editable as ordinary code", () => {
+  assert.equal(markdownToHTML("```calendar\n{bad json}\n```"), '<pre data-language="calendar"><code>{bad json}</code></pre>');
+  assert.match(markdownToHTML('```calendar\n{"version":2,"month":"2026-08"}\n```'), /<pre data-language="calendar">/);
 });
 
 test("renders blockquotes, horizontal rules, and mixed lists", () => {
@@ -157,6 +177,8 @@ test("serializes editor DOM into Markdown", () => {
     element("ol", [element("li", ["\u7532"]), element("li", ["\u4E59"])]),
     element("pre", ["const a = 1;\n\u200b"], { dataset: { language: "js", title: "main.js" } }),
     element("div", [element("svg")], { class: "mermaid-diagram", dataset: { mermaidSource: "flowchart LR\nA-->B" } }),
+    element("div", [], { class: "mermaid-diagram", dataset: { mermaidSource: "flowchart TD\nB-->C", mermaidTheme: "forest" } }),
+    element("div", [], { class: "calendar-block", dataset: { calendarSource: '{"version":1,"month":"2026-08","marks":[],"ranges":[],"items":[]}' } }),
     element("table", [
       element("tr", [element("th", ["\u540D\u79F0"]), element("th", ["\u503C"])]),
       element("tr", [element("td", ["A|B"]), element("td", ["1"])])
@@ -175,6 +197,8 @@ test("serializes editor DOM into Markdown", () => {
   assert.match(markdown, /1\. \u7532\n2\. \u4E59/);
   assert.match(markdown, /```js title="main.js"\nconst a = 1;\n```/);
   assert.match(markdown, /```mermaid\nflowchart LR\nA-->B\n```/);
+  assert.match(markdown, /```mermaid theme=forest\nflowchart TD\nB-->C\n```/);
+  assert.match(markdown, /```calendar\n\{\n  "version": 1,\n  "month": "2026-08"/);
   assert.match(markdown, /\| \u540D\u79F0 \| \u503C \|\n\| --- \| --- \|\n\| A\\\|B \| 1 \|/);
   assert.match(markdown, /---\n\n\u4FDD\u7559\u5185\u5BB9$/);
 });

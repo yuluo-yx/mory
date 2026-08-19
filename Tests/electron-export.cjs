@@ -31,7 +31,7 @@ app.whenReady().then(async () => {
     await loadAndWait(editor, () => editor.loadFile(path.join(__dirname, "..", "Sources", "Mory", "Web", "index.html")));
     process.stdout.write("[e2e] editor-loaded\n");
 
-    const mermaidMarkdown = "# Mory Markdown \u7F16\u8F91\u5668\n\n## Mermaid\n\n```mermaid\nflowchart LR\n  A[Markdown] --> B[SVG]\n  B --> C[PDF / HTML / \u56FE\u7247]\n```\n\n## \u547D\u540D\u4EE3\u7801\n\n```go title=\"main.go\"\npackage main\nfunc main() { fmt.Println(\"export\") }\n```\n\n## \u5BFC\u51FA\u9A8C\u8BC1";
+    const mermaidMarkdown = "# Mory Markdown \u7F16\u8F91\u5668\n\n## Mermaid\n\n```mermaid theme=forest\nflowchart LR\n  A[Markdown] --> B[SVG]\n  B --> C[PDF / HTML / \u56FE\u7247]\n```\n\n## \u547D\u540D\u4EE3\u7801\n\n```go title=\"main.go\"\npackage main\nfunc main() { fmt.Println(\"export\") }\n```\n\n## \u5BFC\u51FA\u9A8C\u8BC1";
     const invalidMermaidMarkdown = "```mermaid\nthis is not a diagram\n```";
     const result = await editor.webContents.executeJavaScript(`(async () => {
       window.Mory.loadMarkdown(${JSON.stringify(mermaidMarkdown)});
@@ -57,6 +57,9 @@ app.whenReady().then(async () => {
         codeHighlighted: Boolean(document.querySelector('#write pre[data-language="go"] .hljs-keyword')),
         exportCodeHighlighted: html.includes('hljs-keyword'),
         sourceRoundTrip: window.Mory.getMarkdown().includes(${JSON.stringify("```mermaid")}),
+        mermaidThemeRoundTrip: window.Mory.getMarkdown().includes(${JSON.stringify("```mermaid theme=forest")}),
+        mermaidWorkbench: Boolean(document.querySelector('.mermaid-workbench-grid .mermaid-source-editor') && document.querySelector('.mermaid-preview-canvas svg')),
+        exportMermaidClean: html.includes('<svg') && !html.includes('mermaid-source-editor') && !html.includes('mermaid-workbench-grid') && !html.includes('data-mermaid-source'),
         namedCodeRoundTrip: window.Mory.getMarkdown().includes(${JSON.stringify('```go title="main.go"')}) && html.includes('data-title="main.go"'),
         mermaidRendered: document.querySelector('.mermaid-diagram')?.dataset.mermaidState === 'rendered'
       };
@@ -74,6 +77,8 @@ app.whenReady().then(async () => {
       throw new Error("Exported HTML did not inline the Newsprint theme, document content, or Mermaid SVG");
     }
     if (!result.mermaidRendered) throw new Error("Mermaid did not render in the editor");
+    if (!result.mermaidWorkbench || !result.exportMermaidClean) throw new Error("Mermaid workbench leaked into the exported document");
+    if (!result.mermaidThemeRoundTrip) throw new Error("Mermaid color theme did not round-trip through Markdown");
     if (result.defaultTheme !== "github") throw new Error("GitHub did not become the default document theme");
     if (result.highlightRuntime !== "11.11.1" || !result.codeHighlighted || !result.exportCodeHighlighted) throw new Error("Highlight.js did not cover both the editor and exported HTML");
     if (!result.namedCodeRoundTrip) throw new Error("The code snippet title did not round-trip through Markdown and export");
@@ -108,6 +113,9 @@ app.whenReady().then(async () => {
       highlightRuntime: result.highlightRuntime,
       codeHighlighted: result.codeHighlighted,
       sourceRoundTrip: result.sourceRoundTrip,
+      mermaidThemeRoundTrip: result.mermaidThemeRoundTrip,
+      mermaidWorkbench: result.mermaidWorkbench,
+      exportMermaidClean: result.exportMermaidClean,
       namedCodeRoundTrip: result.namedCodeRoundTrip,
       mermaidRendered: result.mermaidRendered,
       mermaidErrorHandled: result.mermaidError,
