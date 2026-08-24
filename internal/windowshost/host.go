@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -33,6 +34,7 @@ type Platform interface {
 	Trash(path string) error
 	Reveal(path string) error
 	OpenDirectory(path string) error
+	OpenURL(url string) error
 	Evaluate(script string)
 	SetTitle(title string)
 	SetLocale(locale string)
@@ -277,6 +279,17 @@ func (host *Host) Request(method string, args map[string]any) (any, error) {
 			return map[string]string{}, nil
 		}
 		return loadDocumentAssets(path, stringValue(args, "markdown")), nil
+	case "openExternal":
+		value := stringValue(args, "url")
+		parsed, err := url.Parse(value)
+		scheme := ""
+		if parsed != nil {
+			scheme = strings.ToLower(parsed.Scheme)
+		}
+		if err != nil || (scheme != "http" && scheme != "https" && scheme != "mailto") {
+			return nil, errors.New("仅支持打开 HTTP、HTTPS 和邮件链接")
+		}
+		return map[string]bool{"opened": true}, host.platform.OpenURL(value)
 	case "documentImage":
 		return readDocumentImage(host.workspaces.activeRoot(), stringValue(args, "path"))
 	case "revealFile":

@@ -107,6 +107,7 @@
     ]
   },
   "dependencies": {
+    "dompurify": "3.4.13",
     "pangu": "9.1.0"
   }
 }

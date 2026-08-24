@@ -493,16 +493,27 @@ final class WorkspaceManager: @unchecked Sendable {
     }
 
     func assets(for documentURL: URL, markdown: String) -> [String: String] {
-        let expression = try? NSRegularExpression(pattern: #"!\[[^\]]*\]\(([^\s)]+)"#)
         let source = markdown as NSString
         var assets: [String: String] = [:]
-        expression?.enumerateMatches(in: markdown, range: NSRange(location: 0, length: source.length)) { match, _, _ in
-            guard let range = match?.range(at: 1), range.location != NSNotFound else { return }
-            let relative = source.substring(with: range).removingPercentEncoding ?? source.substring(with: range)
-            guard !relative.contains("://"), !relative.hasPrefix("data:"), !relative.hasPrefix("/") else { return }
-            let fileURL = documentURL.deletingLastPathComponent().appendingPathComponent(relative)
-            guard let data = try? Data(contentsOf: fileURL) else { return }
-            assets[relative.replacingOccurrences(of: "\\", with: "/")] = "data:\(mimeType(for: fileURL));base64,\(data.base64EncodedString())"
+        let patterns = [
+            #"!\[[^\]]*\]\((?:<([^>]+)>|([^\s)]+))(?:\s+["'][^"']*["'])?\)"#,
+            #"(?is)<img\b[^>]*\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))"#
+        ]
+        for pattern in patterns {
+            let expression = try? NSRegularExpression(pattern: pattern)
+            expression?.enumerateMatches(in: markdown, range: NSRange(location: 0, length: source.length)) { match, _, _ in
+                guard let match else { return }
+                let range = (1 ..< match.numberOfRanges)
+                    .map { match.range(at: $0) }
+                    .first { $0.location != NSNotFound && $0.length > 0 }
+                guard let range else { return }
+                let encoded = source.substring(with: range)
+                let relative = encoded.removingPercentEncoding ?? encoded
+                guard !relative.contains("://"), !relative.hasPrefix("data:"), !relative.hasPrefix("/") else { return }
+                let fileURL = documentURL.deletingLastPathComponent().appendingPathComponent(relative)
+                guard let data = try? Data(contentsOf: fileURL) else { return }
+                assets[relative.replacingOccurrences(of: "\\", with: "/")] = "data:\(mimeType(for: fileURL));base64,\(data.base64EncodedString())"
+            }
         }
         return assets
     }

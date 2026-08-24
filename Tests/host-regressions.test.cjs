@@ -64,12 +64,28 @@ test("macOS and Windows constrain directory creation and lazy image loading to t
   assert.match(electronHost, /case "documentAssets"/);
   assert.match(electronWorkspace, /function resolveWorkspaceDirectory/);
   assert.match(electronWorkspace, /local\.startsWith\(`\.\./);
+  assert.ok(electronWorkspace.includes("<img\\b[^>]*\\bsrc"));
   assert.match(macOSHost, /case "createDirectory"/);
   assert.match(macOSHost, /case "documentAssets"/);
   assert.match(macOSWorkspace, /func createDirectory\(relativePath:/);
   assert.match(macOSWorkspace, /destination\.path\.hasPrefix\(rootPath \+ "\/"\)/);
+  assert.ok(macOSWorkspace.includes("<img\\b[^>]*\\bsrc"));
   assert.match(web, /hostRequest\("createDirectory"/);
   assert.match(web, /hostRequest\("documentAssets"/);
+});
+
+test("desktop hosts open modified-click web links outside the editor", () => {
+  const electron = fs.readFileSync(path.join(root, "Electron", "main.cjs"), "utf8");
+  const macOS = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
+  const windows = fs.readFileSync(path.join(root, "internal", "windowshost", "host.go"), "utf8");
+  const web = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "app.js"), "utf8");
+  assert.match(electron, /case "openExternal"/);
+  assert.match(electron, /shell\.openExternal\(url\)/);
+  assert.match(macOS, /case "openExternal"/);
+  assert.match(macOS, /NSWorkspace\.shared\.open\(url\)/);
+  assert.match(windows, /case "openExternal"/);
+  assert.ok(web.includes("(!event.ctrlKey && !event.metaKey)"));
+  assert.match(web, /workspaceFileForLink\(href\)/);
 });
 
 test("macOS and Windows save drafts into the active workspace when possible", () => {
@@ -161,16 +177,28 @@ test("macOS sidebar and document title bars share native window zoom behavior", 
 });
 
 test("the macOS bundle declares and generates a complete multi-size ICNS icon", () => {
+  const host = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
   const plist = fs.readFileSync(path.join(root, "macOS", "Info.plist"), "utf8");
   const build = fs.readFileSync(path.join(root, "scripts", "build-macos.sh"), "utf8");
   const iconBuild = fs.readFileSync(path.join(root, "scripts", "build-macos-icons.sh"), "utf8");
+  const windowsPackage = fs.readFileSync(path.join(root, "scripts", "package-windows-wails.ps1"), "utf8");
+  const iconSVG = fs.readFileSync(path.join(root, "assets", "mory-icon.svg"), "utf8");
+  const iconPNG = fs.readFileSync(path.join(root, "assets", "mory-icon.png"));
   assert.match(plist, /<key>CFBundleIconFile<\/key><string>icon\.icns<\/string>/);
   assert.match(build, /build-macos-icons\.sh/);
   assert.match(build, /\.build\/icons\/icon\.icns/);
   assert.match(iconBuild, /icon_16x16\.png/);
   assert.match(iconBuild, /icon_512x512@2x\.png/);
   assert.match(iconBuild, /build-icns\.mjs/);
-  assert.equal(fs.existsSync(path.join(root, "assets", "mory-icon.png")), true);
+  assert.match(windowsPackage, /assets[\\/]mory-icon\.png/);
+  assert.match(host, /options\[\.applicationIcon\] = icon/);
+  assert.match(iconSVG, /viewBox="0 0 1024 1024"/);
+  assert.match(iconSVG, /A calm short-haired writer illustrated in charcoal, ivory, and teal/);
+  assert.doesNotMatch(iconSVG, /geometric M|Möbius|infinity/i);
+  assert.equal(iconPNG.subarray(1, 4).toString(), "PNG");
+  assert.equal(iconPNG.readUInt32BE(16), 1024);
+  assert.equal(iconPNG.readUInt32BE(20), 1024);
+  assert.equal(iconPNG[25], 6);
 });
 
 test("the knowledge graph captures wheel input on HTML and normalizes it with the D3 formula", () => {
@@ -202,21 +230,44 @@ test("tables add and delete the current row or column and support Typora-style s
   assert.match(web, /command && event\.shiftKey && event\.key === "Backspace"/);
 });
 
-test("GitHub is the default theme and Yuluo warns when its preferred font is unavailable", () => {
+test("GitHub remains the default while bundled themes warn when preferred fonts are unavailable", () => {
   const html = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "index.html"), "utf8");
   const web = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "app.js"), "utf8");
   const yuluo = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "themes", "yuluo-css.css"), "utf8");
+  const lapis = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "themes", "lapis-cv.css"), "utf8");
+  const license = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "themes", "lapis-cv.LICENSE"), "utf8");
   assert.match(html, /data-doc-theme="github"/);
   assert.match(html, /href="themes\/github\.css"/);
+  assert.match(html, /option value="lapis-cv">Lapis CV<\/option>/);
   assert.match(web, /documentTheme:\s*"github"/);
   assert.match(web, /mory\.documentThemeDefaultVersion", "github-v1"/);
-  assert.match(web, /function updateYuluoFontWarning/);
+  assert.match(web, /function updateThemeFontWarning/);
+  assert.match(web, /const lapisCVFonts = \["Source Han Sans CN", "JetBrains Mono", "LapisCV Icon"\]/);
   assert.doesNotMatch(yuluo, /Segoe Print/);
+  assert.match(lapis, /Mory Lapis CV document theme/);
+  assert.match(lapis, /img\[alt="avatar"\]/);
+  assert.match(lapis, /@page \{ size: A4; \}/);
+  assert.match(license, /MIT License/);
+  assert.match(license, /Copyright \(c\) 2024 YiNN/);
+});
+
+test("raw Markdown HTML uses the bundled DOMPurify runtime and preserves source wrappers", () => {
+  const html = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "index.html"), "utf8");
+  const web = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "app.js"), "utf8");
+  const markdown = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "markdown.js"), "utf8");
+  const build = fs.readFileSync(path.join(root, "scripts", "build-web.mjs"), "utf8");
+  assert.match(html, /vendor\/dompurify\.min\.js/);
+  assert.match(web, /function enhanceRawHTML/);
+  assert.match(web, /purifier\.sanitize\(source/);
+  assert.match(web, /FORBID_TAGS: \["script", "style", "iframe"/);
+  assert.match(markdown, /mory-raw-html-placeholder/);
+  assert.match(markdown, /element\.dataset\.rawHtml/);
+  assert.match(build, /dompurify\.LICENSE/);
 });
 
 test("every built-in document theme provides a readable dark appearance", () => {
   const themeDirectory = path.join(root, "Sources", "Mory", "Web", "themes");
-  const themes = ["yuluo-css", "github", "whitey", "newsprint", "pixyll", "gothic", "night"];
+  const themes = ["yuluo-css", "lapis-cv", "github", "whitey", "newsprint", "pixyll", "gothic", "night"];
   const channel = value => {
     const normalized = value / 255;
     return normalized <= .04045 ? normalized / 12.92 : ((normalized + .055) / 1.055) ** 2.4;

@@ -423,10 +423,17 @@ async function readWorkspaceDocuments(root) {
 
 function markdownImagePaths(markdown) {
   const paths = new Set();
-  const expression = /!\[[^\]]*\]\((?:<([^>]+)>|([^\s)]+))(?:\s+["'][^"']*["'])?\)/g;
-  for (const match of markdown.matchAll(expression)) {
-    const value = match[1] || match[2] || "";
-    if (value && !/^(?:data:|https?:|file:|\/)/i.test(value)) paths.add(decodeURI(value));
+  const expressions = [
+    /!\[[^\]]*\]\((?:<([^>]+)>|([^\s)]+))(?:\s+["'][^"']*["'])?\)/g,
+    /<img\b[^>]*\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi
+  ];
+  for (const expression of expressions) {
+    for (const match of markdown.matchAll(expression)) {
+      const value = match.slice(1).find(Boolean) || "";
+      if (!value || /^(?:data:|https?:|file:|\/)/i.test(value)) continue;
+      try { paths.add(decodeURI(value)); }
+      catch { paths.add(value); }
+    }
   }
   return [...paths];
 }

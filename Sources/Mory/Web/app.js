@@ -131,8 +131,9 @@ const pendingHostRequests = new Map();
 const caretMarker = "\u200b";
 const renderCaretMarker = "\ue000";
 const doubleEnterWindow = 650;
-const builtInThemes = ["yuluo-css", "github", "whitey", "newsprint", "pixyll", "gothic", "night"];
+const builtInThemes = ["yuluo-css", "lapis-cv", "github", "whitey", "newsprint", "pixyll", "gothic", "night"];
 const yuluoPrimaryFont = "Hannotate SC";
+const lapisCVFonts = ["Source Han Sans CN", "JetBrains Mono", "LapisCV Icon"];
 const appearanceMedia = window.matchMedia("(prefers-color-scheme: dark)");
 const englishText = {
   "文件": "Files", "大纲": "Outline", "工作区": "Workspace", "文档还没有标题": "No headings yet",
@@ -161,6 +162,7 @@ const englishText = {
   "PDF 与图片包含当前主题的纸张颜色": "Include theme paper color in PDF and images", "HTML、PDF 不需要 Pandoc": "HTML and PDF do not require Pandoc", "选择位置并导出": "Choose location and export",
   "开始写作…": "Start writing…", "新建文档（⌘N）": "New document (⌘N)", "新建目录": "New folder", "目录名称或路径": "Folder name or path", "创建目录": "Create folder", "目录已创建": "Folder created", "创建目录失败": "Failed to create folder", "取消": "Cancel", "打开文稿": "Open document", "在此新建文稿": "New document here", "在此新建目录": "New folder here", "在文件管理器中显示": "Show in file manager", "重命名…": "Rename…", "重命名条目": "Rename entry", "新名称": "New name", "重命名完成": "Renamed", "复制到…": "Copy to…", "移动到…": "Move to…", "导出…": "Export…", "删除目录": "Delete folder", "选择目标目录": "Choose destination", "工作区根目录": "Workspace root", "复制条目": "Copy entry", "移动条目": "Move entry", "复制完成": "Copied", "移动完成": "Moved", "新文稿已创建": "Document created", "操作失败": "Operation failed", "图片预览": "Image preview", "图片加载失败": "Failed to load image", "展开图片": "Expand images", "收起图片": "Collapse images", "展开目录": "Expand folder", "收起目录": "Collapse folder", "切换或配置工作区": "Switch or configure workspace", "显示／隐藏侧边栏": "Show/hide sidebar", "添加行": "Add row", "删除行": "Delete row", "添加列": "Add column", "删除列": "Delete column",
   "未检测到 Hannotate SC，将使用系统字体，排版观感可能不同。可安装该字体后重新选择主题。": "Hannotate SC was not found. Mory will use the system font, so the layout may look different. Install the font and select this theme again.",
+  "LapisCV 所需字体未完整安装（Source Han Sans CN、JetBrains Mono、LapisCV Icon），将暂用系统字体。请安装主题包 fonts 目录内的字体，再重新选择主题。": "Some LapisCV fonts are missing (Source Han Sans CN, JetBrains Mono, and LapisCV Icon). Mory will temporarily use system fonts. Install the fonts from the theme package's fonts folder, then select this theme again.",
   "已切换文档": "Document switched", "关闭文档": "Close document", "删除文档": "Delete document", "移除草稿": "Remove draft", "文档已关闭": "Document closed", "文档已移到废纸篓": "Document moved to Trash", "目录已移到废纸篓": "Folder moved to Trash", "删除文档失败": "Failed to delete entry", "草稿已移除": "Draft removed", "当前草稿": "Current draft",
   "磁盘文件已删除": "deleted from disk", "文件已从磁盘删除，未保存内容已保留为草稿": "The file was deleted from disk; unsaved content was kept as a draft", "文稿": "Document", "图片": "Image",
   "本地": "Local", "工作目录": "Working folder", "使用“选择本地目录”填写": "Use “Choose local folder”", "仓库": "Repository", "分支": "Branch",
@@ -172,7 +174,7 @@ const englishText = {
   "日期标记": "Date mark", "日期范围": "Date range", "日期事项": "Date items", "标题": "Title", "颜色": "Color", "重要日期": "Important date", "前端开发": "Frontend development",
   "移除标记": "Remove mark", "保存标记": "Save mark", "重新选择": "Select again", "添加范围": "Add range", "添加事项": "Add item", "添加": "Add", "删除日历": "Delete calendar", "保存日历": "Save calendar",
   "Mermaid 源码": "Mermaid source", "Mermaid 图表": "Mermaid diagram", "Mermaid 无法渲染": "Mermaid could not render", "Mermaid 运行时未加载": "Mermaid runtime is unavailable",
-  "收起源码": "Collapse source", "展开源码": "Expand source", "放大图表": "Enlarge diagram", "退出放大": "Exit enlarged view"
+  "收起源码": "Collapse source", "展开源码": "Expand source", "放大编辑框": "Expand editor", "退出放大": "Exit expanded view"
 };
 const staticLocaleNodes = new WeakMap();
 const staticLocaleAttributes = new WeakMap();
@@ -226,7 +228,7 @@ function applyLocale(next = state.locale) {
   $("#source-toggle").setAttribute("aria-label", sourceLabel);
   renderWorkspaceSettings();
   syncThemeOptions();
-  updateYuluoFontWarning();
+  updateThemeFontWarning();
   updateDocumentBacklinks();
   enhanceCalendars(write);
   updateMermaidWorkbenchLocale(write);
@@ -319,8 +321,33 @@ function documentHostName(document) {
   return document?.path ? (document.name || localized("未命名.md")) : documentDisplayName(document);
 }
 
+function enhanceRawHTML(root, { interactive = true } = {}) {
+  const purifier = globalThis.DOMPurify;
+  root.querySelectorAll(".mory-raw-html-placeholder").forEach(placeholder => {
+    const source = placeholder.dataset.rawHtml || "";
+    if (!purifier?.sanitize) {
+      placeholder.textContent = source;
+      return;
+    }
+    const fragment = purifier.sanitize(source, {
+      RETURN_DOM_FRAGMENT: true,
+      USE_PROFILES: { html: true },
+      FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "base", "meta", "link", "form", "input", "button", "textarea", "select", "option"],
+      FORBID_ATTR: ["srcdoc", "formaction"]
+    });
+    fragment.querySelectorAll("a[target='_blank']").forEach(link => link.setAttribute("rel", "noopener noreferrer"));
+    if (!interactive) {
+      placeholder.replaceWith(fragment);
+      return;
+    }
+    placeholder.classList.remove("mory-raw-html-placeholder");
+    placeholder.classList.add("mory-raw-html");
+    placeholder.replaceChildren(fragment);
+  });
+}
+
 function renderDocument(document, announce = false) {
-  closeExpandedMermaidPreview();
+  closeExpandedMermaidWorkbench();
   closePathSuggestions();
   closeCalendarQuickEditor();
   clearTimeout(changeTimer);
@@ -331,6 +358,7 @@ function renderDocument(document, announce = false) {
   state.titleTouched = false;
   sourceEditor.value = state.markdown;
   write.innerHTML = markdownToHTML(state.markdown) || "<p><br></p>";
+  enhanceRawHTML(write);
   enhanceTables(write);
   enhanceCalendars(write);
   applyDocumentAssets(write, document);
@@ -440,8 +468,10 @@ function applyDocumentAssets(root, document = activeDocument(), { refreshMissing
     const raw = image.dataset.markdownSrc || image.getAttribute("src") || "";
     let decoded = raw;
     try { decoded = decodeURI(raw); } catch { /* Keep the original path when it cannot be decoded. */ }
-    const candidates = [raw, decoded]
-      .map(source => source.replaceAll("\\", "/").replace(/^\.\//, ""));
+    const candidates = [...new Set([raw, decoded].flatMap(source => {
+      const normalized = source.replaceAll("\\", "/");
+      return [normalized, normalized.replace(/^\.\//, "")];
+    }))];
     const asset = candidates.map(source => assets[source]).find(Boolean);
     if (asset) {
       if (!image.dataset.markdownSrc) image.dataset.markdownSrc = raw;
@@ -525,6 +555,27 @@ function workspaceRelativePath(targetName) {
   const relative = [...Array.from({ length: from.length - common }, () => ".."), ...target.slice(common)].join("/") || ".";
   const safe = relative.replaceAll(" ", "%20").replaceAll("(", "%28").replaceAll(")", "%29");
   return safe.startsWith("../") ? safe : `./${safe}`;
+}
+
+function workspaceFileForLink(reference) {
+  let target = String(reference || "").split(/[?#]/, 1)[0];
+  try { target = decodeURI(target); } catch { /* Keep malformed escapes visible and unresolved. */ }
+  if (!target || /^(?:[a-z][a-z\d+.-]*:|\/)/i.test(target)) return null;
+  const active = activeDocument();
+  const current = state.files.find(file => file.path === active?.path);
+  const base = String(current?.name || active?.name || "").replaceAll("\\", "/").split("/").slice(0, -1);
+  const segments = [...base];
+  for (const segment of target.replaceAll("\\", "/").split("/")) {
+    if (!segment || segment === ".") continue;
+    if (segment === "..") {
+      if (!segments.length) return null;
+      segments.pop();
+    } else {
+      segments.push(segment);
+    }
+  }
+  const normalized = segments.join("/");
+  return state.files.find(file => String(file.name || "").replaceAll("\\", "/") === normalized) || null;
 }
 
 function workspacePathCandidates() {
@@ -1923,12 +1974,13 @@ function renderMarkdownBlockAtCaret() {
   const text = block.textContent ?? "";
   const rawHeading = block.matches("p, div") && /^(#{1,6})\s+\S/.test(text);
   const rawList = block.matches("p, div") && /^\s*(?:[-*+]|\d+[.)])\s+\S/.test(text);
-  const rawInline = /`[^`\n]+`|\*\*[^*\n]+\*\*|__[^_\n]+__|~~[^~\n]+~~|(^|[^*])\*[^*\n]+\*(?!\*)|(^|[^_])_[^_\n]+_(?!_)|!?\[[^\]\n]+\]\([^\n)]+\)/.test(text);
+  const rawInline = /`[^`\n]+`|\*\*[^*\n]+\*\*|__[^_\n]+__|~~[^~\n]+~~|(^|[^*])\*[^*\n]+\*(?!\*)|(^|[^_])_[^_\n]+_(?!_)|!?\[[^\]\n]+\]\([^\n)]+\)|<\/?[A-Za-z][^>]*>/.test(text);
   if (!rawHeading && !rawList && !rawInline) return false;
   if (!insertRenderCaretMarker()) return false;
   const html = markdownToHTML(block.textContent || "");
   const template = document.createElement("template");
   template.innerHTML = html || "<p><br></p>";
+  enhanceRawHTML(template.content);
   block.replaceWith(template.content);
   restoreRenderCaret();
   enhanceTables(write);
@@ -1945,6 +1997,7 @@ function renderMarkdownDocumentAtCaret() {
     markdown = markdown.replace(closingFenceWithCaret, `$1$2\n\n${renderCaretMarker}`);
   }
   write.innerHTML = markdownToHTML(markdown) || "<p><br></p>";
+  enhanceRawHTML(write);
   enhanceTables(write);
   enhanceCalendars(write);
   if (hasCaret && !restoreRenderCaret()) {
@@ -2053,6 +2106,7 @@ function syncFromSource(render = false) {
   if (document) document.markdown = state.markdown;
   if (render) {
     write.innerHTML = markdownToHTML(state.markdown) || "<p><br></p>";
+    enhanceRawHTML(write);
     enhanceTables(write);
     enhanceCalendars(write);
     applyDocumentAssets(write);
@@ -2307,6 +2361,65 @@ async function openWorkspaceFile(file) {
   const payload = await hostRequest("readDocument", { path: file.path });
   openDocument(payload);
   return activeDocument();
+}
+
+async function openEditorLink(linkOrURL) {
+  const href = typeof linkOrURL === "string" ? linkOrURL : linkOrURL?.getAttribute("href") || "";
+  if (/\.(?:md|markdown)(?:[?#].*)?$/i.test(href)) {
+    const file = workspaceFileForLink(href);
+    if (!file) {
+      toast(locale() === "en" ? "Linked document was not found" : "未找到链接的文稿", 3200);
+      return;
+    }
+    await openWorkspaceFile(file);
+    return;
+  }
+  if (!/^(?:https?:|mailto:)/i.test(href)) return;
+  if (window.moryNative || nativeMacHost || nativeWailsHost()) {
+    await hostRequest("openExternal", { url: href });
+    return;
+  }
+  window.open(href, "_blank", "noopener,noreferrer");
+}
+
+function bareURLAtEditorClick(event) {
+  let node = null;
+  let offset = 0;
+  const hasPoint = event.clientX !== 0 || event.clientY !== 0;
+  const position = hasPoint ? document.caretPositionFromPoint?.(event.clientX, event.clientY) : null;
+  const range = hasPoint && !position ? document.caretRangeFromPoint?.(event.clientX, event.clientY) : null;
+  if (position?.offsetNode) {
+    node = position.offsetNode;
+    offset = position.offset;
+  } else if (range?.startContainer) {
+    node = range.startContainer;
+    offset = range.startOffset;
+  }
+  if (node?.nodeType !== Node.TEXT_NODE || !write.contains(node)) {
+    const selection = window.getSelection();
+    node = selection?.anchorNode || null;
+    offset = selection?.anchorOffset || 0;
+  }
+  if (node?.nodeType !== Node.TEXT_NODE || !write.contains(node)) return "";
+  const text = node.nodeValue || "";
+  const expression = /https?:\/\/[^\s<>"']+|mailto:[^\s<>"']+/gi;
+  for (const match of text.matchAll(expression)) {
+    const value = match[0].replace(/[.,;:!?)}\]]+$/, "");
+    if (offset >= match.index && offset <= match.index + value.length) return value;
+  }
+  return "";
+}
+
+function handleEditorLinkClick(event) {
+  if (event.button !== 0 || (!event.ctrlKey && !event.metaKey)) return;
+  const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
+  const bareURL = link ? "" : bareURLAtEditorClick(event);
+  if ((!link || !link.closest("#write")) && !bareURL) return;
+  event.preventDefault();
+  event.stopPropagation();
+  void openEditorLink(link || bareURL).catch(error => {
+    toast(locale() === "en" ? `Unable to open link: ${error.message}` : `无法打开链接：${error.message}`, 3200);
+  });
 }
 
 function selectedDirectory() {
@@ -3549,6 +3662,7 @@ function toggleKnowledgeGraph(force) {
 function mermaidTheme(theme, appearance = document.documentElement.dataset.appearance, colorTheme = "auto") {
   const lightPalettes = {
     "yuluo-css": { theme: "base", primaryColor: "#effaff", primaryTextColor: "#333333", primaryBorderColor: "#1a8f37", lineColor: "#4183c4", background: "#ffffff" },
+    "lapis-cv": { theme: "base", primaryColor: "#eef3f9", primaryTextColor: "#353a42", primaryBorderColor: "#4870ad", lineColor: "#4870ad", background: "#ffffff" },
     github: { theme: "base", primaryColor: "#f6f8fa", primaryTextColor: "#1f2328", primaryBorderColor: "#8c959f", lineColor: "#59636e", background: "#ffffff" },
     whitey: { theme: "base", primaryColor: "#f5f5f3", primaryTextColor: "#2c2c2b", primaryBorderColor: "#b8b8b2", lineColor: "#74746f", background: "#ffffff" },
     newsprint: { theme: "neutral", primaryColor: "#eee9dd", primaryTextColor: "#191816", primaryBorderColor: "#8d877b", lineColor: "#5f5a52", background: "#f7f4ed" },
@@ -3558,6 +3672,7 @@ function mermaidTheme(theme, appearance = document.documentElement.dataset.appea
   };
   const darkPalettes = {
     "yuluo-css": { theme: "dark", primaryColor: "#292e32", primaryTextColor: "#e7ecef", primaryBorderColor: "#58c978", lineColor: "#78b7e4", background: "#1f2224" },
+    "lapis-cv": { theme: "dark", primaryColor: "#253142", primaryTextColor: "#e8edf4", primaryBorderColor: "#7ea2d8", lineColor: "#93b4e3", background: "#1f2732" },
     github: { theme: "dark", primaryColor: "#161b22", primaryTextColor: "#e6edf3", primaryBorderColor: "#6e7681", lineColor: "#8b949e", background: "#0d1117" },
     whitey: { theme: "dark", primaryColor: "#292a29", primaryTextColor: "#e5e5e0", primaryBorderColor: "#70716d", lineColor: "#a5a69f", background: "#1f2020" },
     newsprint: { theme: "dark", primaryColor: "#302d27", primaryTextColor: "#eee8da", primaryBorderColor: "#807768", lineColor: "#aaa193", background: "#24221e" },
@@ -3670,20 +3785,20 @@ function updateMermaidLayoutControls(element) {
   const sourceButton = element.querySelector(".mermaid-source-toggle");
   const expandButton = element.querySelector(".mermaid-expand-button");
   const sourceCollapsed = element.classList.contains("is-source-collapsed");
-  const previewExpanded = element.classList.contains("is-preview-expanded");
+  const workbenchExpanded = element.classList.contains("is-workbench-expanded");
   if (sourceButton) {
     const label = localized(sourceCollapsed ? "展开源码" : "收起源码");
     sourceButton.title = label;
     sourceButton.setAttribute("aria-label", label);
     sourceButton.setAttribute("aria-expanded", String(!sourceCollapsed));
-    sourceButton.querySelector("use")?.setAttribute("href", sourceCollapsed ? "#i-panel-left-open" : "#i-panel-left-close");
+    sourceButton.querySelector("use")?.setAttribute("href", sourceCollapsed ? "#i-arrow-right" : "#i-arrow-left");
   }
   if (expandButton) {
-    const label = localized(previewExpanded ? "退出放大" : "放大图表");
+    const label = localized(workbenchExpanded ? "退出放大" : "放大编辑框");
     expandButton.title = label;
     expandButton.setAttribute("aria-label", label);
-    expandButton.setAttribute("aria-pressed", String(previewExpanded));
-    expandButton.querySelector("use")?.setAttribute("href", previewExpanded ? "#i-minimize-2" : "#i-maximize-2");
+    expandButton.setAttribute("aria-pressed", String(workbenchExpanded));
+    expandButton.querySelector("use")?.setAttribute("href", workbenchExpanded ? "#i-minimize-2" : "#i-maximize-2");
   }
 }
 
@@ -3692,21 +3807,22 @@ function toggleMermaidSourcePane(element) {
   updateMermaidLayoutControls(element);
 }
 
-function toggleMermaidPreviewExpansion(element, force) {
-  const shouldExpand = force ?? !element.classList.contains("is-preview-expanded");
+function toggleMermaidWorkbenchExpansion(element, force) {
+  const shouldExpand = force ?? !element.classList.contains("is-workbench-expanded");
   if (shouldExpand && expandedMermaidDiagram && expandedMermaidDiagram !== element) {
-    toggleMermaidPreviewExpansion(expandedMermaidDiagram, false);
+    toggleMermaidWorkbenchExpansion(expandedMermaidDiagram, false);
   }
-  element.classList.toggle("is-preview-expanded", shouldExpand);
+  if (shouldExpand) element.classList.remove("is-source-collapsed");
+  element.classList.toggle("is-workbench-expanded", shouldExpand);
   expandedMermaidDiagram = shouldExpand ? element : (expandedMermaidDiagram === element ? null : expandedMermaidDiagram);
-  document.body.classList.toggle("mermaid-preview-open", Boolean(expandedMermaidDiagram));
+  document.body.classList.toggle("mermaid-workbench-open", Boolean(expandedMermaidDiagram));
   updateMermaidLayoutControls(element);
 }
 
-function closeExpandedMermaidPreview() {
+function closeExpandedMermaidWorkbench() {
   if (!expandedMermaidDiagram) return false;
   const element = expandedMermaidDiagram;
-  toggleMermaidPreviewExpansion(element, false);
+  toggleMermaidWorkbenchExpansion(element, false);
   element.querySelector(".mermaid-expand-button")?.focus();
   return true;
 }
@@ -3788,7 +3904,7 @@ function ensureMermaidWorkbench(element) {
   expandButton.innerHTML = '<svg aria-hidden="true"><use href="#i-maximize-2"/></svg>';
   expandButton.addEventListener("click", event => {
     event.stopPropagation();
-    toggleMermaidPreviewExpansion(element);
+    toggleMermaidWorkbenchExpansion(element);
   });
   const themeButton = document.createElement("button");
   themeButton.type = "button";
@@ -3812,17 +3928,17 @@ function ensureMermaidWorkbench(element) {
   errorHeading.textContent = localized("Mermaid 无法渲染");
   const errorDetail = document.createElement("small");
   error.append(errorHeading, errorDetail);
-  preview.append(expandButton, themeButton, canvas, error);
+  preview.append(themeButton, canvas, error);
   grid.append(sourcePane, preview);
   const sourceButton = document.createElement("button");
   sourceButton.type = "button";
   sourceButton.className = "mermaid-source-toggle";
-  sourceButton.innerHTML = '<svg aria-hidden="true"><use href="#i-panel-left-close"/></svg>';
+  sourceButton.innerHTML = '<svg aria-hidden="true"><use href="#i-arrow-left"/></svg>';
   sourceButton.addEventListener("click", event => {
     event.stopPropagation();
     toggleMermaidSourcePane(element);
   });
-  element.append(grid, sourceButton);
+  element.append(grid, sourceButton, expandButton);
   updateMermaidThemeControl(element);
   updateMermaidLayoutControls(element);
   return grid;
@@ -3996,15 +4112,21 @@ function fontAvailable(family) {
   });
 }
 
-function updateYuluoFontWarning({ announce = false } = {}) {
+function updateThemeFontWarning({ announce = false } = {}) {
   const warning = $("#theme-font-warning");
-  const missing = state.documentTheme === "yuluo-css" && !fontAvailable(yuluoPrimaryFont);
-  const message = localized("未检测到 Hannotate SC，将使用系统字体，排版观感可能不同。可安装该字体后重新选择主题。");
-  warning.hidden = !missing;
-  warning.textContent = missing ? message : "";
-  document.documentElement.dataset.yuluoFont = missing ? "fallback" : "available";
-  if (missing && announce) toast(message, 5200);
-  return !missing;
+  const yuluoMissing = !fontAvailable(yuluoPrimaryFont);
+  const lapisMissing = lapisCVFonts.some(family => !fontAvailable(family));
+  const messages = {
+    "yuluo-css": yuluoMissing ? localized("未检测到 Hannotate SC，将使用系统字体，排版观感可能不同。可安装该字体后重新选择主题。") : "",
+    "lapis-cv": lapisMissing ? localized("LapisCV 所需字体未完整安装（Source Han Sans CN、JetBrains Mono、LapisCV Icon），将暂用系统字体。请安装主题包 fonts 目录内的字体，再重新选择主题。") : ""
+  };
+  const message = messages[state.documentTheme] || "";
+  warning.hidden = !message;
+  warning.textContent = message;
+  document.documentElement.dataset.yuluoFont = yuluoMissing ? "fallback" : "available";
+  document.documentElement.dataset.lapisCvFont = lapisMissing ? "fallback" : "available";
+  if (message && announce) toast(message, 5200);
+  return !message;
 }
 
 function setDocumentTheme(theme, { announceFontWarning = false } = {}) {
@@ -4019,7 +4141,7 @@ function setDocumentTheme(theme, { announceFontWarning = false } = {}) {
   localStorage.setItem("mory.documentTheme", next);
   requestAnimationFrame(applyEditorZoom);
   readThemeCSS(next);
-  updateYuluoFontWarning({ announce: announceFontWarning });
+  updateThemeFontWarning({ announce: announceFontWarning });
   void renderMermaidDiagrams(write, next);
 }
 
@@ -4054,11 +4176,12 @@ async function exportDocument(options = {}) {
   const exportRoot = document.createElement("article");
   exportRoot.className = "write";
   exportRoot.innerHTML = markdownToHTML(state.markdown);
+  enhanceRawHTML(exportRoot, { interactive: false });
   enhanceCalendars(exportRoot, { interactive: false });
   applyDocumentAssets(exportRoot);
   highlightCodeBlocks(exportRoot, true);
   await renderMermaidDiagrams(exportRoot, theme, theme === "night" ? "dark" : "light");
-  return `<!doctype html>\n<html lang="${locale()}" data-doc-theme="${escapeHTML(theme)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escapeHTML(title)}</title><style>${exportBaseCSS}\n${themeCSS}\n${backgroundOverride}</style></head><body><main class="editor-scroll"><article id="write" class="write">${exportRoot.innerHTML}</article></main></body></html>`;
+  return `<!doctype html>\n<html lang="${locale()}" data-doc-theme="${escapeHTML(theme)}" data-export="true"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escapeHTML(title)}</title><style>${exportBaseCSS}\n${themeCSS}\n${backgroundOverride}</style></head><body><main class="editor-scroll"><article id="write" class="write">${exportRoot.innerHTML}</article></main></body></html>`;
 }
 
 function toggleExportDialog(force) {
@@ -4426,6 +4549,7 @@ write.addEventListener("beforeinput", event => {
 });
 write.addEventListener("keyup", updateFocusLine);
 write.addEventListener("mouseup", updateFocusLine);
+write.addEventListener("click", handleEditorLinkClick);
 write.addEventListener("keydown", handleEditorShortcut);
 write.addEventListener("change", event => {
   if (event.target.matches('input[type="checkbox"]')) syncFromWrite();
@@ -4780,6 +4904,13 @@ $("#document-title").addEventListener("input", event => {
 });
 
 document.addEventListener("keydown", event => {
+  if (event.key !== "Escape" || !expandedMermaidDiagram) return;
+  event.preventDefault();
+  event.stopPropagation();
+  closeExpandedMermaidWorkbench();
+}, true);
+
+document.addEventListener("keydown", event => {
   const command = event.metaKey || event.ctrlKey;
   const target = event.target instanceof Element ? event.target : null;
   const editing = target?.closest("input, textarea, select, [contenteditable='true']");
@@ -4792,7 +4923,7 @@ document.addEventListener("keydown", event => {
   if (command && event.key.toLowerCase() === "p") { event.preventDefault(); openQuickOpen(); }
   if (command && event.key.toLowerCase() === "f") { event.preventDefault(); showFind(); }
   if (event.key === "Escape") {
-    if (closeExpandedMermaidPreview()) {
+    if (closeExpandedMermaidWorkbench()) {
       event.preventDefault();
       return;
     }

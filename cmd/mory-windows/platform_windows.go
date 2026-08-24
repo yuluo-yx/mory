@@ -90,6 +90,11 @@ func (platform *windowsPlatform) OpenDirectory(path string) error {
 	return exec.Command("explorer.exe", path).Start()
 }
 
+func (platform *windowsPlatform) OpenURL(url string) error {
+	runtime.BrowserOpenURL(platform.context(), url)
+	return nil
+}
+
 func (platform *windowsPlatform) Evaluate(script string) {
 	runtime.WindowExecJS(platform.context(), script)
 }

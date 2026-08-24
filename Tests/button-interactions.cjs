@@ -144,6 +144,7 @@ app.whenReady().then(async () => {
     await expect(window, "sidebar search tab is removed", "!document.querySelector('.tab[data-panel=\"search\"]') && !document.querySelector('#search-panel-side') && !document.querySelector('#side-search-input')");
     const screenshotPath = path.join(os.tmpdir(), "mory-ui-e2e.png");
     const codeMetaScreenshotPath = path.join(os.tmpdir(), "mory-code-meta-e2e.png");
+    const lapisCVScreenshotPath = path.join(os.tmpdir(), "mory-lapis-cv-e2e.png");
     const darkThemeScreenshotPath = path.join(os.tmpdir(), "mory-dark-theme-e2e.png");
     const mermaidScreenshotPath = path.join(os.tmpdir(), "mory-mermaid-e2e.png");
     const mermaidExpandedScreenshotPath = path.join(os.tmpdir(), "mory-mermaid-expanded-e2e.png");
@@ -171,7 +172,11 @@ app.whenReady().then(async () => {
             return Promise.resolve({ name: '\u79FB\u52A8\u9879', path: (args.destinationPath || '/opened') + '/\u79FB\u52A8\u9879.md', sourcePath: args.path, isDirectory: !args.path.endsWith('.md') });
           }
           if (method === 'renameWorkspaceEntry') return Promise.resolve({ name: args.name, path: args.path.replace(/[^/]+$/, args.name), sourcePath: args.path, isDirectory: !args.path.endsWith('.md') });
-          if (method === 'documentAssets') return Promise.resolve({ '\u6587\u7AE0/late.svg': 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjwvc3ZnPg==' });
+          if (method === 'documentAssets') return Promise.resolve({ '\u6587\u7AE0/late.svg': 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjwvc3ZnPg==', './photo_1.svg': 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxIDEiPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9IiM0ODcwYWQiLz48L3N2Zz4=' });
+          if (method === 'openExternal') {
+            window.__openedExternalURL = args.url;
+            return Promise.resolve({ opened: true });
+          }
           if (method === 'documentImage') return Promise.resolve({ dataURL: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjwvc3ZnPg==' });
           if (method === 'readDocument') return Promise.resolve({ name: args.path.split('/').at(-1), path: args.path, markdown: '# \u7B2C\u4E00\u7BC7', assets: {} });
           if (method === 'revealFile') return Promise.resolve({ revealed: true });
@@ -426,10 +431,43 @@ app.whenReady().then(async () => {
     await expect(window, "settings button is clickable", "document.querySelector('#preferences').classList.contains('is-open')");
     await inspect(window, "(() => { const appearance = document.querySelector('#theme-select'); appearance.value = 'light'; appearance.dispatchEvent(new Event('change', { bubbles: true })); })()");
     await expectEventually(window, "light sidebar uses high-contrast semantic colors", "(() => { const style = getComputedStyle(document.documentElement); return document.documentElement.dataset.appearance === 'light' && style.getPropertyValue('--sidebar-text').trim() === '#272a27' && style.getPropertyValue('--sidebar-muted').trim() === '#626762' && style.getPropertyValue('--sidebar-faint').trim() === '#7b817b'; })()");
+    await inspect(window, `(() => {
+      window.__openedExternalURL = '';
+      window.Mory.loadMarkdown('Visit https://example.com/docs.');
+      const text = document.querySelector('#write p').firstChild;
+      const range = document.createRange();
+      range.setStart(text, 12);
+      range.collapse(true);
+      getSelection().removeAllRanges();
+      getSelection().addRange(range);
+      document.querySelector('#write p').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, ctrlKey: true }));
+    })()`);
+    await expectEventually(window, "Ctrl-click opens bare URLs without rewriting Markdown", "window.__openedExternalURL === 'https://example.com/docs' && window.Mory.getMarkdown() === 'Visit https://example.com/docs.'");
+    await inspect(window, `(() => {
+      window.Mory.loadMarkdown(${JSON.stringify("# Ada Lovelace\n\n> <span alt=\"icon\">&#xe60f;</span> Engineer&emsp; <span alt=\"icon\">&#xe7ca;</span> ada@example.com&emsp; [Portfolio](https://example.com)\n\n<img alt=\"avatar\" src=\"./photo_1.svg\">\n\n## &#xe618; Experience\n\n<div alt=\"entry-title\" onclick=\"window.__unsafeRawHTML = true\">\n  <h3>Analytical Engine</h3>\n  <p>1842–1843</p>\n</div>\n**Data platform**\n- Designed a general-purpose algorithm.\n- Explained the work with precise technical notes.")});
+      const documentTheme = document.querySelector('#document-theme-select');
+      documentTheme.value = 'lapis-cv';
+      documentTheme.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`);
+    await expectEventually(window, "Lapis CV renders Typora-style HTML and adjacent Markdown as an A4 resume", "(() => { const write = document.querySelector('#write'); const h1 = write.querySelector('h1'); const h2 = write.querySelector('h2'); const entry = write.querySelector('div[alt=\"entry-title\"]'); const avatar = write.querySelector('img[alt=\"avatar\"]'); const icons = write.querySelectorAll('span[alt=\"icon\"]'); return document.documentElement.dataset.docTheme === 'lapis-cv' && getComputedStyle(h1).textAlign === 'center' && getComputedStyle(h2).color === 'rgb(72, 112, 173)' && getComputedStyle(entry).display === 'flex' && getComputedStyle(avatar).borderRadius === '50%' && avatar.src.startsWith('data:image/svg+xml;base64,') && write.querySelector('strong')?.textContent === 'Data platform' && icons.length === 2 && icons[0].textContent === '\ue60f' && !entry.hasAttribute('onclick') && window.__unsafeRawHTML !== true && getComputedStyle(write).minHeight !== '0px'; })()");
+    await expect(window, "raw HTML survives editor-to-Markdown round trips with relative image sources", "(() => { const markdown = window.Mory.getMarkdown(); return markdown.includes('<span alt=\"icon\">&#xe60f;</span>') && markdown.includes('<img alt=\"avatar\" src=\"./photo_1.svg\">') && markdown.includes('<div alt=\"entry-title\" onclick=\"window.__unsafeRawHTML = true\">') && markdown.includes('**Data platform**') && !markdown.includes('data:image'); })()");
+    await inspect(window, "document.querySelector('#write a[href=\"https://example.com\"]').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, ctrlKey: true }))");
+    await expectEventually(window, "Ctrl-click opens URL links through the desktop host", "window.__openedExternalURL === 'https://example.com'");
+    await expect(window, "Lapis CV reports missing preferred fonts without blocking the theme", "(() => { const missing = ['Source Han Sans CN', 'JetBrains Mono', 'LapisCV Icon'].some(font => !window.Mory.fontAvailable(font)); const warning = document.querySelector('#theme-font-warning'); return missing ? (!warning.hidden && document.documentElement.dataset.lapisCvFont === 'fallback' && warning.textContent.includes('Source Han Sans CN')) : warning.hidden; })()");
+    await expect(window, "Lapis CV CSS and sanitized HTML are embedded in clean exports", "window.Mory.exportDocument({ theme: 'lapis-cv', background: true }).then(html => html.includes('data-doc-theme=\"lapis-cv\"') && html.includes('data-export=\"true\"') && html.includes('Mory Lapis CV document theme') && html.includes('<div alt=\"entry-title\">') && !html.includes('onclick=') && !html.includes('mory-raw-html') && !html.includes('<script'))");
+    await click(window, "#preferences-close");
+    await inspect(window, "document.querySelector('#editor-scroll').scrollTop = 0");
+    await wait(260);
+    await fs.writeFile(lapisCVScreenshotPath, (await window.webContents.capturePage()).toPNG());
+    await inspect(window, `window.Mory.loadMarkdown(${JSON.stringify("<section class=\"profile\" style=\"border-left: 3px solid #4870ad\" onclick=\"window.__unsafeHTMLBlock = true\">\n  <details open><summary>Portfolio</summary><p><mark>Selected work</mark></p></details>\n  <table><tbody><tr><th>Skill</th><td>Go</td></tr></tbody></table>\n  <script>window.__unsafeHTMLBlock = true</script>\n</section>")})`);
+    await expect(window, "common block HTML renders while executable content is removed", "(() => { const section = document.querySelector('#write section.profile'); return section?.style.borderLeftWidth === '3px' && section.querySelector('details[open] summary')?.textContent === 'Portfolio' && section.querySelector('mark')?.textContent === 'Selected work' && section.querySelector('table td')?.textContent === 'Go' && !section.hasAttribute('onclick') && !section.querySelector('script') && window.__unsafeHTMLBlock !== true; })()");
+    await expect(window, "generic HTML source round-trips and exports as sanitized markup", "window.Mory.exportDocument({ theme: 'lapis-cv' }).then(html => window.Mory.getMarkdown().includes('<details open>') && html.includes('<section class=\"profile\"') && html.includes('border-left:') && html.includes('<details open=\"\">') && !html.includes('<script') && !html.includes('onclick=') && !html.includes('mory-raw-html'))");
+    await click(window, "#settings-button");
     await inspect(window, "(() => { const documentTheme = document.querySelector('#document-theme-select'); documentTheme.value = 'yuluo-css'; documentTheme.dispatchEvent(new Event('change', { bubbles: true })); const appearance = document.querySelector('#theme-select'); appearance.value = 'dark'; appearance.dispatchEvent(new Event('change', { bubbles: true })); })()");
     await expect(window, "Yuluo uses system fonts and shows a lightweight notice when its font is missing", "(() => { const available = window.Mory.fontAvailable('Hannotate SC'); const warning = document.querySelector('#theme-font-warning'); return available ? warning.hidden : (!warning.hidden && document.documentElement.dataset.yuluoFont === 'fallback' && warning.textContent.includes('\u7CFB\u7EDF\u5B57\u4F53')); })()");
     const darkThemeColors = [
       ["yuluo-css", "rgb(31, 34, 36)", "rgb(221, 226, 229)"],
+      ["lapis-cv", "rgb(31, 39, 50)", "rgb(232, 237, 244)"],
       ["github", "rgb(13, 17, 23)", "rgb(230, 237, 243)"],
       ["whitey", "rgb(31, 32, 32)", "rgb(222, 222, 217)"],
       ["newsprint", "rgb(36, 34, 30)", "rgb(222, 216, 202)"],
@@ -725,18 +763,26 @@ app.whenReady().then(async () => {
     await expectEventually(window, "Mermaid source edits render an SVG and update Markdown immediately", "document.querySelector('.mermaid-diagram[data-mermaid-state=\"rendered\"] .mermaid-preview-canvas svg') && window.Mory.getMarkdown().includes('A[Start] --> B{Ready?}')", 4000);
     await wait(120);
     await fs.writeFile(mermaidScreenshotPath, (await window.webContents.capturePage()).toPNG());
-    await inspect(window, "(() => { window.__mermaidMarkdownBeforeLayout = window.Mory.getMarkdown(); window.__mermaidCanvasHeight = document.querySelector('.mermaid-preview-canvas').getBoundingClientRect().height; })()");
+    await inspect(window, "(() => { const diagram = document.querySelector('.mermaid-diagram'); const button = diagram.querySelector('.mermaid-expand-button').getBoundingClientRect(); window.__mermaidMarkdownBeforeLayout = window.Mory.getMarkdown(); window.__mermaidCanvasHeight = diagram.querySelector('.mermaid-preview-canvas').getBoundingClientRect().height; window.__mermaidExpandOutside = button.bottom <= diagram.getBoundingClientRect().top; })()");
+    await expect(window, "the enlarge control sits outside the Mermaid workbench and the divider uses one compact arrow", "(() => { const toggle = document.querySelector('.mermaid-source-toggle'); const size = toggle.getBoundingClientRect(); return window.__mermaidExpandOutside === true && toggle.querySelector('use').getAttribute('href') === '#i-arrow-left' && size.width <= 20 && size.height <= 28; })()");
     await click(window, ".mermaid-source-toggle");
-    await expect(window, "the divider control collapses the source pane without changing Markdown", "(() => { const diagram = document.querySelector('.mermaid-diagram'); const grid = diagram.querySelector('.mermaid-workbench-grid').getBoundingClientRect(); const source = diagram.querySelector('.mermaid-source-pane').getBoundingClientRect(); const preview = diagram.querySelector('.mermaid-preview-pane').getBoundingClientRect(); return diagram.classList.contains('is-source-collapsed') && source.width < 1 && Math.abs(preview.width - grid.width) <= 1 && window.Mory.getMarkdown() === window.__mermaidMarkdownBeforeLayout && diagram.querySelector('.mermaid-source-toggle').getAttribute('aria-expanded') === 'false'; })()");
+    await expect(window, "the divider control collapses the source pane without changing Markdown", "(() => { const diagram = document.querySelector('.mermaid-diagram'); const grid = diagram.querySelector('.mermaid-workbench-grid').getBoundingClientRect(); const source = diagram.querySelector('.mermaid-source-pane').getBoundingClientRect(); const preview = diagram.querySelector('.mermaid-preview-pane').getBoundingClientRect(); const toggle = diagram.querySelector('.mermaid-source-toggle'); return diagram.classList.contains('is-source-collapsed') && source.width < 1 && Math.abs(preview.width - grid.width) <= 1 && window.Mory.getMarkdown() === window.__mermaidMarkdownBeforeLayout && toggle.getAttribute('aria-expanded') === 'false' && toggle.querySelector('use').getAttribute('href') === '#i-arrow-right'; })()");
     await click(window, ".mermaid-source-toggle");
     await expect(window, "the divider control restores an even source and preview split", "(() => { const diagram = document.querySelector('.mermaid-diagram'); const panes = [...diagram.querySelector('.mermaid-workbench-grid').children].map(item => item.getBoundingClientRect().width); return !diagram.classList.contains('is-source-collapsed') && Math.abs(panes[0] - panes[1]) <= 2 && diagram.querySelector('.mermaid-source-toggle').getAttribute('aria-expanded') === 'true'; })()");
     await click(window, ".mermaid-expand-button");
-    await expect(window, "the enlarge control opens a viewport-sized preview and keeps the rendered SVG visible", "(() => { const diagram = document.querySelector('.mermaid-diagram'); const canvas = diagram.querySelector('.mermaid-preview-canvas').getBoundingClientRect(); const svg = diagram.querySelector('.mermaid-preview-canvas svg').getBoundingClientRect(); return diagram.classList.contains('is-preview-expanded') && document.body.classList.contains('mermaid-preview-open') && getComputedStyle(diagram.querySelector('.mermaid-source-pane')).display === 'none' && canvas.height > window.__mermaidCanvasHeight + 200 && svg.width > 0 && svg.height > 0 && diagram.querySelector('.mermaid-expand-button').getAttribute('aria-pressed') === 'true'; })()");
+    await expect(window, "the enlarge control opens the complete Mermaid editor with source and preview visible", "(() => { const diagram = document.querySelector('.mermaid-diagram'); const grid = diagram.querySelector('.mermaid-workbench-grid').getBoundingClientRect(); const source = diagram.querySelector('.mermaid-source-pane').getBoundingClientRect(); const preview = diagram.querySelector('.mermaid-preview-pane').getBoundingClientRect(); const canvas = diagram.querySelector('.mermaid-preview-canvas').getBoundingClientRect(); const svg = diagram.querySelector('.mermaid-preview-canvas svg').getBoundingClientRect(); return diagram.classList.contains('is-workbench-expanded') && document.body.classList.contains('mermaid-workbench-open') && source.width > 0 && preview.width > 0 && Math.abs(source.width - preview.width) <= 2 && grid.height > innerHeight - 30 && canvas.height > window.__mermaidCanvasHeight + 200 && svg.width > 0 && svg.height > 0 && diagram.querySelector('.mermaid-expand-button').getAttribute('aria-pressed') === 'true'; })()");
+    await inspect(window, `(() => {
+      const input = document.querySelector('.mermaid-source-editor');
+      input.focus();
+      input.value = 'flowchart TD\\n  A[Start] --> B{Ready?}\\n  B -->|Yes| C[Ship]\\n  C --> D[Done]';
+      input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+    })()`);
+    await expectEventually(window, "Mermaid remains editable with live rendering while the complete workbench is enlarged", "document.querySelector('.mermaid-diagram.is-workbench-expanded[data-mermaid-state=\"rendered\"] .mermaid-preview-canvas svg') && document.activeElement?.classList.contains('mermaid-source-editor') && window.Mory.getMarkdown().includes('C --> D[Done]')", 4000);
     await fs.writeFile(mermaidExpandedScreenshotPath, (await window.webContents.capturePage()).toPNG());
     window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
     window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
     await wait(80);
-    await expect(window, "Escape exits the enlarged Mermaid preview", "(() => { const diagram = document.querySelector('.mermaid-diagram'); return !diagram.classList.contains('is-preview-expanded') && !document.body.classList.contains('mermaid-preview-open') && document.activeElement === diagram.querySelector('.mermaid-expand-button'); })()");
+    await expect(window, "Escape exits the enlarged Mermaid editor", "(() => { const diagram = document.querySelector('.mermaid-diagram'); return !diagram.classList.contains('is-workbench-expanded') && !document.body.classList.contains('mermaid-workbench-open') && document.activeElement === diagram.querySelector('.mermaid-expand-button'); })()");
     window.setSize(720, 790);
     await wait(140);
     await expect(window, "narrow viewports stack Mermaid source above the preview", "(() => { const source = document.querySelector('.mermaid-source-pane').getBoundingClientRect(); const preview = document.querySelector('.mermaid-preview-pane').getBoundingClientRect(); return source.bottom <= preview.top + 1 && Math.abs(source.left - preview.left) <= 1 && Math.abs(source.width - preview.width) <= 1; })()");
@@ -1064,6 +1110,12 @@ app.whenReady().then(async () => {
     })()`);
     await expect(window, "suggestions support arrow navigation and Escape dismissal", "window.__pathSuggestionMoved && !document.querySelector('#path-suggestions').classList.contains('is-open')");
 
+    await inspect(window, `(() => {
+      window.Mory.loadMarkdown('[Target](./\u8D44\u6599/\u76EE\u6807.md)');
+      document.querySelector('#write a.document-link').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, metaKey: true }));
+    })()`);
+    await expectEventually(window, "Command-click opens workspace-relative Markdown links in Mory", "window.__lastHostRequest.method === 'readDocument' && window.__lastHostRequest.args.path === '/links/\u8D44\u6599/\u76EE\u6807.md'");
+
     await inspect(window, `window.Mory.loadMarkdown('# \u683C\u5F0F\u6D4B\u8BD5\\n\\n\u9700\u8981\u52A0\u7C97\u7684\u6BB5\u843D')`);
     await inspect(window, `(() => {
       const paragraph = document.querySelector('#write p');
@@ -1077,7 +1129,7 @@ app.whenReady().then(async () => {
     await expect(window, "format button is clickable", "document.querySelector('#write strong, #write b') !== null");
 
     if (errors.length) throw new Error(`Renderer errors: ${errors.join(" | ")}`);
-    process.stdout.write(JSON.stringify({ status: "passed", interactions: interactionCount, rendererErrors: 0, dpiStableTypography: true, tableRowColumnDeletion: true, yuluoFontFallbackNotice: true, multipleUntitledDocuments: true, draftSwitchingPreservesContent: true, removableUntitledDocuments: true, savedDocumentTrash: true, deleteCancellation: true, activeDocumentCloseFallback: true, lastCloseCreatesBlankDocument: true, emptyWorkspacePlaceholder: true, nonEmptyWorkspaceAutoOpen: true, deletedWorkspaceFileReconciled: true, headingEnterCreatesParagraph: true, compositionHeadingRendering: true, immediateCompositionEnter: true, separateConsecutiveHeadings: true, staleHeadingRecovery: true, liveBold: true, pastedMarkdownRendering: true, liveFencedCode: true, multiLineFencedCode: true, fencedCodeExit: true, doubleEnterCodeExit: true, codeMetadataNavigation: true, liveInlineCode: true, instantHeading: true, liveUnsavedOutline: true, workspaceCreationOrder: true, stableOpenedFilePosition: true, statusbarSetting: true, zoomedStatusbar: true, readableSidebarContrast: true, coherentDarkDocument: true, iconOnlyToolbar: true, hoverTooltip: true, sidebarSearchRemoved: true, verticalFloatingToolbar: true, singleSettingsEntry: true, macTrafficLightSafeArea: true, screenshot: screenshotPath, codeMetaScreenshot: codeMetaScreenshotPath, darkThemeScreenshot: darkThemeScreenshotPath, mermaidScreenshot: mermaidScreenshotPath, mermaidExpandedScreenshot: mermaidExpandedScreenshotPath, mermaidNarrowScreenshot: mermaidNarrowScreenshotPath, calendarDirectScreenshot: calendarDirectScreenshotPath }, null, 2) + "\n");
+    process.stdout.write(JSON.stringify({ status: "passed", interactions: interactionCount, rendererErrors: 0, dpiStableTypography: true, tableRowColumnDeletion: true, yuluoFontFallbackNotice: true, lapisCVResumeTheme: true, multipleUntitledDocuments: true, draftSwitchingPreservesContent: true, removableUntitledDocuments: true, savedDocumentTrash: true, deleteCancellation: true, activeDocumentCloseFallback: true, lastCloseCreatesBlankDocument: true, emptyWorkspacePlaceholder: true, nonEmptyWorkspaceAutoOpen: true, deletedWorkspaceFileReconciled: true, headingEnterCreatesParagraph: true, compositionHeadingRendering: true, immediateCompositionEnter: true, separateConsecutiveHeadings: true, staleHeadingRecovery: true, liveBold: true, pastedMarkdownRendering: true, liveFencedCode: true, multiLineFencedCode: true, fencedCodeExit: true, doubleEnterCodeExit: true, codeMetadataNavigation: true, liveInlineCode: true, instantHeading: true, liveUnsavedOutline: true, workspaceCreationOrder: true, stableOpenedFilePosition: true, statusbarSetting: true, zoomedStatusbar: true, readableSidebarContrast: true, coherentDarkDocument: true, iconOnlyToolbar: true, hoverTooltip: true, sidebarSearchRemoved: true, verticalFloatingToolbar: true, singleSettingsEntry: true, macTrafficLightSafeArea: true, screenshot: screenshotPath, codeMetaScreenshot: codeMetaScreenshotPath, lapisCVScreenshot: lapisCVScreenshotPath, darkThemeScreenshot: darkThemeScreenshotPath, mermaidScreenshot: mermaidScreenshotPath, mermaidExpandedScreenshot: mermaidExpandedScreenshotPath, mermaidNarrowScreenshot: mermaidNarrowScreenshotPath, calendarDirectScreenshot: calendarDirectScreenshotPath }, null, 2) + "\n");
   } catch (error) {
     process.stderr.write(`${error.stack || error}${errors.length ? `\nRenderer errors: ${errors.join(" | ")}` : ""}\n`);
     exitCode = 1;

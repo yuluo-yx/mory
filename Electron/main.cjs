@@ -257,6 +257,12 @@ async function handleWorkspaceRequest(method, args = {}) {
       return importImage({ root: workspaceManager.activeRoot(), ...args });
     case "documentAssets":
       return currentFilePath ? loadDocumentAssets(currentFilePath, String(args.markdown || "")) : {};
+    case "openExternal": {
+      const url = String(args.url || "");
+      if (!/^(?:https?:|mailto:)/i.test(url)) throw new Error("仅支持打开 HTTP、HTTPS 和邮件链接。");
+      await shell.openExternal(url);
+      return { opened: true };
+    }
     case "documentImage":
       return readDocumentImage(workspaceManager.activeRoot(), args.path);
     case "revealFile": {

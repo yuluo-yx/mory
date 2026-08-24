@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -23,6 +24,7 @@ var (
 	imageExtensions    = map[string]bool{".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true, ".svg": true, ".bmp": true}
 	imageMIME          = map[string]string{"image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif", "image/webp": ".webp", "image/svg+xml": ".svg", "image/bmp": ".bmp"}
 	markdownImage      = regexp.MustCompile(`!\[[^\]]*\]\((?:<([^>]+)>|([^\s)]+))(?:\s+["'][^"']*["'])?\)`)
+	rawHTMLImage       = regexp.MustCompile("(?is)<img\\b[^>]*\\bsrc\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'=<>`]+))")
 	unsafeSegment      = regexp.MustCompile(`[<>:"/\\|?*\x00-\x1f\s]+`)
 )
 
@@ -226,14 +228,7 @@ func loadDocument(path string) (Document, error) {
 
 func loadDocumentAssets(documentPath, markdown string) map[string]string {
 	assets := make(map[string]string)
-	for _, match := range markdownImage.FindAllStringSubmatch(markdown, -1) {
-		reference := match[1]
-		if reference == "" {
-			reference = match[2]
-		}
-		if reference == "" || hasRemoteScheme(reference) {
-			continue
-		}
+	for _, reference := range documentImageReferences(markdown) {
 		resolved, err := safeDescendant(filepath.Dir(documentPath), filepath.FromSlash(reference))
 		if err != nil {
 			continue
@@ -245,6 +240,33 @@ func loadDocumentAssets(documentPath, markdown string) map[string]string {
 		assets[filepath.ToSlash(reference)] = dataURL(resolved, data)
 	}
 	return assets
+}
+
+func documentImageReferences(markdown string) []string {
+	references := make([]string, 0)
+	seen := make(map[string]bool)
+	collect := func(matches [][]string) {
+		for _, match := range matches {
+			reference := ""
+			for _, candidate := range match[1:] {
+				if candidate != "" {
+					reference = candidate
+					break
+				}
+			}
+			if decoded, err := url.PathUnescape(reference); err == nil {
+				reference = decoded
+			}
+			if reference == "" || hasRemoteScheme(reference) || seen[reference] {
+				continue
+			}
+			seen[reference] = true
+			references = append(references, reference)
+		}
+	}
+	collect(markdownImage.FindAllStringSubmatch(markdown, -1))
+	collect(rawHTMLImage.FindAllStringSubmatch(markdown, -1))
+	return references
 }
 
 func readDocumentImage(root, path string) (map[string]any, error) {

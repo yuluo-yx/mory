@@ -1,6 +1,10 @@
 import { normalizeMermaidColorTheme, parseCalendarSource, serializeCalendarDocument } from "./editor-features.js";
 
+const htmlBlockTags = "address|article|aside|blockquote|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hr|html|legend|li|main|menu|nav|ol|p|pre|search|section|summary|table|tbody|td|tfoot|th|thead|tr|ul";
+const htmlBlockStart = new RegExp(`^ {0,3}(?:<\/?(?:${htmlBlockTags})(?:\\s|/?>)|<!--|<\\?|<![A-Z]|<!\\[CDATA\\[)`, "i");
 const blockStart = /^(#{1,6}\s|>|[-*+]\s|\d+[.)]\s|```|~~~| {0,3}([-*_])(?:\s*\2){2,}\s*$)/;
+const inlineHTMLPattern = /<(a|abbr|b|bdi|bdo|cite|del|em|i|ins|kbd|mark|q|s|samp|small|span|strong|sub|sup|time|u|var)\b[^>]*>[\s\S]*?<\/\1\s*>|<(?:br|img|wbr)\b[^>]*\/?\s*>/gi;
+const htmlEntityPattern = /&(?:#\d{1,7}|#x[\da-f]{1,6}|[a-z][a-z\d]{1,31});/gi;
 
 export function escapeHTML(value) {
   return String(value)
@@ -15,21 +19,59 @@ function safeURL(value) {
   return /^(?:javascript|vbscript):/i.test(url) ? "#" : url;
 }
 
+function rawHTMLPlaceholder(source, inline = false) {
+  const tag = inline ? "span" : "div";
+  const kind = inline ? "inline" : "block";
+  return `<${tag} class="mory-raw-html-placeholder mory-raw-html-${kind}" data-raw-html="${escapeHTML(source)}" contenteditable="false"></${tag}>`;
+}
+
+function readRawHTMLBlock(lines, start) {
+  if (!htmlBlockStart.test(lines[start] || "")) return null;
+  const opening = (lines[start] || "").match(/^ {0,3}<([a-z][a-z\d-]*)\b[^>]*>/i);
+  const tag = opening?.[1]?.toLowerCase();
+  const isVoid = tag === "col" || tag === "hr";
+  const tagPattern = tag ? new RegExp(`<\\/?${tag}\\b[^>]*>`, "gi") : null;
+  const source = [];
+  let index = start;
+  let depth = 0;
+  while (index < lines.length && lines[index].trim()) {
+    const line = lines[index++];
+    source.push(line);
+    if (isVoid) break;
+    if (!tagPattern) continue;
+    for (const match of line.matchAll(tagPattern)) {
+      if (/^<\//.test(match[0])) depth -= 1;
+      else if (!/\/\s*>$/.test(match[0])) depth += 1;
+    }
+    if (depth <= 0) break;
+  }
+  return { source: source.join("\n"), next: index };
+}
+
 export function inlineMarkdown(source) {
   const tokens = [];
   const escapedPunctuation = [];
-  const protectedSource = String(source).replace(/\\([!-/:-@[-`{-~])/g, (_, punctuation) => {
+  let protectedSource = String(source).replace(/\\([!-/:-@[-`{-~])/g, (_, punctuation) => {
     const token = `\u0000ESC${escapedPunctuation.length}\u0000`;
     escapedPunctuation.push(escapeHTML(punctuation));
     return token;
   });
-  let value = escapeHTML(protectedSource);
-
-  value = value.replace(/`([^`\n]+)`/g, (_, code) => {
-    const token = `\u0000CODE${tokens.length}\u0000`;
-    tokens.push(`<code>${code}</code>`);
+  protectedSource = protectedSource.replace(/`([^`\n]+)`/g, (_, code) => {
+    const token = `\u0000RAW${tokens.length}\u0000`;
+    tokens.push(`<code>${escapeHTML(code)}</code>`);
     return token;
   });
+  protectedSource = protectedSource.replace(inlineHTMLPattern, html => {
+    const token = `\u0000RAW${tokens.length}\u0000`;
+    tokens.push(rawHTMLPlaceholder(html, true));
+    return token;
+  });
+  protectedSource = protectedSource.replace(htmlEntityPattern, entity => {
+    const token = `\u0000RAW${tokens.length}\u0000`;
+    tokens.push(entity);
+    return token;
+  });
+  let value = escapeHTML(protectedSource);
   value = value.replace(/!\[([^\]]*)\]\(([^\s)]+)(?:\s+(?:&quot;([^&]*?)&quot;|'([^']*)'))?\)/g, (_, alt, url, doubleTitle, singleTitle) => {
     const title = doubleTitle ?? singleTitle;
     const titleAttr = title ? ` title="${escapeHTML(title)}"` : "";
@@ -49,7 +91,7 @@ export function inlineMarkdown(source) {
   value = value.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, "$1<em>$2</em>");
   value = value.replace(/(^|[^_])_([^_\n]+)_(?!_)/g, "$1<em>$2</em>");
   value = value.replace(/ {2}\n/g, "<br>");
-  value = value.replace(/\u0000CODE(\d+)\u0000/g, (_, index) => tokens[Number(index)]);
+  value = value.replace(/\u0000RAW(\d+)\u0000/g, (_, index) => tokens[Number(index)]);
   value = value.replace(/\u0000ESC(\d+)\u0000/g, (_, index) => escapedPunctuation[Number(index)]);
   return value;
 }
@@ -124,6 +166,13 @@ export function markdownToHTML(markdown) {
       continue;
     }
 
+    const rawHTML = readRawHTMLBlock(lines, index);
+    if (rawHTML) {
+      html.push(rawHTMLPlaceholder(rawHTML.source));
+      index = rawHTML.next;
+      continue;
+    }
+
     const heading = line.match(/^(#{1,6})\s+(.+?)\s*#*$/);
     if (heading) {
       const level = heading[1].length;
@@ -179,7 +228,7 @@ export function markdownToHTML(markdown) {
 
     const paragraph = [line];
     index += 1;
-    while (index < lines.length && lines[index].trim() && !blockStart.test(lines[index]) && !(index + 1 < lines.length && isTableSeparator(lines[index + 1]))) {
+    while (index < lines.length && lines[index].trim() && !blockStart.test(lines[index]) && !htmlBlockStart.test(lines[index]) && !(index + 1 < lines.length && isTableSeparator(lines[index + 1]))) {
       paragraph.push(lines[index++]);
     }
     html.push(`<p>${inlineMarkdown(paragraph.join("\n")).replaceAll("\n", " ")}</p>`);
@@ -189,7 +238,9 @@ export function markdownToHTML(markdown) {
 }
 
 function escapeMarkdownText(value) {
-  return value.replace(/([\\`*_[\]~])/g, "\\$1");
+  return value
+    .replace(/[\uE000-\uF8FF]/g, character => `&#x${character.codePointAt(0).toString(16)};`)
+    .replace(/([\\`*_[\]~])/g, "\\$1");
 }
 
 function inlineNodeToMarkdown(node, escapeText = true, inCode = false) {
@@ -200,6 +251,7 @@ function inlineNodeToMarkdown(node, escapeText = true, inCode = false) {
   }
   if (node.nodeType !== Node.ELEMENT_NODE) return "";
   const element = /** @type {HTMLElement} */ (node);
+  if ((element.getAttribute("class") ?? "").split(/\s+/).includes("mory-raw-html")) return element.dataset.rawHtml ?? "";
   const content = [...element.childNodes].map(child => inlineNodeToMarkdown(child, escapeText, inCode || element.tagName === "CODE")).join("");
   switch (element.tagName) {
     case "STRONG": case "B": return `**${content}**`;
@@ -235,6 +287,10 @@ export function editorToMarkdown(root, { escapeText = true } = {}) {
     const element = /** @type {HTMLElement} */ (node);
     const classNames = (element.getAttribute("class") ?? "").split(/\s+/);
     if (classNames.includes("code-meta") || classNames.includes("table-tools")) continue;
+    if (classNames.includes("mory-raw-html")) {
+      blocks.push(element.dataset.rawHtml ?? "");
+      continue;
+    }
     if (element.tagName === "DIV" && classNames.includes("mermaid-diagram")) {
       const source = element.dataset.mermaidSource ?? "";
       blocks.push(`\`\`\`mermaid${mermaidFenceTheme(element.dataset.mermaidTheme)}\n${source}\n\`\`\``);
@@ -251,7 +307,7 @@ export function editorToMarkdown(root, { escapeText = true } = {}) {
         blocks.push(`${"#".repeat(Number(element.tagName[1]))} ${content}`); break;
       case "P": case "DIV": blocks.push(content); break;
       case "BLOCKQUOTE":
-        blocks.push(element.innerText.split("\n").map(line => `> ${escapeText ? escapeMarkdownText(line) : line}`).join("\n")); break;
+        blocks.push(content.split("\n").map(line => `> ${line}`).join("\n")); break;
       case "UL": case "OL": {
         const ordered = element.tagName === "OL";
         const items = [...element.children].map((item, index) => {
@@ -281,6 +337,7 @@ export function documentStats(markdown) {
   const value = String(markdown ?? "");
   const plain = value
     .replace(/```[\s\S]*?```/g, " ")
+    .replace(/<[^>]*>/g, " ")
     .replace(/!?(?:\[([^\]]*)\])\([^)]*\)/g, "$1")
     .replace(/[#>*_~`|\-[\]]/g, " ");
   const chinese = plain.match(/[\u3400-\u9fff]/g)?.length ?? 0;

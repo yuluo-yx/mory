@@ -1,0 +1,297 @@
+/*
+ * Mory Lapis CV document theme.
+ * Adapted for standard Markdown from LapisCV by YiNN/BingyanStudio.
+ * Upstream project: https://github.com/BingyanStudio/LapisCV
+ * Distributed under the MIT License; see lapis-cv.LICENSE.
+ */
+
+[data-doc-theme="lapis-cv"] {
+  --lapis-accent: #4870ad;
+  --lapis-accent-soft: #dae3ea;
+  --lapis-ink: #353a42;
+  --lapis-muted: #68717d;
+  --lapis-paper: #ffffff;
+  --lapis-canvas: #e9eef4;
+}
+
+[data-doc-theme="lapis-cv"] .editor-scroll { background: #e9eef4; }
+
+[data-doc-theme="lapis-cv"] .write {
+  box-sizing: border-box;
+  width: min(calc(100% - 48px), 210mm);
+  min-height: 297mm;
+  margin: 20px auto 72px;
+  padding: 14mm 17mm 16mm;
+  color: var(--lapis-ink);
+  background: var(--lapis-paper);
+  box-shadow: 0 3px 18px rgba(55, 68, 86, .16);
+  font-family: "Source Han Sans CN", "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+  font-size: 10pt;
+  line-height: 1.72;
+}
+
+[data-doc-theme="lapis-cv"] .write h1,
+[data-doc-theme="lapis-cv"] .write h2,
+[data-doc-theme="lapis-cv"] .write h3,
+[data-doc-theme="lapis-cv"] .write h4,
+[data-doc-theme="lapis-cv"] .write h5,
+[data-doc-theme="lapis-cv"] .write h6 {
+  color: var(--lapis-ink);
+  font-family: "LapisCV Icon", "Source Han Sans CN", "Noto Sans CJK SC", "PingFang SC", sans-serif;
+  break-after: avoid;
+}
+
+[data-doc-theme="lapis-cv"] .write h1 {
+  margin: 0 0 1mm;
+  padding: 0;
+  border: 0;
+  font-size: 16pt;
+  line-height: 1.45;
+  text-align: center;
+  letter-spacing: .04em;
+}
+
+[data-doc-theme="lapis-cv"] .write h2 {
+  margin: 2.8mm 0 1.7mm;
+  padding: .8mm 0 1mm;
+  border: 0;
+  border-bottom: 1px solid var(--lapis-accent-soft);
+  color: var(--lapis-accent);
+  font-size: 12pt;
+  line-height: 1.25;
+  letter-spacing: .035em;
+}
+
+[data-doc-theme="lapis-cv"] .write h3,
+[data-doc-theme="lapis-cv"] .write h4,
+[data-doc-theme="lapis-cv"] .write h5,
+[data-doc-theme="lapis-cv"] .write h6 {
+  margin: 1.3mm 0 .4mm;
+  font-size: 10.5pt;
+  line-height: 1.55;
+}
+
+[data-doc-theme="lapis-cv"] .write h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+[data-doc-theme="lapis-cv"] .write h3 > strong:last-child {
+  flex: none;
+  margin-left: auto;
+  color: var(--lapis-muted);
+  font-size: 9pt;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+[data-doc-theme="lapis-cv"] .write p {
+  margin: .35mm 0 1mm;
+}
+
+[data-doc-theme="lapis-cv"] .write blockquote {
+  margin: 0 0 2.2mm;
+  padding: 0;
+  border: 0;
+  color: var(--lapis-muted);
+  text-align: center;
+  font-size: 9.2pt;
+  font-style: normal;
+}
+
+[data-doc-theme="lapis-cv"] .write blockquote p { margin: 0; }
+
+[data-doc-theme="lapis-cv"] .write p:has(img[alt="avatar"]) {
+  height: 0;
+  margin: 0;
+  overflow: visible;
+}
+
+[data-doc-theme="lapis-cv"] .write img[alt="avatar"] {
+  position: relative;
+  z-index: 1;
+  float: right;
+  width: 28mm;
+  height: 28mm;
+  margin: 1mm 0 2mm 4mm;
+  border: 1px solid var(--lapis-accent-soft);
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--lapis-paper);
+  box-shadow: 0 0 0 2.2mm var(--lapis-paper);
+}
+
+[data-doc-theme="lapis-cv"] .write span[alt="icon"] {
+  color: var(--lapis-accent);
+  font-family: "LapisCV Icon", sans-serif;
+  font-style: normal;
+}
+
+[data-doc-theme="lapis-cv"] .write div[alt="entry-title"] {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 1.3mm 0 .4mm;
+}
+
+[data-doc-theme="lapis-cv"] .write div[alt="entry-title"] > h3 {
+  display: block;
+  min-width: 0;
+  margin: 0;
+}
+
+[data-doc-theme="lapis-cv"] .write div[alt="entry-title"] > p,
+[data-doc-theme="lapis-cv"] .write div[alt="entry-title"] > a {
+  flex: none;
+  margin: 0 0 0 auto;
+  color: var(--lapis-muted);
+  font-size: 9pt;
+  line-height: 1.55;
+  white-space: nowrap;
+}
+
+[data-doc-theme="lapis-cv"] .write ul,
+[data-doc-theme="lapis-cv"] .write ol {
+  margin: .45mm 0 1.25mm;
+  padding-left: 4.5mm;
+}
+
+[data-doc-theme="lapis-cv"] .write li {
+  margin: 0;
+  padding-left: .6mm;
+  break-inside: avoid;
+}
+
+[data-doc-theme="lapis-cv"] .write li + li { margin-top: .25mm; }
+
+[data-doc-theme="lapis-cv"] .write li::marker { color: var(--lapis-accent); }
+
+[data-doc-theme="lapis-cv"] .write a {
+  color: var(--lapis-accent);
+  text-decoration-color: rgba(72, 112, 173, .35);
+  text-underline-offset: .12em;
+}
+
+[data-doc-theme="lapis-cv"] .write strong { color: #2d333b; }
+
+[data-doc-theme="lapis-cv"] .write code {
+  padding: .08em .28em;
+  border-radius: 3px;
+  color: #415a77;
+  background: #f2f5f8;
+  font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: .88em;
+}
+
+[data-doc-theme="lapis-cv"] .write pre,
+[data-doc-theme="lapis-cv"] .write table,
+[data-doc-theme="lapis-cv"] .write .mermaid-diagram {
+  break-inside: avoid;
+}
+
+[data-doc-theme="lapis-cv"] .write pre {
+  margin: 1.5mm 0;
+  border: 1px solid var(--lapis-accent-soft);
+  border-radius: 4px;
+  background: #f7f9fb;
+}
+
+[data-doc-theme="lapis-cv"] .write pre code {
+  padding: 0;
+  color: inherit;
+  background: transparent;
+}
+
+[data-doc-theme="lapis-cv"] .write table {
+  width: 100%;
+  margin: 1.5mm 0;
+  border-collapse: collapse;
+  font-size: 9.2pt;
+}
+
+[data-doc-theme="lapis-cv"] .write th,
+[data-doc-theme="lapis-cv"] .write td {
+  padding: 1mm 1.4mm;
+  border: 1px solid var(--lapis-accent-soft);
+}
+
+[data-doc-theme="lapis-cv"] .write th {
+  color: var(--lapis-accent);
+  background: #f4f7fa;
+  text-align: left;
+}
+
+[data-doc-theme="lapis-cv"] .write hr {
+  height: 0;
+  margin: 5mm 0;
+  border: 0;
+  border-top: 1px dashed var(--lapis-accent-soft);
+}
+
+:root[data-export="true"][data-doc-theme="lapis-cv"] .editor-scroll { background: #ffffff; }
+
+:root[data-export="true"][data-doc-theme="lapis-cv"] .write {
+  margin: 0 auto;
+  box-shadow: none;
+}
+
+:root[data-appearance="dark"][data-doc-theme="lapis-cv"] {
+  --lapis-accent: #93b4e3;
+  --lapis-accent-soft: #48596f;
+  --lapis-ink: #e8edf4;
+  --lapis-muted: #b8c2cf;
+  --lapis-paper: #252f3b;
+  --lapis-canvas: #1f2732;
+}
+
+:root[data-appearance="dark"][data-doc-theme="lapis-cv"] .editor-scroll { background: #1f2732; }
+:root[data-appearance="dark"][data-doc-theme="lapis-cv"] .write { color: #e8edf4; }
+
+:root[data-appearance="dark"][data-doc-theme="lapis-cv"] .write {
+  background: #252f3b;
+  box-shadow: 0 3px 18px rgba(0, 0, 0, .28);
+}
+
+:root[data-appearance="dark"][data-doc-theme="lapis-cv"] .write strong { color: #f5f7fa; }
+
+:root[data-appearance="dark"][data-doc-theme="lapis-cv"] .write code {
+  color: #c8d8eb;
+  background: #303d4c;
+}
+
+:root[data-appearance="dark"][data-doc-theme="lapis-cv"] .write pre,
+:root[data-appearance="dark"][data-doc-theme="lapis-cv"] .write th {
+  background: #2b3745;
+}
+
+@media (max-width: 720px) {
+  [data-doc-theme="lapis-cv"] .write {
+    width: calc(100% - 24px);
+    min-height: calc(100vh - 36px);
+    margin: 12px auto 52px;
+    padding: 22px 20px 42px;
+  }
+
+  [data-doc-theme="lapis-cv"] .write img[alt="avatar"] {
+    width: 24mm;
+    height: 24mm;
+  }
+}
+
+@page { size: A4; }
+
+@media print {
+  [data-doc-theme="lapis-cv"] .editor-scroll { background: #ffffff; }
+
+  [data-doc-theme="lapis-cv"] .write {
+    width: auto;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    color: #353a42;
+    background: #ffffff;
+    box-shadow: none;
+  }
+}

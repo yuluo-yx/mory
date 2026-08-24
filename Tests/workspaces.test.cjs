@@ -96,8 +96,10 @@ test("stores images by document name and loads them as embedded assets", async t
   });
   assert.equal(result.relative, "\u6587\u7AE0/\u5C01\u9762-\u56FE.png");
   assert.equal(await fs.readFile(path.join(root, result.relative), "utf8"), "png-data");
-  const assets = await loadDocumentAssets(documentPath, `![\u5C01\u9762](${result.relative})`);
+  await fs.writeFile(path.join(root, "photo_1.jpg"), "avatar-data");
+  const assets = await loadDocumentAssets(documentPath, `![\u5C01\u9762](${result.relative})\n<img alt="avatar" src="./photo_1.jpg">`);
   assert.match(assets[result.relative], /^data:image\/png;base64,/);
+  assert.match(assets["./photo_1.jpg"], /^data:image\/jpeg;base64,/);
 });
 
 test("renames the image directory when a draft is saved under a document name", async t => {
@@ -221,7 +223,10 @@ test("loads workspace document content for the knowledge graph", async t => {
 });
 
 test("keeps Markdown image paths and filename sanitization stable", () => {
-  assert.deepEqual(markdownImagePaths("![a](\u6587\u7A3F/a.png)\n![b](https://x/b.png)"), ["\u6587\u7A3F/a.png"]);
+  assert.deepEqual(
+    markdownImagePaths("![a](\u6587\u7A3F/a.png)\n<img alt='avatar' src='./photo_1.jpg'>\n![b](https://x/b.png)"),
+    ["\u6587\u7A3F/a.png", "./photo_1.jpg"]
+  );
   assert.equal(sanitizeSegment("  \u5C01\u9762 \u56FE:*  "), "-\u5C01\u9762-\u56FE-");
 });
 

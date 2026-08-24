@@ -61,10 +61,14 @@ func TestImportAndLoadDocumentImages(t *testing.T) {
 	if result["relative"] != "\u793A\u4F8B/\u5C01\u9762.png" {
 		t.Fatalf("relative path = %v", result["relative"])
 	}
-	markdown := "![\u5C01\u9762](\u793A\u4F8B/\u5C01\u9762.png)"
+	writeAt(t, filepath.Join(root, "photo_1.jpg"), "avatar", time.Now())
+	markdown := "![\u5C01\u9762](\u793A\u4F8B/\u5C01\u9762.png)\n<img alt=\"avatar\" src=\"./photo_1.jpg\">"
 	assets := loadDocumentAssets(documentPath, markdown)
 	if assets["\u793A\u4F8B/\u5C01\u9762.png"] == "" {
 		t.Fatal("document image was not converted to a data URL immediately")
+	}
+	if !strings.HasPrefix(assets["./photo_1.jpg"], "data:image/jpeg;base64,") {
+		t.Fatal("raw HTML avatar was not converted to a data URL")
 	}
 	images, err := listDocumentImages(documentPath)
 	if err != nil || len(images) != 1 {

@@ -238,32 +238,36 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width:
 .write .table-tools button:hover, .write .table-tools button:focus-visible { background: var(--accent-soft); color: var(--accent); }
 .write .table-tools button.is-danger:hover, .write .table-tools button.is-danger:focus-visible { background: color-mix(in srgb, #b33e36 12%, var(--surface)); color: #b33e36; }
 .write img { max-width: 100%; border-radius: 3px; }
+.write .mory-raw-html { display: contents; }
 .write .task-item { list-style: none; margin-left: -1.4em; }
 .write input[type="checkbox"] { margin-right: .55em; accent-color: var(--accent); }
-.mermaid-diagram { position: relative; min-width: 0; margin: 1.5em 0; overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); cursor: default; }
-.mermaid-workbench-grid { min-height: 330px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.mermaid-diagram { position: relative; min-width: 0; margin: 2.5em 0 1.5em; overflow: visible; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); cursor: default; }
+.mermaid-workbench-grid { min-height: 330px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); overflow: hidden; border-radius: inherit; }
 .mermaid-source-pane { min-width: 0; display: flex; border-right: 1px solid var(--line); background: color-mix(in srgb, var(--code-bg) 86%, var(--surface)); }
 .mermaid-source-editor { width: 100%; min-width: 0; min-height: 330px; margin: 0; padding: 18px 16px; resize: vertical; border: 0; outline: 0; background: transparent; color: var(--text); caret-color: var(--accent); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; line-height: 1.62; tab-size: 2; white-space: pre; }
 .mermaid-source-editor:focus { box-shadow: inset 3px 0 0 var(--accent); }
 .mermaid-preview-pane { position: relative; min-width: 0; min-height: 330px; display: grid; place-items: center; overflow: auto; padding: 42px 18px 20px; background: color-mix(in srgb, var(--surface) 96%, var(--code-bg)); }
 .mermaid-preview-canvas { width: 100%; min-width: 0; height: 250px; display: grid; place-items: center; }
 .mermaid-preview-canvas svg { display: block; width: 100% !important; max-width: 100% !important; height: 100% !important; max-height: 100%; margin: auto; }
-.mermaid-theme-button, .mermaid-expand-button { position: absolute; z-index: 2; top: 9px; width: 29px; height: 29px; display: grid; place-items: center; border: 1px solid transparent; border-radius: 4px; background: color-mix(in srgb, var(--surface) 90%, transparent); color: var(--muted); }
-.mermaid-theme-button { right: 9px; }
-.mermaid-expand-button { right: 43px; }
+.mermaid-theme-button, .mermaid-expand-button { position: absolute; z-index: 4; width: 29px; height: 29px; display: grid; place-items: center; border: 1px solid transparent; border-radius: 4px; background: color-mix(in srgb, var(--surface) 90%, transparent); color: var(--muted); }
+.mermaid-theme-button { top: 9px; right: 9px; }
+.mermaid-expand-button { top: -35px; right: 0; }
 .mermaid-theme-button:hover, .mermaid-theme-button:focus-visible, .mermaid-expand-button:hover, .mermaid-expand-button:focus-visible { border-color: var(--line); background: var(--surface); color: var(--accent); }
-.mermaid-theme-button svg, .mermaid-expand-button svg, .mermaid-source-toggle svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.mermaid-source-toggle { position: absolute; z-index: 3; top: 50%; left: 50%; width: 24px; height: 36px; display: grid; place-items: center; transform: translate(-50%, -50%); border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--muted); box-shadow: 0 2px 8px rgba(0, 0, 0, .08); }
+.mermaid-theme-button svg, .mermaid-expand-button svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.mermaid-source-toggle { position: absolute; z-index: 3; top: 50%; left: 50%; width: 20px; height: 28px; display: grid; place-items: center; transform: translate(-50%, -50%); border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--muted); box-shadow: 0 2px 7px rgba(0, 0, 0, .07); }
+.mermaid-source-toggle svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .mermaid-source-toggle:hover, .mermaid-source-toggle:focus-visible { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
 .mermaid-diagram.is-source-collapsed .mermaid-workbench-grid { grid-template-columns: 0 minmax(0, 1fr); }
 .mermaid-diagram.is-source-collapsed .mermaid-source-pane { visibility: hidden; overflow: hidden; border-right: 0; }
 .mermaid-diagram.is-source-collapsed .mermaid-source-toggle { left: 12px; }
-.mermaid-preview-open, .mermaid-preview-open .editor-scroll { overflow: hidden; }
-.mermaid-diagram.is-preview-expanded { position: fixed; z-index: 190; inset: 12px; margin: 0; background: var(--surface); box-shadow: 0 18px 56px rgba(0, 0, 0, .28); }
-.mermaid-diagram.is-preview-expanded .mermaid-workbench-grid { min-height: calc(100vh - 24px); grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
-.mermaid-diagram.is-preview-expanded .mermaid-source-pane, .mermaid-diagram.is-preview-expanded .mermaid-source-toggle { display: none; }
-.mermaid-diagram.is-preview-expanded .mermaid-preview-pane { min-height: calc(100vh - 24px); padding: 50px 28px 24px; }
-.mermaid-diagram.is-preview-expanded .mermaid-preview-canvas { height: calc(100vh - 98px); }
+.mermaid-workbench-open, .mermaid-workbench-open .editor-scroll { overflow: hidden; }
+.mermaid-diagram.is-workbench-expanded { position: fixed; z-index: 190; inset: 12px; margin: 0; overflow: hidden; background: var(--surface); box-shadow: 0 18px 56px rgba(0, 0, 0, .28); }
+.mermaid-diagram.is-workbench-expanded .mermaid-workbench-grid { height: calc(100vh - 24px); min-height: 0; }
+.mermaid-diagram.is-workbench-expanded .mermaid-source-editor { min-height: 0; height: 100%; resize: none; padding: 24px 22px; }
+.mermaid-diagram.is-workbench-expanded .mermaid-preview-pane { min-height: 0; padding: 50px 28px 24px; }
+.mermaid-diagram.is-workbench-expanded .mermaid-preview-canvas { height: calc(100vh - 98px); }
+.mermaid-diagram.is-workbench-expanded .mermaid-expand-button { top: 10px; right: 10px; }
+.mermaid-diagram.is-workbench-expanded .mermaid-theme-button { right: 44px; }
 .mermaid-preview-error { width: min(100%, 360px); padding: 13px 14px; border-left: 3px solid #c54d43; background: color-mix(in srgb, #c54d43 8%, var(--surface)); text-align: left; overflow-wrap: anywhere; }
 .mermaid-preview-error[hidden] { display: none; }
 .mermaid-preview-error strong, .mermaid-preview-error small { display: block; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; }
@@ -279,7 +283,7 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width:
 .workspace.source-mode .document-backlinks { display: none; }
 .workspace.focus-mode .write > *, .workspace.focus-mode .source-editor { opacity: .2; transition: opacity .16s; }
 .workspace.focus-mode .write > .focus-line, .workspace.focus-mode .source-editor:focus { opacity: 1; }
-.workspace.focus-mode .write > .mermaid-diagram.is-preview-expanded { opacity: 1; }
+.workspace.focus-mode .write > .mermaid-diagram.is-workbench-expanded { opacity: 1; }
 .workspace.zen-mode .titlebar, .workspace.zen-mode .format-bar, .workspace.zen-mode .statusbar, .workspace.zen-mode .graph-panel { display: none; }
 .workspace.zen-mode .write { margin-top: 10vh; }
 .statusbar { height: var(--status-height); flex: none; display: flex; align-items: center; gap: 13px; padding: 0 14px; border-top: 1px solid var(--line-soft); color: var(--muted); font-size: var(--status-font-size); line-height: 1; user-select: none; }
@@ -659,11 +663,16 @@ kbd { padding: 2px 6px; border: 1px solid var(--line); border-radius: 4px; color
   .mermaid-source-pane { border-right: 0; border-bottom: 1px solid var(--line); }
   .mermaid-source-editor { min-height: 240px; }
   .mermaid-preview-pane { min-height: 280px; }
-  .mermaid-source-toggle { top: 240px; left: 50%; width: 36px; height: 24px; }
+  .mermaid-source-toggle { top: 240px; left: 50%; width: 28px; height: 20px; }
+  .mermaid-source-toggle svg { transform: rotate(90deg); }
   .mermaid-diagram.is-source-collapsed .mermaid-workbench-grid { grid-template-columns: 1fr; grid-template-rows: 0 minmax(280px, auto); }
   .mermaid-diagram.is-source-collapsed .mermaid-source-pane { border-bottom: 0; }
   .mermaid-diagram.is-source-collapsed .mermaid-source-toggle { top: 12px; left: 50%; }
-  .mermaid-diagram.is-preview-expanded .mermaid-workbench-grid { grid-template-rows: minmax(0, 1fr); }
+  .mermaid-diagram.is-workbench-expanded .mermaid-workbench-grid { grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
+  .mermaid-diagram.is-workbench-expanded .mermaid-source-editor { min-height: 0; }
+  .mermaid-diagram.is-workbench-expanded .mermaid-preview-pane { min-height: 0; }
+  .mermaid-diagram.is-workbench-expanded .mermaid-preview-canvas { height: calc(50vh - 70px); }
+  .mermaid-diagram.is-workbench-expanded .mermaid-source-toggle { top: 50%; }
 }
 
 @media (max-width: 560px) {

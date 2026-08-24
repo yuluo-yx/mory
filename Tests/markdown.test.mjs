@@ -26,6 +26,38 @@ test("renders links and images while blocking script protocols", () => {
   assert.match(html, /href="#"/);
 });
 
+test("preserves inline and block HTML as inert placeholders before browser sanitization", () => {
+  const source = [
+    "> <span alt=\"icon\">&#xe60f;</span>&emsp;contact@example.com",
+    "",
+    "<div alt=\"entry-title\" onclick=\"run()\">",
+    "  <h3>Engineer</h3>",
+    "  <p>2024 - Present</p>",
+    "</div>"
+  ].join("\n");
+  const html = markdownToHTML(source);
+  assert.match(html, /mory-raw-html-inline/);
+  assert.match(html, /mory-raw-html-block/);
+  assert.match(html, /data-raw-html="&lt;span alt=&quot;icon&quot;&gt;&amp;#xe60f;&lt;\/span&gt;"/);
+  assert.match(html, /data-raw-html="&lt;div alt=&quot;entry-title&quot; onclick=&quot;run\(\)&quot;&gt;/);
+  assert.doesNotMatch(html, /<div alt="entry-title" onclick=/);
+  assert.match(html, /&emsp;/);
+  assert.equal(inlineMarkdown("`<span>literal</span>`"), "<code>&lt;span&gt;literal&lt;/span&gt;</code>");
+});
+
+test("ends raw HTML blocks at their closing tag before adjacent Markdown", () => {
+  const html = markdownToHTML([
+    "<div alt=\"entry-title\">",
+    "  <h3>Platform Engineer</h3>",
+    "</div>",
+    "**Data platform**",
+    "Built reliable developer tooling."
+  ].join("\n"));
+  assert.match(html, /data-raw-html="&lt;div alt=&quot;entry-title&quot;&gt;[\s\S]*&lt;\/div&gt;"/);
+  assert.match(html, /<p><strong>Data platform<\/strong> Built reliable developer tooling\.<\/p>/);
+  assert.doesNotMatch(html, /data-raw-html="[^"]*\*\*Data platform/);
+});
+
 test("marks workspace Markdown references as document links", () => {
   const regular = inlineMarkdown("[\u8BF4\u660E](./\u8D44\u6599/\u8BF4\u660E.md)");
   const legacyImageSyntax = inlineMarkdown("![Alt](./07-preemption.md)");
@@ -201,6 +233,21 @@ test("serializes editor DOM into Markdown", () => {
   assert.match(markdown, /```calendar\n\{\n  "version": 1,\n  "month": "2026-08"/);
   assert.match(markdown, /\| \u540D\u79F0 \| \u503C \|\n\| --- \| --- \|\n\| A\\\|B \| 1 \|/);
   assert.match(markdown, /---\n\n\u4FDD\u7559\u5185\u5BB9$/);
+});
+
+test("round-trips raw HTML wrappers and private-use icon entities", () => {
+  globalThis.Node = { TEXT_NODE: 3, ELEMENT_NODE: 1 };
+  const inlineSource = '<span alt="icon">&#xe60f;</span>';
+  const blockSource = '<div alt="entry-title">\n  <h3>Engineer</h3>\n  <p>2024 - Present</p>\n</div>';
+  const root = element("article", [
+    element("blockquote", [element("p", [
+      element("span", [], { class: "mory-raw-html mory-raw-html-inline", dataset: { rawHtml: inlineSource } }),
+      " contact@example.com"
+    ])]),
+    element("h2", ["\ue618 Experience"]),
+    element("div", [], { class: "mory-raw-html mory-raw-html-block", dataset: { rawHtml: blockSource } })
+  ]);
+  assert.equal(editorToMarkdown(root), `> ${inlineSource} contact@example.com\n\n## &#xe618; Experience\n\n${blockSource}`);
 });
 
 test("covers inline boundaries required by themed exports", () => {

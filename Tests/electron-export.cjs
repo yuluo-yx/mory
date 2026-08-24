@@ -65,6 +65,8 @@ app.whenReady().then(async () => {
       };
       const nightHTML = await window.Mory.exportDocument({ theme: 'night', background: true });
       snapshot.nightExport = nightHTML.includes('data-doc-theme="night"') && nightHTML.includes('<svg');
+      const lapisHTML = await window.Mory.exportDocument({ theme: 'lapis-cv', background: true });
+      snapshot.lapisExport = lapisHTML.includes('data-doc-theme="lapis-cv"') && lapisHTML.includes('data-export="true"') && lapisHTML.includes('Mory Lapis CV document theme') && lapisHTML.includes('<svg');
       window.Mory.loadMarkdown(${JSON.stringify(invalidMermaidMarkdown)});
       for (let index = 0; index < 80 && document.querySelector('.mermaid-diagram')?.dataset.mermaidState !== 'error'; index += 1) {
         await new Promise(resolve => setTimeout(resolve, 50));
@@ -83,6 +85,7 @@ app.whenReady().then(async () => {
     if (result.highlightRuntime !== "11.11.1" || !result.codeHighlighted || !result.exportCodeHighlighted) throw new Error("Highlight.js did not cover both the editor and exported HTML");
     if (!result.namedCodeRoundTrip) throw new Error("The code snippet title did not round-trip through Markdown and export");
     if (!result.nightExport) throw new Error("Mermaid export failed with the Night theme");
+    if (!result.lapisExport) throw new Error("Lapis CV theme was not embedded in the exported document");
     if (!result.mermaidError) throw new Error("Invalid Mermaid syntax did not show a recoverable state");
     process.stdout.write("[e2e] html-generated\n");
 

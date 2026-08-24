@@ -770,6 +770,12 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
                 let markdown = arguments["markdown"] as? String ?? ""
                 let assets = currentFileURL.map { workspaceManager.assets(for: $0, markdown: markdown) } ?? [:]
                 answerHostRequest(id: id, result: assets)
+            case "openExternal":
+                let value = arguments["url"] as? String ?? ""
+                guard let url = URL(string: value), ["http", "https", "mailto"].contains(url.scheme?.lowercased() ?? "") else {
+                    throw workspaceError("仅支持打开 HTTP、HTTPS 和邮件链接。")
+                }
+                answerHostRequest(id: id, result: ["opened": NSWorkspace.shared.open(url)])
             case "documentImage":
                 answerHostRequest(id: id, result: try workspaceManager.image(at: arguments["path"] as? String ?? ""))
             case "readDocument":
@@ -898,11 +904,16 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
 
     @objc private func showAbout() {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.0"
-        NSApp.orderFrontStandardAboutPanel(options: [
+        var options: [NSApplication.AboutPanelOptionKey: Any] = [
             .applicationName: "Mory",
             .applicationVersion: version,
             .credits: NSAttributedString(string: "一个原生、专注的 Markdown 编辑器。")
-        ])
+        ]
+        if let icon = NSApp.applicationIconImage {
+            // Keep the About panel aligned with the runtime Dock icon instead of a cached bundle image.
+            options[.applicationIcon] = icon
+        }
+        NSApp.orderFrontStandardAboutPanel(options: options)
     }
 
     @objc private func showPreferences() { runJavaScript("window.Mory.togglePreferences()") }

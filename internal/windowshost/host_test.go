@@ -24,6 +24,7 @@ type fakePlatform struct {
 	maximised       int
 	revealed        []string
 	opened          []string
+	urls            []string
 }
 
 func (platform *fakePlatform) ChooseDirectory(string) (string, error) {
@@ -45,6 +46,10 @@ func (platform *fakePlatform) Reveal(path string) error {
 }
 func (platform *fakePlatform) OpenDirectory(path string) error {
 	platform.opened = append(platform.opened, path)
+	return nil
+}
+func (platform *fakePlatform) OpenURL(url string) error {
+	platform.urls = append(platform.urls, url)
 	return nil
 }
 func (platform *fakePlatform) Evaluate(script string) {
@@ -242,6 +247,12 @@ func TestHostWorkspaceRequestMatrixAndMenuActions(t *testing.T) {
 	}
 	if _, err := host.Request("documentAssets", map[string]any{"markdown": "![x](note/p.png)"}); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := host.Request("openExternal", map[string]any{"url": "https://example.com/docs"}); err != nil || len(platform.urls) != 1 {
+		t.Fatalf("open external URL: %v, %#v", err, platform.urls)
+	}
+	if _, err := host.Request("openExternal", map[string]any{"url": "file:///outside"}); err == nil {
+		t.Fatal("unsafe external URL should fail")
 	}
 	if _, err := host.Request("documentImage", map[string]any{"path": filepath.Join(root, "note", "p.png")}); err != nil {
 		t.Fatal(err)
