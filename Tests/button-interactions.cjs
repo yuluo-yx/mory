@@ -9,6 +9,19 @@ app.disableHardwareAcceleration();
 const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 let interactionCount = 0;
 
+async function capturePNG(window) {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      return (await window.webContents.capturePage()).toPNG();
+    } catch (error) {
+      const isTransientVizError = String(error?.message || error).includes("UnknownVizError");
+      if (!isTransientVizError || attempt === 3) throw error;
+      await wait(attempt * 150);
+    }
+  }
+  throw new Error("Screenshot capture exhausted all attempts");
+}
+
 async function loadAndWait(window) {
   const loaded = new Promise((resolve, reject) => {
     window.webContents.once("did-finish-load", resolve);
@@ -150,7 +163,7 @@ app.whenReady().then(async () => {
     const mermaidExpandedScreenshotPath = path.join(os.tmpdir(), "mory-mermaid-expanded-e2e.png");
     const mermaidNarrowScreenshotPath = path.join(os.tmpdir(), "mory-mermaid-narrow-e2e.png");
     const calendarDirectScreenshotPath = path.join(os.tmpdir(), "mory-calendar-direct-e2e.png");
-    await fs.writeFile(screenshotPath, (await window.webContents.capturePage()).toPNG());
+    await fs.writeFile(screenshotPath, await capturePNG(window));
 
     await click(window, ".tab[data-panel='outline']");
     await expect(window, "outline tab is clickable", "document.querySelector('#outline-panel').classList.contains('is-active')");
@@ -458,7 +471,7 @@ app.whenReady().then(async () => {
     await click(window, "#preferences-close");
     await inspect(window, "document.querySelector('#editor-scroll').scrollTop = 0");
     await wait(260);
-    await fs.writeFile(lapisCVScreenshotPath, (await window.webContents.capturePage()).toPNG());
+    await fs.writeFile(lapisCVScreenshotPath, await capturePNG(window));
     await inspect(window, `window.Mory.loadMarkdown(${JSON.stringify("<section class=\"profile\" style=\"border-left: 3px solid #4870ad\" onclick=\"window.__unsafeHTMLBlock = true\">\n  <details open><summary>Portfolio</summary><p><mark>Selected work</mark></p></details>\n  <table><tbody><tr><th>Skill</th><td>Go</td></tr></tbody></table>\n  <script>window.__unsafeHTMLBlock = true</script>\n</section>")})`);
     await expect(window, "common block HTML renders while executable content is removed", "(() => { const section = document.querySelector('#write section.profile'); return section?.style.borderLeftWidth === '3px' && section.querySelector('details[open] summary')?.textContent === 'Portfolio' && section.querySelector('mark')?.textContent === 'Selected work' && section.querySelector('table td')?.textContent === 'Go' && !section.hasAttribute('onclick') && !section.querySelector('script') && window.__unsafeHTMLBlock !== true; })()");
     await expect(window, "generic HTML source round-trips and exports as sanitized markup", "window.Mory.exportDocument({ theme: 'lapis-cv' }).then(html => window.Mory.getMarkdown().includes('<details open>') && html.includes('<section class=\"profile\"') && html.includes('border-left:') && html.includes('<details open=\"\">') && !html.includes('<script') && !html.includes('onclick=') && !html.includes('mory-raw-html'))");
@@ -480,7 +493,7 @@ app.whenReady().then(async () => {
       await expectEventually(window, `${theme} provides a coherent dark document canvas`, `(() => { const paper = getComputedStyle(document.querySelector('#editor-scroll')).backgroundColor; const text = getComputedStyle(document.querySelector('#write')).color; return document.documentElement.dataset.appearance === 'dark' && paper === ${JSON.stringify(paper)} && text === ${JSON.stringify(text)}; })()`);
       if (theme === "github") {
         await click(window, "#preferences-close");
-        await fs.writeFile(darkThemeScreenshotPath, (await window.webContents.capturePage()).toPNG());
+        await fs.writeFile(darkThemeScreenshotPath, await capturePNG(window));
         await click(window, "#settings-button");
       }
     }
@@ -762,7 +775,7 @@ app.whenReady().then(async () => {
     })()`);
     await expectEventually(window, "Mermaid source edits render an SVG and update Markdown immediately", "document.querySelector('.mermaid-diagram[data-mermaid-state=\"rendered\"] .mermaid-preview-canvas svg') && window.Mory.getMarkdown().includes('A[Start] --> B{Ready?}')", 4000);
     await wait(120);
-    await fs.writeFile(mermaidScreenshotPath, (await window.webContents.capturePage()).toPNG());
+    await fs.writeFile(mermaidScreenshotPath, await capturePNG(window));
     await inspect(window, "(() => { const diagram = document.querySelector('.mermaid-diagram'); const button = diagram.querySelector('.mermaid-expand-button').getBoundingClientRect(); window.__mermaidMarkdownBeforeLayout = window.Mory.getMarkdown(); window.__mermaidCanvasHeight = diagram.querySelector('.mermaid-preview-canvas').getBoundingClientRect().height; window.__mermaidExpandOutside = button.bottom <= diagram.getBoundingClientRect().top; })()");
     await expect(window, "the enlarge control sits outside the Mermaid workbench and the divider uses one compact arrow", "(() => { const toggle = document.querySelector('.mermaid-source-toggle'); const size = toggle.getBoundingClientRect(); return window.__mermaidExpandOutside === true && toggle.querySelector('use').getAttribute('href') === '#i-arrow-left' && size.width <= 20 && size.height <= 28; })()");
     await click(window, ".mermaid-source-toggle");
@@ -778,7 +791,7 @@ app.whenReady().then(async () => {
       input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
     })()`);
     await expectEventually(window, "Mermaid remains editable with live rendering while the complete workbench is enlarged", "document.querySelector('.mermaid-diagram.is-workbench-expanded[data-mermaid-state=\"rendered\"] .mermaid-preview-canvas svg') && document.activeElement?.classList.contains('mermaid-source-editor') && window.Mory.getMarkdown().includes('C --> D[Done]')", 4000);
-    await fs.writeFile(mermaidExpandedScreenshotPath, (await window.webContents.capturePage()).toPNG());
+    await fs.writeFile(mermaidExpandedScreenshotPath, await capturePNG(window));
     window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Escape" });
     window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Escape" });
     await wait(80);
@@ -786,7 +799,7 @@ app.whenReady().then(async () => {
     window.setSize(720, 790);
     await wait(140);
     await expect(window, "narrow viewports stack Mermaid source above the preview", "(() => { const source = document.querySelector('.mermaid-source-pane').getBoundingClientRect(); const preview = document.querySelector('.mermaid-preview-pane').getBoundingClientRect(); return source.bottom <= preview.top + 1 && Math.abs(source.left - preview.left) <= 1 && Math.abs(source.width - preview.width) <= 1; })()");
-    await fs.writeFile(mermaidNarrowScreenshotPath, (await window.webContents.capturePage()).toPNG());
+    await fs.writeFile(mermaidNarrowScreenshotPath, await capturePNG(window));
     window.setSize(1180, 790);
     await wait(140);
     await click(window, ".mermaid-theme-button");
@@ -834,7 +847,7 @@ app.whenReady().then(async () => {
     window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Down" });
     await wait(60);
     await expect(window, "ArrowDown on the last code line opens language and title fields", "!document.querySelector('#write > .code-meta')?.hidden && document.activeElement?.classList.contains('code-language') && document.querySelectorAll('#write > .code-meta input').length === 2");
-    await fs.writeFile(codeMetaScreenshotPath, (await window.webContents.capturePage()).toPNG());
+    await fs.writeFile(codeMetaScreenshotPath, await capturePNG(window));
     await inspect(window, `(() => {
       const language = document.querySelector('.code-meta .code-language');
       language.value = 'rust';
@@ -1008,7 +1021,7 @@ app.whenReady().then(async () => {
       pointer('pointerup', document, endRect);
     })()`);
     await expect(window, "dragging backward previews and opens a normalized closed range", "(() => { const panel = document.querySelector('.calendar-range-quick-editor'); return window.__calendarDragPreviewCount === 3 && panel && panel.querySelector('header strong').textContent.includes('3 \u5929') && panel.querySelector('header strong').textContent.indexOf('28') < panel.querySelector('header strong').textContent.indexOf('30'); })()");
-    await fs.writeFile(calendarDirectScreenshotPath, (await window.webContents.capturePage()).toPNG());
+    await fs.writeFile(calendarDirectScreenshotPath, await capturePNG(window));
     await inspect(window, `(() => {
       const title = document.querySelector('.calendar-range-quick-editor .calendar-quick-field input');
       title.value = 'Direct planning';

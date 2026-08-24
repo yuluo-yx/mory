@@ -7,16 +7,32 @@ app.commandLine.appendSwitch("disable-gpu");
 app.disableHardwareAcceleration();
 process.stdout.write(`[e2e] boot electron=${process.versions.electron || "missing"}\n`);
 
-async function loadAndWait(window, load) {
-  const finished = new Promise((resolve, reject) => {
-    window.webContents.once("did-finish-load", resolve);
-    window.webContents.once("did-fail-load", (_event, code, message) => reject(new Error(`${code}: ${message}`)));
+async function loadAndWait(window, load, timeoutMilliseconds = 30_000) {
+  await new Promise((resolve, reject) => {
+    let timeout;
+    const cleanup = () => {
+      clearTimeout(timeout);
+      window.webContents.removeListener("did-finish-load", onFinished);
+      window.webContents.removeListener("did-fail-load", onFailed);
+    };
+    const settle = callback => value => {
+      cleanup();
+      callback(value);
+    };
+    const onFinished = settle(resolve);
+    const onFailed = (_event, code, message, _url, isMainFrame) => {
+      if (isMainFrame === false) return;
+      settle(reject)(new Error(`${code}: ${message}`));
+    };
+
+    window.webContents.once("did-finish-load", onFinished);
+    window.webContents.on("did-fail-load", onFailed);
+    timeout = setTimeout(
+      () => settle(reject)(new Error(`Page load exceeded ${timeoutMilliseconds / 1000} seconds`)),
+      timeoutMilliseconds
+    );
+    Promise.resolve().then(load).catch(settle(reject));
   });
-  load();
-  await Promise.race([
-    finished,
-    new Promise((_, reject) => setTimeout(() => reject(new Error("Page load exceeded 10 seconds")), 10_000))
-  ]);
 }
 
 app.whenReady().then(async () => {
