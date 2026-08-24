@@ -11,7 +11,7 @@
   "info": {
     "companyName": "Mory Contributors",
     "productName": "Mory",
-    "productVersion": "0.2.0",
+    "productVersion": "0.3.0",
     "copyright": "Copyright © 2026 Mory Contributors",
     "comments": "A focused Markdown editor powered by WebView2",
     "fileAssociations": [

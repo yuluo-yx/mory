@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Release tag matching package.json, for example v0.2.0"
+        description: "Release tag matching package.json, for example v0.3.0"
         required: false
         type: string
   push:
