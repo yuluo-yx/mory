@@ -1,6 +1,6 @@
 module github.com/yuluo-yx/mory
 
-go 1.25.0
+go 1.26.6
 
 require (
 	github.com/aliyun/alibabacloud-oss-go-sdk-v2 v1.5.3
@@ -11,6 +11,8 @@ require (
 	github.com/google/go-github/v89 v89.0.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/pkg/sftp v1.13.11
+	github.com/spf13/cobra v1.10.2
+	github.com/spf13/pathologize v1.0.0
 	github.com/wailsapp/wails/v2 v2.13.0
 	golang.org/x/crypto v0.55.0
 	golang.org/x/sys v0.47.0
@@ -37,6 +39,7 @@ require (
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/google/go-querystring v1.2.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jchv/go-winloader v0.0.0-20210711035445-715c2860da7e // indirect
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/labstack/echo/v4 v4.13.3 // indirect
@@ -51,6 +54,7 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/samber/lo v1.49.1 // indirect
+	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/tkrajina/go-reflector v0.5.8 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect

@@ -23,6 +23,7 @@ const {
   relocateDocumentAssets,
   resolveWorkspaceDirectory,
   sanitizeSegment,
+  storageWorkspace,
   validateWorkspace
 } = require("../Electron/workspaces.cjs");
 
@@ -57,6 +58,21 @@ test("keeps credentials isolated per workspace without exposing secrets to the r
   assert.equal(github.tokenConfigured, true);
   state = await manager.save({ id: github.id, name: "\u7AD9\u70B9\u4ED3\u5E93 2", provider: "github", repository: "owner/site", branch: "main" });
   assert.equal(state.workspaces.find(item => item.id === github.id).tokenConfigured, true);
+});
+
+test("sends only the stable storage contract to the remote sidecar", () => {
+  const workspace = storageWorkspace({
+    id: "remote", name: "Repository", provider: "github", repository: "owner/site",
+    branch: "main", token: "secret", localPath: "/cache/remote", isImplicit: false,
+    tokenConfigured: true
+  });
+  assert.deepEqual(workspace, {
+    id: "remote", name: "Repository", provider: "github", repository: "owner/site",
+    branch: "main", token: "secret"
+  });
+  assert.equal("isImplicit" in workspace, false);
+  assert.equal("localPath" in workspace, false);
+  assert.equal("tokenConfigured" in workspace, false);
 });
 
 test("switches and removes workspaces without invoking a remote sidecar for local sync", async t => {

@@ -18,6 +18,27 @@ test("desktop hosts use atomic workspace snapshots to avoid file-list races", ()
   assert.match(macOS, /window\.Mory\.setWorkspaceSnapshot/);
 });
 
+test("desktop hosts defer operating-system document opens until their editors are ready", () => {
+  const electron = fs.readFileSync(path.join(root, "Electron", "main.cjs"), "utf8");
+  const macOS = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
+  const windows = fs.readFileSync(path.join(root, "cmd", "mory-windows", "main_windows.go"), "utf8");
+  assert.match(electron, /app\.on\("second-instance"/);
+  assert.match(electron, /app\.on\("open-file"/);
+  assert.match(electron, /pendingLaunchPath/);
+  assert.match(macOS, /pendingOpenURL/);
+  assert.match(macOS, /guard workspaceManager != nil, window != nil/);
+  assert.match(windows, /SingleInstanceLock/);
+  assert.match(windows, /OpenExternalFile/);
+});
+
+test("native workspace sidecars receive only storage provider fields", () => {
+  const macOS = fs.readFileSync(path.join(root, "Sources", "Mory", "WorkspaceManager.swift"), "utf8");
+  const electron = fs.readFileSync(path.join(root, "Electron", "workspaces.cjs"), "utf8");
+  assert.match(macOS, /active\.storageDictionary\(\)/);
+  assert.match(macOS, /removeValue\(forKey: "isImplicit"\)/);
+  assert.match(electron, /workspace: storageWorkspace\(workspace\)/);
+});
+
 test("desktop hosts expose file timestamps and sizes for stable ordering and optional details", () => {
   const electron = fs.readFileSync(path.join(root, "Electron", "workspaces.cjs"), "utf8");
   const macOS = fs.readFileSync(path.join(root, "Sources", "Mory", "WorkspaceManager.swift"), "utf8");

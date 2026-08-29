@@ -98,6 +98,13 @@ struct WorkspaceConfig: Codable {
         }
         return result
     }
+
+    func storageDictionary() -> [String: Any] {
+        var result = dictionary()
+        result.removeValue(forKey: "localPath")
+        result.removeValue(forKey: "isImplicit")
+        return result
+    }
 }
 
 private struct WorkspaceStore: Codable {
@@ -522,7 +529,7 @@ final class WorkspaceManager: @unchecked Sendable {
         guard active.provider != "local" else { return ["files": 0, "bytes": 0, "local": true] }
         let executable = sidecarURL()
         guard fileManager.isExecutableFile(atPath: executable.path) else { throw workspaceError("存储插件侧车不存在，请重新安装 Mory。") }
-        let request: [String: Any] = ["action": action, "root": activeRoot.path, "workspace": active.dictionary()]
+        let request: [String: Any] = ["action": action, "root": activeRoot.path, "workspace": active.storageDictionary()]
         let input = try JSONSerialization.data(withJSONObject: request)
         let process = Process()
         let stdin = Pipe(), stdout = Pipe(), stderr = Pipe()

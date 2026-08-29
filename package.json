@@ -22,6 +22,7 @@
     "test:mac-drag": "bash scripts/test-macos-drag.sh",
     "test:mac-workspace-watcher": "bash scripts/test-macos-workspace-watcher.sh",
     "test:mac-menu-localization": "bash scripts/test-macos-menu-localization.sh",
+    "test:mac-launch-request": "bash scripts/test-macos-launch-request.sh",
     "pretest:e2e": "npm run build:web",
     "test:e2e": "electron Tests/electron-export.cjs && electron Tests/button-interactions.cjs",
     "precheck": "npm run build:web",

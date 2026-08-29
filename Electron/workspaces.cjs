@@ -11,6 +11,15 @@ const IMAGE_MIME = new Map([
 ]);
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp"]);
 const SECRET_FIELDS = ["token", "accessKeySecret", "sessionToken", "password", "privateKey"];
+const STORAGE_FIELDS = [
+  "id", "name", "provider", "endpoint", "region", "bucket", "prefix", "accessKeyId",
+  "accessKeySecret", "sessionToken", "repository", "branch", "token", "host", "port",
+  "username", "password", "privateKey", "knownHosts", "remotePath"
+];
+
+function storageWorkspace(workspace) {
+  return Object.fromEntries(STORAGE_FIELDS.flatMap(field => workspace[field] === undefined ? [] : [[field, workspace[field]]]));
+}
 
 function createWorkspaceManager({ userDataPath, sidecarPath, defaultRoot = path.join(os.homedir(), "Documents", "Mory") }) {
   const configPath = path.join(userDataPath, "workspaces.json");
@@ -118,7 +127,7 @@ function createWorkspaceManager({ userDataPath, sidecarPath, defaultRoot = path.
   async function sync(action) {
     const workspace = active();
     if (workspace.provider === "local") return { files: 0, bytes: 0, local: true };
-    const payload = { action, root: rootFor(workspace), workspace };
+    const payload = { action, root: rootFor(workspace), workspace: storageWorkspace(workspace) };
     return runSidecar(sidecarPath(), payload);
   }
 
@@ -529,4 +538,4 @@ function runSidecar(executable, payload) {
   });
 }
 
-module.exports = { compareDocumentsByCreation, copyWorkspaceEntry, createWorkspaceDirectory, createWorkspaceDocument, createWorkspaceManager, importImage, listDirectories, listDocumentImages, listDocuments, loadDocumentAssets, markdownImagePaths, moveWorkspaceEntry, readDocumentImage, readWorkspaceDocuments, relocateDocumentAssets, renameWorkspaceEntry, resolveWorkspaceDirectory, sanitizeSegment, validateWorkspace, workspaceEntryPath };
+module.exports = { compareDocumentsByCreation, copyWorkspaceEntry, createWorkspaceDirectory, createWorkspaceDocument, createWorkspaceManager, importImage, listDirectories, listDocumentImages, listDocuments, loadDocumentAssets, markdownImagePaths, moveWorkspaceEntry, readDocumentImage, readWorkspaceDocuments, relocateDocumentAssets, renameWorkspaceEntry, resolveWorkspaceDirectory, sanitizeSegment, storageWorkspace, validateWorkspace, workspaceEntryPath };

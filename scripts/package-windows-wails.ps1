@@ -14,8 +14,21 @@ $PublicArchitecture = if ($Architecture -eq "amd64") { "x64" } else { "arm64" }
 
 New-Item -ItemType Directory -Force -Path $Destination | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $Project "build") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $Project "build/cli") | Out-Null
 # Wails generates the Windows ICO and resources from the canonical PNG source.
 Copy-Item (Join-Path $Repository "assets/mory-icon.png") (Join-Path $Project "build/appicon.png") -Force
+$env:GOCACHE = Join-Path $Repository ".cache/go-build"
+$PreviousGOOS = $env:GOOS
+$PreviousGOARCH = $env:GOARCH
+try {
+    $env:GOOS = "windows"
+    $env:GOARCH = $Architecture
+    go build -trimpath -o (Join-Path $Project "build/cli/mory.exe") (Join-Path $Repository "cmd/mory")
+}
+finally {
+    $env:GOOS = $PreviousGOOS
+    $env:GOARCH = $PreviousGOARCH
+}
 Push-Location $Project
 try {
     go run "github.com/wailsapp/wails/v2/cmd/wails@$WailsVersion" build `
@@ -32,6 +45,7 @@ try {
 
     Copy-Item $Binary (Join-Path $Destination "Mory-Portable-$Version-$PublicArchitecture.exe") -Force
     Copy-Item $Installer (Join-Path $Destination "Mory-Setup-$Version-$PublicArchitecture.exe") -Force
+    Copy-Item (Join-Path $Project "build/cli/mory.exe") (Join-Path $Destination "Mory-CLI-$Version-$PublicArchitecture.exe") -Force
 }
 finally {
     Pop-Location

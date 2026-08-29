@@ -146,6 +146,9 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     private var dragStartPointer: NSPoint?
     private var dragStartWindowOrigin: NSPoint?
     private var interfaceLocale = "zh-CN"
+    private var launchRequest = LaunchRequest()
+    private var pendingOpenURL: URL?
+    private var cliExportStarted = false
 
     static func main() {
         let application = NSApplication.shared
@@ -156,6 +159,12 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        do {
+            launchRequest = try LaunchRequest.parse(arguments: Array(CommandLine.arguments.dropFirst()))
+        } catch {
+            fputs("Mory launch failed: \(error.localizedDescription)\n", stderr)
+            Darwin.exit(2)
+        }
         if let iconURL = Bundle.main.resourceURL?.appendingPathComponent("icon.png"),
            let icon = NSImage(contentsOf: iconURL) {
             NSApp.applicationIconImage = icon
@@ -174,8 +183,14 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
             NSApp.terminate(nil)
             return
         }
+        if let url = launchRequest.document ?? pendingOpenURL {
+            pendingOpenURL = nil
+            guard openFile(at: url) else { return }
+        }
         loadEditor()
-        NSApp.activate(ignoringOtherApps: true)
+        if launchRequest.export == nil {
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -188,8 +203,13 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
 
     func application(_ sender: NSApplication, openFiles filenames: [String]) {
         guard let first = filenames.first else { return }
-        openFile(at: URL(fileURLWithPath: first))
-        sender.reply(toOpenOrPrint: .success)
+        let url = URL(fileURLWithPath: first)
+        guard workspaceManager != nil, window != nil else {
+            pendingOpenURL = url
+            sender.reply(toOpenOrPrint: .success)
+            return
+        }
+        sender.reply(toOpenOrPrint: openFile(at: url) ? .success : .failure)
     }
 
     private func configureWindow() {
@@ -212,7 +232,9 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         window.minSize = NSSize(width: 760, height: 520)
         window.contentView = webView
         window.center()
-        window.makeKeyAndOrderFront(nil)
+        if launchRequest.export == nil {
+            window.makeKeyAndOrderFront(nil)
+        }
     }
 
     private func loadEditor() {
@@ -448,7 +470,8 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         openFile(at: url)
     }
 
-    private func openFile(at url: URL) {
+    @discardableResult
+    private func openFile(at url: URL) -> Bool {
         do {
             let markdown = try String(contentsOf: url, encoding: .utf8)
             currentFileURL = url
@@ -457,8 +480,14 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
             window.representedURL = url
             window.title = url.lastPathComponent
             sendDocument(markdown: markdown, url: url)
+            return true
         } catch {
-            presentError("无法打开文件：\(error.localizedDescription)")
+            if launchRequest.export != nil {
+                finishCLIExport(error)
+            } else {
+                presentError("无法打开文件：\(error.localizedDescription)")
+            }
+            return false
         }
     }
 
@@ -563,10 +592,16 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         }
         let format = options["format"] as? String ?? "html"
         let fileExtension = format == "jpeg" ? "jpg" : (format == "mindmap" ? "html" : format)
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [UTType(filenameExtension: fileExtension) ?? .data]
-        panel.nameFieldStringValue = (currentFileURL?.deletingPathExtension().lastPathComponent ?? "未命名") + ".\(fileExtension)"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let url: URL
+        if let destination = options["destination"] as? String, !destination.isEmpty {
+            url = URL(fileURLWithPath: destination)
+        } else {
+            let panel = NSSavePanel()
+            panel.allowedContentTypes = [UTType(filenameExtension: fileExtension) ?? .data]
+            panel.nameFieldStringValue = (currentFileURL?.deletingPathExtension().lastPathComponent ?? "未命名") + ".\(fileExtension)"
+            guard panel.runModal() == .OK, let selected = panel.url else { return }
+            url = selected
+        }
         isExporting = true
         runJavaScript("window.Mory.exportStarted('\(format)')")
 
@@ -582,12 +617,15 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
                 )
             } catch {
                 isExporting = false
-                presentError("无法生成导出文档：\(error.localizedDescription)")
+                if launchRequest.export != nil { finishCLIExport(error) }
+                else { presentError("无法生成导出文档：\(error.localizedDescription)") }
                 return
             }
             guard let html = value as? String else {
                 isExporting = false
-                presentError("无法生成导出文档")
+                let error = NSError(domain: "Mory.Export", code: 4, userInfo: [NSLocalizedDescriptionKey: "无法生成导出文档"])
+                if launchRequest.export != nil { finishCLIExport(error) }
+                else { presentError(error.localizedDescription) }
                 return
             }
 
@@ -596,9 +634,11 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
                     try html.write(to: url, atomically: true, encoding: .utf8)
                     isExporting = false
                     runJavaScript("window.Mory.didExport('\(format)')")
+                    finishCLIExport(nil)
                 } catch {
                     isExporting = false
-                    presentError("无法导出 HTML：\(error.localizedDescription)")
+                    if launchRequest.export != nil { finishCLIExport(error) }
+                    else { presentError("无法导出 HTML：\(error.localizedDescription)") }
                 }
                 return
             }
@@ -612,8 +652,10 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
                 switch result {
                 case .success:
                     runJavaScript("window.Mory.didExport('\(format)')")
+                    finishCLIExport(nil)
                 case .failure(let error):
-                    presentError("导出失败：\(error.localizedDescription)")
+                    if launchRequest.export != nil { finishCLIExport(error) }
+                    else { presentError("导出失败：\(error.localizedDescription)") }
                 }
             }
             exportRenderers.append(renderer)
@@ -840,11 +882,12 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         switch type {
         case "ready":
             editorReady = true
-            refreshWorkspace()
+            if launchRequest.export == nil { refreshWorkspace() }
             if let pendingDocument {
                 sendJSON(function: "window.Mory.openDocument", value: pendingDocument)
                 self.pendingDocument = nil
             }
+            startCLIExportIfNeeded()
         case "changed":
             currentMarkdown = payload["markdown"] as? String ?? currentMarkdown
             currentDocumentName = payload["name"] as? String ?? currentDocumentName
@@ -914,6 +957,24 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
             options[.applicationIcon] = icon
         }
         NSApp.orderFrontStandardAboutPanel(options: options)
+    }
+
+    private func startCLIExportIfNeeded() {
+        guard !cliExportStarted, let export = launchRequest.export else { return }
+        cliExportStarted = true
+        exportDocument(options: [
+            "format": export.format, "theme": "current", "paper": "A4", "width": 900,
+            "background": true, "destination": export.destination.path
+        ])
+    }
+
+    private func finishCLIExport(_ error: Error?) {
+        guard launchRequest.export != nil else { return }
+        if let error {
+            fputs("Mory export failed: \(error.localizedDescription)\n", stderr)
+            Darwin.exit(1)
+        }
+        Darwin.exit(0)
     }
 
     @objc private func showPreferences() { runJavaScript("window.Mory.togglePreferences()") }

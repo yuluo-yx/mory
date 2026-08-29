@@ -16,13 +16,20 @@ import (
 
 // ExportRequest is the rendered document payload handed to WebView2 for export.
 type ExportRequest struct {
-	Format     string `json:"format"`
-	Theme      string `json:"theme"`
-	Paper      string `json:"paper"`
-	Width      int    `json:"width"`
-	Background bool   `json:"background"`
-	HTML       string `json:"html"`
-	Name       string `json:"name"`
+	Format      string `json:"format"`
+	Theme       string `json:"theme"`
+	Paper       string `json:"paper"`
+	Width       int    `json:"width"`
+	Background  bool   `json:"background"`
+	HTML        string `json:"html"`
+	Name        string `json:"name"`
+	Destination string `json:"destination,omitempty"`
+}
+
+// StartupExport describes a non-interactive export requested by the Mory CLI.
+type StartupExport struct {
+	Format      string
+	Destination string
 }
 
 // Platform isolates Wails runtime services so host behavior can be tested on other platforms.
@@ -39,6 +46,7 @@ type Platform interface {
 	SetTitle(title string)
 	SetLocale(locale string)
 	ToggleMaximise()
+	ShowAbout(locale string)
 	Export(ExportRequest) error
 }
 
@@ -55,6 +63,9 @@ type Host struct {
 	currentName     string
 	locale          string
 	exporting       bool
+	startupPath     string
+	startupExport   *StartupExport
+	startupComplete func(error)
 	watchRoot       string
 	watchSignature  string
 }
@@ -90,12 +101,43 @@ func (host *Host) Stop() {
 	}
 }
 
+// ConfigureStartup queues a file-association open or CLI export until the editor is ready.
+func (host *Host) ConfigureStartup(path string, export *StartupExport, complete func(error)) {
+	host.mu.Lock()
+	defer host.mu.Unlock()
+	host.startupPath = path
+	host.startupExport = export
+	host.startupComplete = complete
+}
+
 // Send handles editor events that do not require a return value.
 func (host *Host) Send(payload map[string]any) error {
 	typeName := stringValue(payload, "type")
 	switch typeName {
 	case "ready":
-		return host.refreshWorkspace()
+		host.mu.RLock()
+		startupPath := host.startupPath
+		startupExport := host.startupExport
+		host.mu.RUnlock()
+		if startupExport == nil {
+			if err := host.refreshWorkspace(); err != nil {
+				host.completeStartup(err)
+				return err
+			}
+		}
+		if startupPath != "" {
+			if err := host.openFile(startupPath, false); err != nil {
+				host.completeStartup(err)
+				return err
+			}
+		}
+		if startupExport != nil {
+			host.evaluate("window.Mory.exportToHost", map[string]any{
+				"format": startupExport.Format, "theme": "current", "paper": "A4",
+				"width": 900, "background": true, "destination": startupExport.Destination,
+			})
+		}
+		return nil
 	case "changed":
 		host.mu.Lock()
 		if markdown, ok := payload["markdown"].(string); ok {
@@ -151,10 +193,16 @@ func (host *Host) Send(payload map[string]any) error {
 		}
 		host.evaluate("window.Mory.exportStarted", request.Format)
 		if err := host.platform.Export(request); err != nil {
+			host.completeStartup(err)
 			return err
 		}
 		host.evaluate("window.Mory.didExport", request.Format)
+		host.completeStartup(nil)
 		return nil
+	case "exportFailed":
+		err := fmt.Errorf("生成导出文档：%s", stringValue(payload, "error"))
+		host.completeStartup(err)
+		return err
 	case "localeChanged":
 		locale := "zh-CN"
 		if stringValue(payload, "locale") == "en" {
@@ -331,6 +379,19 @@ func (host *Host) Request(method string, args map[string]any) (any, error) {
 // OpenFile loads a note from disk and sends it to the frontend.
 func (host *Host) OpenFile(path string) error {
 	return host.openFile(path, true)
+}
+
+// OpenExternalFile loads a document selected by the operating system outside the active workspace.
+func (host *Host) OpenExternalFile(path string) error {
+	return host.openFile(path, false)
+}
+
+// ShowAbout displays platform-native application metadata in the current interface language.
+func (host *Host) ShowAbout() {
+	host.mu.RLock()
+	locale := host.locale
+	host.mu.RUnlock()
+	host.platform.ShowAbout(locale)
 }
 
 func (host *Host) openFile(path string, requireWorkspace bool) error {
@@ -590,6 +651,16 @@ func (host *Host) evaluate(functionName string, value any) {
 		return
 	}
 	host.platform.Evaluate(functionName + "(" + string(data) + ")")
+}
+
+func (host *Host) completeStartup(err error) {
+	host.mu.Lock()
+	complete := host.startupComplete
+	host.startupComplete = nil
+	host.mu.Unlock()
+	if complete != nil {
+		complete(err)
+	}
 }
 
 func stringValue(values map[string]any, key string) string {

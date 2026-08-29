@@ -28,6 +28,7 @@ ARTIFACT_BASE="Mory-${VERSION}-macos-${RELEASE_ARCH}"
 DMG_PATH="$RELEASE_DIR/${ARTIFACT_BASE}.dmg"
 ZIP_PATH="$RELEASE_DIR/${ARTIFACT_BASE}.zip"
 CHECKSUM_PATH="$RELEASE_DIR/${ARTIFACT_BASE}-SHA256SUMS.txt"
+CLI_PATH="$RELEASE_DIR/${ARTIFACT_BASE}-cli"
 STAGING_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/mory-release.XXXXXX")"
 STAGING_DIR="$STAGING_ROOT/Mory"
 
@@ -51,12 +52,14 @@ ditto -c -k --sequesterRsrc --keepParent \
   "$APP_PATH" \
   "$STAGING_ROOT/${ARTIFACT_BASE}.zip"
 mv -f "$STAGING_ROOT/${ARTIFACT_BASE}.zip" "$ZIP_PATH"
+cp "$APP_PATH/Contents/Resources/bin/mory" "$CLI_PATH"
+chmod 755 "$CLI_PATH"
 
 (
   cd "$RELEASE_DIR"
-  shasum -a 256 "$(basename "$DMG_PATH")" "$(basename "$ZIP_PATH")"
+  shasum -a 256 "$(basename "$DMG_PATH")" "$(basename "$ZIP_PATH")" "$(basename "$CLI_PATH")"
 ) > "$STAGING_ROOT/$(basename "$CHECKSUM_PATH")"
 mv -f "$STAGING_ROOT/$(basename "$CHECKSUM_PATH")" "$CHECKSUM_PATH"
 
 echo "Mory macOS release artifacts generated:"
-ls -lh "$DMG_PATH" "$ZIP_PATH" "$CHECKSUM_PATH"
+ls -lh "$DMG_PATH" "$ZIP_PATH" "$CLI_PATH" "$CHECKSUM_PATH"

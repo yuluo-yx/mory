@@ -20,7 +20,7 @@ Mory 是一款面向 macOS 和 Windows 的跨平台 Markdown 编辑器。它使�
 
 ## 构建
 
-构建环境需要 Node.js 22、npm 10 和 Go 1.25 或更高版本。macOS 构建还需要 Swift 6；Windows 安装包需要 NSIS。
+构建环境需要 Node.js 22、npm 10 和 Go 1.26.6。macOS 构建还需要 Swift 6；Windows 安装包需要 NSIS。
 
 安装依赖：
 
@@ -85,3 +85,23 @@ dist\windows\Mory-Portable-<版本>-<架构>.exe
 ```bash
 make windows-build-x64 windows-build-arm64
 ```
+
+## Command line
+
+Release packages include a Go-based `mory` client. It delegates rendering to the installed native app, so CLI exports use the same Markdown engine, themes, Mermaid renderer, and syntax highlighting as the editor.
+
+Open a document:
+
+```bash
+mory guide.md
+```
+
+Export HTML, PDF, PNG, or JPEG into a directory:
+
+```bash
+mory export --format=pdf --path ./ guide.md
+```
+
+Existing output files are preserved by default. Pass `--force` to replace the derived output file. Use `--app /path/to/Mory.app` on macOS or `--app C:\\path\\to\\Mory.exe` on Windows when the app is not installed in its standard location.
+
+On macOS, copy the release `*-cli` artifact to a directory on `PATH`, for example `/usr/local/bin/mory`. On Windows, rename the matching `Mory-CLI-<version>-<arch>.exe` artifact to `mory.exe`, place it on `PATH`, and keep the Mory application installed. The CLI also ships inside `Mory.app/Contents/Resources/bin/mory` for managed deployments.

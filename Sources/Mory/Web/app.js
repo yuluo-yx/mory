@@ -4184,6 +4184,18 @@ async function exportDocument(options = {}) {
   return `<!doctype html>\n<html lang="${locale()}" data-doc-theme="${escapeHTML(theme)}" data-export="true"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escapeHTML(title)}</title><style>${exportBaseCSS}\n${themeCSS}\n${backgroundOverride}</style></head><body><main class="editor-scroll"><article id="write" class="write">${exportRoot.innerHTML}</article></main></body></html>`;
 }
 
+async function exportToHost(options = {}) {
+  try {
+    const html = await exportDocument(options);
+    bridge({
+      type: "export",
+      options: { ...options, html, name: $("#document-title").value || "未命名" }
+    });
+  } catch (error) {
+    bridge({ type: "exportFailed", error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
 function toggleExportDialog(force) {
   const panel = $("#export-dialog");
   const open = typeof force === "boolean" ? force : !panel.classList.contains("is-open");
@@ -5035,6 +5047,7 @@ window.Mory = {
   didExport: format => toast(locale() === "en" ? `Exported ${String(format).toUpperCase()}` : `已导出 ${String(format).toUpperCase()}`),
   exportHTML: () => exportDocument({ theme: "current", background: true }),
   exportDocument,
+  exportToHost,
   calendarMarkdown,
   optimizeTypography: optimizeActiveDocumentTypography,
   resolveHostRequest,

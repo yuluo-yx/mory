@@ -111,6 +111,22 @@ func (platform *windowsPlatform) ToggleMaximise() {
 	runtime.WindowToggleMaximise(platform.context())
 }
 
+func (platform *windowsPlatform) ShowAbout(locale string) {
+	english := locale == "en"
+	title := "关于 Mory"
+	detail := "一个原生、专注的 Markdown 编辑器。\n\n版本 " + appVersion
+	button := "确定"
+	if english {
+		title = "About Mory"
+		detail = "A native, focused Markdown editor.\n\nVersion " + appVersion
+		button = "OK"
+	}
+	_, _ = runtime.MessageDialog(platform.context(), runtime.MessageDialogOptions{
+		Type: runtime.InfoDialog, Title: title, Message: "Mory\n\n" + detail,
+		Buttons: []string{button}, DefaultButton: button,
+	})
+}
+
 func (platform *windowsPlatform) Export(request windowshost.ExportRequest) error {
 	if request.Format == "" {
 		request.Format = "html"
@@ -125,9 +141,22 @@ func (platform *windowsPlatform) Export(request windowshost.ExportRequest) error
 	if defaultName == "" {
 		defaultName = "未命名"
 	}
-	path, err := platform.ChooseSavePath(defaultName+"."+extension, []string{extension})
-	if err != nil || path == "" {
-		return err
+	path := request.Destination
+	if path == "" {
+		var err error
+		path, err = platform.ChooseSavePath(defaultName+"."+extension, []string{extension})
+		if err != nil || path == "" {
+			return err
+		}
+	} else {
+		absolute, err := filepath.Abs(path)
+		if err != nil {
+			return fmt.Errorf("resolve export destination: %w", err)
+		}
+		if !strings.EqualFold(filepath.Ext(absolute), "."+extension) {
+			return fmt.Errorf("export destination extension must be .%s", extension)
+		}
+		path = absolute
 	}
 	if request.HTML == "" {
 		return errors.New("前端没有返回已渲染的导出页面")

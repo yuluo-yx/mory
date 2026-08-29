@@ -11,6 +11,7 @@ let currentMarkdown = "";
 let currentDocumentName = "未命名.md";
 let editorReady = false;
 let pendingDocument = null;
+let pendingLaunchPath = null;
 let workspaceManager;
 let themeManager;
 let interfaceLocale = "zh-CN";
@@ -41,6 +42,11 @@ function storageSidecarPath() {
   return app.isPackaged
     ? path.join(process.resourcesPath, "storage", filename)
     : path.join(__dirname, "..", ".build", "storage", filename);
+}
+
+function documentArgument(values, workingDirectory = process.cwd()) {
+  const value = values.find(argument => /\.(?:md|markdown|mmd|mdown|mkd|txt|text)$/i.test(argument));
+  return value ? path.resolve(workingDirectory, value) : null;
 }
 
 function runEditor(source) {
@@ -452,7 +458,7 @@ function buildMenu() {
     {
       label: "帮助",
       submenu: [
-        { label: "关于 Mory", click: () => dialog.showMessageBox(mainWindow, { title: "关于 Mory", message: "Mory 0.1.0", detail: "一个跨平台、专注的 Markdown 编辑器。" }) },
+        { label: "关于 Mory", click: () => dialog.showMessageBox(mainWindow, { title: "关于 Mory", message: `Mory ${app.getVersion()}`, detail: "一个跨平台、专注的 Markdown 编辑器。" }) },
         { label: "偏好设置", accelerator: "CmdOrCtrl+,", click: () => runEditor("window.Mory.togglePreferences()") }
       ]
     }
@@ -517,13 +523,33 @@ ipcMain.handle("mory:request", async (_event, payload) => {
   return handleWorkspaceRequest(payload.method, payload.args);
 });
 
+if (!app.requestSingleInstanceLock()) app.quit();
+
+app.on("second-instance", (_event, commandLine, workingDirectory) => {
+  const argument = documentArgument(commandLine, workingDirectory);
+  if (argument && mainWindow) void loadFile(argument);
+  else if (argument) pendingLaunchPath = argument;
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  }
+});
+
+app.on("open-file", (event, filePath) => {
+  event.preventDefault();
+  if (mainWindow) void loadFile(filePath);
+  else pendingLaunchPath = filePath;
+});
+
 app.whenReady().then(async () => {
   workspaceManager = createWorkspaceManager({ userDataPath: app.getPath("userData"), sidecarPath: storageSidecarPath });
   themeManager = createThemeManager({ userDataPath: app.getPath("userData") });
   await workspaceManager.initialize();
   await themeManager.initialize();
   createWindow();
-  const argument = process.argv.find(value => /\.(?:md|markdown|mmd|mdown|mkd|txt)$/i.test(value));
+  const argument = pendingLaunchPath || documentArgument(process.argv);
+  pendingLaunchPath = null;
   if (argument) loadFile(path.resolve(argument));
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });

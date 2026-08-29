@@ -12,19 +12,28 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/yuluo-yx/mory"
+	"github.com/yuluo-yx/mory/appcli"
 	"github.com/yuluo-yx/mory/internal/windowshost"
 )
 
+const appVersion = "0.3.0"
+
 type WindowsHost struct {
-	core     *windowshost.Host
-	platform *windowsPlatform
+	core        *windowshost.Host
+	platform    *windowsPlatform
+	cliComplete func(error)
 }
 
 func (host *WindowsHost) startup(ctx context.Context) {
 	host.platform.setContext(ctx)
 	if err := host.core.Start(ctx); err != nil {
+		if host.cliComplete != nil {
+			host.cliComplete(err)
+			return
+		}
 		host.platform.showError("Mory 启动失败", err)
 	}
 }
@@ -40,6 +49,11 @@ func (host *WindowsHost) Request(method string, args map[string]any) (any, error
 }
 
 func main() {
+	request, err := appcli.ParseDesktopRequest(os.Args[1:])
+	if err != nil {
+		_, _ = fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
 	userData, err := os.UserConfigDir()
 	if err != nil {
 		panic(fmt.Errorf("读取用户配置目录：%w", err))
@@ -54,19 +68,56 @@ func main() {
 		core:     windowshost.New(platform, filepath.Join(userData, "Mory"), filepath.Join(home, "Documents", "Mory")),
 	}
 	platform.host = host.core
+	var cliResult chan error
+	if request.Export != nil {
+		cliResult = make(chan error, 1)
+		complete := func(err error) {
+			select {
+			case cliResult <- err:
+			default:
+			}
+			wailsruntime.Quit(platform.context())
+		}
+		host.cliComplete = complete
+		host.core.ConfigureStartup(request.Document, &windowshost.StartupExport{
+			Format: request.Export.Format, Destination: request.Export.Destination,
+		}, complete)
+	} else if request.Document != "" {
+		host.core.ConfigureStartup(request.Document, nil, nil)
+	}
+
+	var singleInstance *options.SingleInstanceLock
+	if request.Export == nil {
+		singleInstance = &options.SingleInstanceLock{
+			UniqueId: "io.mory.editor",
+			OnSecondInstanceLaunch: func(data options.SecondInstanceData) {
+				second, parseErr := appcli.ParseDesktopRequest(data.Args)
+				if parseErr == nil && second.Document != "" {
+					parseErr = host.core.OpenExternalFile(second.Document)
+				}
+				if parseErr != nil {
+					platform.showError("Mory", parseErr)
+				}
+				wailsruntime.WindowUnminimise(platform.context())
+				wailsruntime.WindowShow(platform.context())
+			},
+		}
+	}
 
 	err = wails.Run(&options.App{
-		Title:            "未命名 — Mory",
-		Width:            1180,
-		Height:           790,
-		MinWidth:         760,
-		MinHeight:        520,
-		BackgroundColour: &options.RGBA{R: 251, G: 251, B: 250, A: 255},
-		AssetServer:      &assetserver.Options{Assets: mory.WebAssets()},
-		Menu:             buildMenu(host.core, false),
-		OnStartup:        host.startup,
-		OnShutdown:       host.shutdown,
-		Bind:             []any{host},
+		Title:              "未命名 — Mory",
+		Width:              1180,
+		Height:             790,
+		MinWidth:           760,
+		MinHeight:          520,
+		StartHidden:        request.Export != nil,
+		BackgroundColour:   &options.RGBA{R: 251, G: 251, B: 250, A: 255},
+		AssetServer:        &assetserver.Options{Assets: mory.WebAssets()},
+		Menu:               buildMenu(host.core, false),
+		OnStartup:          host.startup,
+		OnShutdown:         host.shutdown,
+		Bind:               []any{host},
+		SingleInstanceLock: singleInstance,
 		Windows: &windows.Options{
 			Theme:                windows.SystemDefault,
 			IsZoomControlEnabled: true,
@@ -88,7 +139,14 @@ func main() {
 		},
 	})
 	if err != nil {
-		panic(err)
+		_, _ = fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if cliResult != nil {
+		if cliErr := <-cliResult; cliErr != nil {
+			_, _ = fmt.Fprintln(os.Stderr, cliErr)
+			os.Exit(1)
+		}
 	}
 }
 
@@ -146,6 +204,8 @@ func buildMenu(host *windowshost.Host, english bool) *menu.Menu {
 	view.AddText(label("缩小", "Zoom Out"), keys.CmdOrCtrl("-"), func(*menu.CallbackData) { host.Evaluate("window.Mory.zoom(-1)") })
 
 	help := application.AddSubmenu(label("帮助", "Help"))
+	help.AddText(label("关于 Mory", "About Mory"), nil, func(*menu.CallbackData) { host.ShowAbout() })
+	help.AddSeparator()
 	help.AddText(label("偏好设置", "Preferences"), keys.CmdOrCtrl(","), func(*menu.CallbackData) { host.Evaluate("window.Mory.togglePreferences()") })
 	return application
 }

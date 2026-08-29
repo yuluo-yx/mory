@@ -22,6 +22,7 @@ type fakePlatform struct {
 	locales         []string
 	exports         []ExportRequest
 	maximised       int
+	aboutLocales    []string
 	revealed        []string
 	opened          []string
 	urls            []string
@@ -68,6 +69,9 @@ func (platform *fakePlatform) SetLocale(locale string) {
 	platform.mu.Unlock()
 }
 func (platform *fakePlatform) ToggleMaximise() { platform.maximised++ }
+func (platform *fakePlatform) ShowAbout(locale string) {
+	platform.aboutLocales = append(platform.aboutLocales, locale)
+}
 func (platform *fakePlatform) Export(request ExportRequest) error {
 	platform.exports = append(platform.exports, request)
 	return nil
@@ -117,8 +121,50 @@ func TestHostBridgesReadyOpenChangeLocaleAndExport(t *testing.T) {
 	if platform.maximised != 1 {
 		t.Fatalf("maximize count = %d", platform.maximised)
 	}
+	host.ShowAbout()
+	if len(platform.aboutLocales) != 1 || platform.aboutLocales[0] != "en" {
+		t.Fatalf("about locale = %v", platform.aboutLocales)
+	}
 	if len(platform.exports) != 1 || platform.exports[0].HTML == "" {
 		t.Fatalf("invalid export tasks: %#v", platform.exports)
+	}
+}
+
+func TestHostProcessesFileAssociationAndCLIExportAfterReady(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	document := filepath.Join(t.TempDir(), "outside.md")
+	writeAt(t, document, "# Outside", time.Now())
+	platform := &fakePlatform{}
+	host := New(platform, t.TempDir(), root)
+	completed := make(chan error, 1)
+	host.ConfigureStartup(document, &StartupExport{Format: "html", Destination: filepath.Join(root, "outside.html")}, func(err error) {
+		completed <- err
+	})
+	if err := host.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	defer host.Stop()
+
+	if err := host.Send(map[string]any{"type": "ready"}); err != nil {
+		t.Fatal(err)
+	}
+	platform.mu.Lock()
+	scripts := strings.Join(platform.scripts, "\n")
+	platform.mu.Unlock()
+	if !strings.Contains(scripts, "window.Mory.openDocument") || !strings.Contains(scripts, "window.Mory.exportToHost") {
+		t.Fatalf("startup scripts = %s", scripts)
+	}
+	if err := host.Send(map[string]any{"type": "export", "options": map[string]any{
+		"format": "html", "html": "<h1>Outside</h1>", "destination": filepath.Join(root, "outside.html"),
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-completed; err != nil {
+		t.Fatal(err)
+	}
+	if len(platform.exports) != 1 || platform.exports[0].Destination == "" {
+		t.Fatalf("CLI exports = %#v", platform.exports)
 	}
 }
 
