@@ -45,8 +45,11 @@ func newGitHubBackend(config Config, clients ...*http.Client) (Backend, error) {
 }
 
 func (backend *gitHubBackend) Pull(ctx context.Context, root string) (Summary, error) {
-	branch := backend.branch()
-	tree, _, err := backend.client.Git.GetTree(ctx, backend.owner, backend.repo, branch, true)
+	_, commitSHA, err := backend.resolveBranch(ctx)
+	if err != nil {
+		return Summary{}, err
+	}
+	tree, _, err := backend.client.Git.GetTree(ctx, backend.owner, backend.repo, commitSHA, true)
 	if err != nil {
 		return Summary{}, gitHubAPIError("list github tree", err)
 	}
@@ -89,12 +92,10 @@ func (backend *gitHubBackend) Push(ctx context.Context, root string) (Summary, e
 	if err != nil {
 		return Summary{}, err
 	}
-	branch := backend.branch()
-	reference, _, err := backend.client.Git.GetRef(ctx, backend.owner, backend.repo, "heads/"+branch)
+	branch, commitSHA, err := backend.resolveBranch(ctx)
 	if err != nil {
-		return Summary{}, gitHubAPIError("get github branch", err)
+		return Summary{}, err
 	}
-	commitSHA := reference.GetObject().GetSHA()
 	baseTree, _, err := backend.client.Git.GetTree(ctx, backend.owner, backend.repo, commitSHA, true)
 	if err != nil {
 		return Summary{}, gitHubAPIError("get github base tree", err)
@@ -161,11 +162,39 @@ func (backend *gitHubBackend) Push(ctx context.Context, root string) (Summary, e
 	return summary, nil
 }
 
-func (backend *gitHubBackend) branch() string {
-	if backend.config.Branch == "" {
-		return "main"
+func (backend *gitHubBackend) resolveBranch(ctx context.Context) (string, string, error) {
+	repository, _, err := backend.client.Repositories.Get(ctx, backend.owner, backend.repo)
+	if err != nil {
+		if gitHubNotFound(err) {
+			return "", "", fmt.Errorf("github repository %q was not found or the token cannot access it", backend.config.Repository)
+		}
+		return "", "", gitHubAPIError("get github repository", err)
 	}
-	return backend.config.Branch
+
+	branch := strings.TrimSpace(backend.config.Branch)
+	if branch == "" {
+		branch = repository.GetDefaultBranch()
+	}
+	if branch == "" {
+		return "", "", fmt.Errorf("github repository %q has no default branch", backend.config.Repository)
+	}
+	reference, _, err := backend.client.Git.GetRef(ctx, backend.owner, backend.repo, "heads/"+branch)
+	if err != nil {
+		if gitHubNotFound(err) {
+			return "", "", fmt.Errorf("github branch %q was not found in repository %q", branch, backend.config.Repository)
+		}
+		return "", "", gitHubAPIError("get github branch", err)
+	}
+	commitSHA := reference.GetObject().GetSHA()
+	if commitSHA == "" {
+		return "", "", fmt.Errorf("github branch %q in repository %q has no commit", branch, backend.config.Repository)
+	}
+	return branch, commitSHA, nil
+}
+
+func gitHubNotFound(err error) bool {
+	var response *github.ErrorResponse
+	return errors.As(err, &response) && response.Response != nil && response.Response.StatusCode == http.StatusNotFound
 }
 
 func gitBlobSHA(data []byte) string {

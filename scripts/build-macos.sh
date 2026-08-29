@@ -16,9 +16,11 @@ fi
 mkdir -p "$PROJECT_DIR/.cache/clang" "$PROJECT_DIR/.cache/swiftpm"
 mkdir -p "$PROJECT_DIR/.build/storage"
 mkdir -p "$PROJECT_DIR/.build/cli"
+mkdir -p "$PROJECT_DIR/.build/slidev"
 "$PROJECT_DIR/scripts/build-macos-icons.sh"
-env GOCACHE="$PROJECT_DIR/.cache/go-build" go build -trimpath -o "$PROJECT_DIR/.build/storage/mory-storage" "$PROJECT_DIR/cmd/mory-storage"
-env GOCACHE="$PROJECT_DIR/.cache/go-build" go build -trimpath -o "$PROJECT_DIR/.build/cli/mory" "$PROJECT_DIR/cmd/mory"
+env GO111MODULE=auto GOCACHE="$PROJECT_DIR/.cache/go-build" go build -trimpath -o "$PROJECT_DIR/.build/storage/mory-storage" "$PROJECT_DIR/cmd/mory-storage"
+env GO111MODULE=auto GOCACHE="$PROJECT_DIR/.cache/go-build" go build -trimpath -o "$PROJECT_DIR/.build/cli/mory" "$PROJECT_DIR/cmd/mory"
+env GO111MODULE=auto GOCACHE="$PROJECT_DIR/.cache/go-build" go build -trimpath -o "$PROJECT_DIR/.build/slidev/mory-slidev" "$PROJECT_DIR/cmd/mory-slidev"
 env \
   CLANG_MODULE_CACHE_PATH="$PROJECT_DIR/.cache/clang" \
   SWIFTPM_MODULECACHE_OVERRIDE="$PROJECT_DIR/.cache/swiftpm" \
@@ -26,13 +28,14 @@ env \
   swift build -c release --scratch-path "$BUILD_DIR"
 
 BIN_DIR="$(env CLANG_MODULE_CACHE_PATH="$PROJECT_DIR/.cache/clang" SWIFTPM_MODULECACHE_OVERRIDE="$PROJECT_DIR/.cache/swiftpm" SDKROOT="$SDK_PATH" swift build -c release --scratch-path "$BUILD_DIR" --show-bin-path)"
-mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources/Web" "$APP_DIR/Contents/Resources/storage" "$APP_DIR/Contents/Resources/bin"
+mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources/Web" "$APP_DIR/Contents/Resources/storage" "$APP_DIR/Contents/Resources/slidev" "$APP_DIR/Contents/Resources/bin"
 cp "$BIN_DIR/Mory" "$APP_DIR/Contents/MacOS/Mory"
 cp "$PROJECT_DIR/macOS/Info.plist" "$APP_DIR/Contents/Info.plist"
 cp -R "$PROJECT_DIR/Sources/Mory/Web/." "$APP_DIR/Contents/Resources/Web/"
 cp "$PROJECT_DIR/assets/mory-icon.png" "$APP_DIR/Contents/Resources/icon.png"
 cp "$PROJECT_DIR/.build/icons/icon.icns" "$APP_DIR/Contents/Resources/icon.icns"
 cp "$PROJECT_DIR/.build/storage/mory-storage" "$APP_DIR/Contents/Resources/storage/mory-storage"
+cp "$PROJECT_DIR/.build/slidev/mory-slidev" "$APP_DIR/Contents/Resources/slidev/mory-slidev"
 cp "$PROJECT_DIR/.build/cli/mory" "$APP_DIR/Contents/Resources/bin/mory"
 codesign --force --deep --sign - "$APP_DIR"
 

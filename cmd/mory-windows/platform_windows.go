@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -13,13 +14,17 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"golang.org/x/sys/windows"
 
+	"github.com/yuluo-yx/mory/internal/recentfiles"
+	"github.com/yuluo-yx/mory/internal/slidevexport"
 	"github.com/yuluo-yx/mory/internal/windowshost"
 )
 
 type windowsPlatform struct {
-	mu   sync.RWMutex
-	ctx  context.Context
-	host *windowshost.Host
+	mu     sync.RWMutex
+	ctx    context.Context
+	host   *windowshost.Host
+	recent *recentfiles.Store
+	locale string
 }
 
 func (platform *windowsPlatform) setContext(ctx context.Context) {
@@ -104,7 +109,17 @@ func (platform *windowsPlatform) SetTitle(title string) {
 }
 
 func (platform *windowsPlatform) SetLocale(locale string) {
-	runtime.MenuSetApplicationMenu(platform.context(), buildMenu(platform.host, locale == "en"))
+	platform.mu.Lock()
+	platform.locale = locale
+	platform.mu.Unlock()
+	platform.rebuildMenu()
+}
+
+func (platform *windowsPlatform) NoteRecentDocument(path string) {
+	if platform.recent == nil || platform.recent.Add(path) != nil {
+		return
+	}
+	platform.rebuildMenu()
 }
 
 func (platform *windowsPlatform) ToggleMaximise() {
@@ -159,12 +174,73 @@ func (platform *windowsPlatform) Export(request windowshost.ExportRequest) error
 		path = absolute
 	}
 	if request.HTML == "" {
+		if request.Format == "pptx" {
+			return platform.exportPowerPoint(request, path)
+		}
 		return errors.New("前端没有返回已渲染的导出页面")
+	}
+	if request.Format == "pptx" {
+		return platform.exportPowerPoint(request, path)
 	}
 	if request.Format == "html" || request.Format == "mindmap" {
 		return writeExportFile(path, []byte(request.HTML))
 	}
 	return exportWithEdge(platform.context(), request, path)
+}
+
+func (platform *windowsPlatform) exportPowerPoint(request windowshost.ExportRequest, destination string) error {
+	err := slidevexport.Export(platform.context(), slidevexport.Request{
+		Markdown: request.Markdown, SourcePath: request.SourcePath, Destination: destination,
+	})
+	if err == nil {
+		return nil
+	}
+	platform.mu.RLock()
+	english := platform.locale == "en"
+	platform.mu.RUnlock()
+	if slidevexport.ErrorCode(err) == slidevexport.CodeUnavailable {
+		if english {
+			return errors.New("Slidev export is unavailable. Install Node.js, then run: npm install -g @slidev/cli playwright-chromium")
+		}
+		return errors.New("未找到 Slidev 导出环境。请安装 Node.js，然后运行：npm install -g @slidev/cli playwright-chromium")
+	}
+	if english {
+		return fmt.Errorf("Slidev export failed: %w", err)
+	}
+	return fmt.Errorf("Slidev 导出失败：%w", err)
+}
+
+func (platform *windowsPlatform) rebuildMenu() {
+	platform.mu.RLock()
+	ctx := platform.ctx
+	english := platform.locale == "en"
+	platform.mu.RUnlock()
+	if ctx != nil {
+		runtime.MenuSetApplicationMenu(ctx, buildMenu(platform, english))
+	}
+}
+
+func (platform *windowsPlatform) openRecentItem(path string) {
+	info, statErr := os.Stat(path)
+	var err error
+	if statErr == nil && info.IsDir() {
+		err = platform.host.OpenExternalFolder(path)
+	} else if statErr != nil {
+		err = statErr
+	} else {
+		err = platform.host.OpenExternalFile(path)
+	}
+	if err != nil {
+		platform.showError("Mory", err)
+		platform.rebuildMenu()
+	}
+}
+
+func (platform *windowsPlatform) clearRecentDocuments() {
+	if err := platform.recent.Clear(); err != nil {
+		platform.showError("Mory", err)
+	}
+	platform.rebuildMenu()
 }
 
 func (platform *windowsPlatform) showError(title string, cause error) {

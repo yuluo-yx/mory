@@ -99,9 +99,9 @@ mory guide.md
 Export HTML, PDF, PNG, or JPEG into a directory:
 
 ```bash
-mory export --format=pdf --path ./ guide.md
+mory export --format=pdf --path=./ guide.md
 ```
 
-Existing output files are preserved by default. Pass `--force` to replace the derived output file. Use `--app /path/to/Mory.app` on macOS or `--app C:\\path\\to\\Mory.exe` on Windows when the app is not installed in its standard location.
+Existing output files are preserved by default. Pass `--force` to replace the derived output file. Use `--app=/path/to/Mory.app` on macOS or `--app=C:\\path\\to\\Mory.exe` on Windows when the app is not installed in its standard location.
 
 On macOS, copy the release `*-cli` artifact to a directory on `PATH`, for example `/usr/local/bin/mory`. On Windows, rename the matching `Mory-CLI-<version>-<arch>.exe` artifact to `mory.exe`, place it on `PATH`, and keep the Mory application installed. The CLI also ships inside `Mory.app/Contents/Resources/bin/mory` for managed deployments.

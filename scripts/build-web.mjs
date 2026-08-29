@@ -32,6 +32,9 @@ const panguOutputPath = path.join(vendorDirectory, "pangu.umd.js");
 const panguLicenseInputPath = path.join(projectDirectory, "node_modules", "pangu", "LICENSE");
 const panguLicenseOutputPath = path.join(vendorDirectory, "pangu.LICENSE");
 const themeNames = ["yuluo-css", "lapis-cv", "github", "whitey", "newsprint", "pixyll", "gothic", "night"];
+const documentTemplatePaths = {
+  "lapis-cv-cn": path.join(webDirectory, "templates", "lapis-cv-cn.md")
+};
 
 function removeNamedImport(source, moduleName) {
   const escapedModule = moduleName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -67,8 +70,10 @@ const d3License = await readFile(d3LicenseInputPath, "utf8");
 const panguRuntime = await readFile(panguInputPath, "utf8");
 const panguLicense = await readFile(panguLicenseInputPath, "utf8");
 const themeCSS = Object.fromEntries(await Promise.all(themeNames.map(async name => [name, await readFile(path.join(webDirectory, "themes", `${name}.css`), "utf8")])));
-const themeBootstrap = `globalThis.__MORY_THEME_CSS__ = ${JSON.stringify(themeCSS)};`;
-const bundle = `${banner}\n${themeBootstrap}\n\n${editorFeaturesSource}\n\n${markdownSource}\n\n${knowledgeSource}\n\n${appSource}`;
+const documentTemplates = Object.fromEntries(await Promise.all(Object.entries(documentTemplatePaths).map(async ([name, templatePath]) => [name, await readFile(templatePath, "utf8")])));
+const bundledContentBootstrap = `globalThis.__MORY_THEME_CSS__ = ${JSON.stringify(themeCSS)};\n` +
+  `globalThis.__MORY_DOCUMENT_TEMPLATES__ = ${JSON.stringify(documentTemplates)};`;
+const bundle = `${banner}\n${bundledContentBootstrap}\n\n${editorFeaturesSource}\n\n${markdownSource}\n\n${knowledgeSource}\n\n${appSource}`;
 
 if (process.argv.includes("--check")) {
   const current = await readFile(outputPath, "utf8").catch(() => "");

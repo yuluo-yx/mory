@@ -171,6 +171,47 @@ test("desktop hosts save mind maps as standalone HTML files", () => {
   assert.match(windows, /request\.Format == "html" \|\| request\.Format == "mindmap"/);
 });
 
+test("all desktop hosts expose bounded recent document and workspace menus with clear actions", () => {
+  const electron = fs.readFileSync(path.join(root, "Electron", "main.cjs"), "utf8");
+  const electronRecent = fs.readFileSync(path.join(root, "Electron", "recent-documents.cjs"), "utf8");
+  const macOS = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
+  const windows = fs.readFileSync(path.join(root, "cmd", "mory-windows", "main_windows.go"), "utf8");
+  const windowsPlatform = fs.readFileSync(path.join(root, "cmd", "mory-windows", "platform_windows.go"), "utf8");
+  const windowsStore = fs.readFileSync(path.join(root, "internal", "recentfiles", "store.go"), "utf8");
+  assert.match(electron, /listRecentDocuments\(app, process\.platform/);
+  assert.match(electron, /openWorkspaceFolder\(filePath\)/);
+  assert.match(electronRecent, /application\.addRecentDocument\(filePath\)/);
+  assert.match(electronRecent, /application\.getRecentDocuments\(\)/);
+  assert.match(electronRecent, /application\.clearRecentDocuments\(\)/);
+  assert.match(macOS, /NSDocumentController\.shared\.noteNewRecentDocumentURL\(url\)/);
+  assert.match(macOS, /NSDocumentController\.shared\.recentDocumentURLs/);
+  assert.match(macOS, /openWorkspace\(at: url\)/);
+  assert.match(macOS, /clearRecentDocuments\(nil\)/);
+  assert.match(windows, /platform\.recent\.List\(\)/);
+  assert.match(windowsPlatform, /"os"\s+"os\/exec"/);
+  assert.match(windowsPlatform, /os\.Stat\(path\)/);
+  assert.match(windowsPlatform, /platform\.host\.OpenExternalFolder\(path\)/);
+  assert.match(windowsStore, /const maximumEntries = 10/);
+  assert.match(windowsStore, /func \(store \*Store\) Clear\(\) error/);
+});
+
+test("PowerPoint export delegates Markdown to the packaged official Slidev helper", () => {
+  const html = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "index.html"), "utf8");
+  const web = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "app.js"), "utf8");
+  const electron = fs.readFileSync(path.join(root, "Electron", "main.cjs"), "utf8");
+  const macOS = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
+  const windows = fs.readFileSync(path.join(root, "cmd", "mory-windows", "platform_windows.go"), "utf8");
+  const exporter = fs.readFileSync(path.join(root, "internal", "slidevexport", "export.go"), "utf8");
+  assert.match(html, /option value="pptx"/);
+  assert.match(web, /options\.format === "pptx"/);
+  assert.match(web, /markdown: state\.markdown/);
+  assert.match(electron, /runSlidevExport/);
+  assert.match(macOS, /performSlidevExport/);
+  assert.match(windows, /slidevexport\.Export/);
+  assert.match(exporter, /"export", temporaryPath, "--format", "pptx"/);
+  assert.match(exporter, /"--with-clicks"/);
+});
+
 test("macOS rebuilds and localizes top-level application menus after locale changes", () => {
   const host = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
   const localizer = fs.readFileSync(path.join(root, "Sources", "Mory", "MenuLocalizer.swift"), "utf8");
@@ -243,6 +284,24 @@ test("the macOS installer uses a branded drag-to-Applications layout", () => {
   assert.equal(background.readUInt32BE(20), 512);
 });
 
+test("desktop release metadata stays aligned at version 0.4.0", () => {
+  const packageMetadata = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+  const lockMetadata = JSON.parse(fs.readFileSync(path.join(root, "package-lock.json"), "utf8"));
+  const windowsMetadata = JSON.parse(fs.readFileSync(path.join(root, "cmd", "mory-windows", "wails.json"), "utf8"));
+  const macMetadata = fs.readFileSync(path.join(root, "macOS", "Info.plist"), "utf8");
+  const macHost = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
+  const windowsHost = fs.readFileSync(path.join(root, "cmd", "mory-windows", "main_windows.go"), "utf8");
+
+  assert.equal(packageMetadata.version, "0.4.0");
+  assert.equal(lockMetadata.version, "0.4.0");
+  assert.equal(lockMetadata.packages[""].version, "0.4.0");
+  assert.equal(windowsMetadata.info.productVersion, "0.4.0");
+  assert.match(macMetadata, /CFBundleShortVersionString<\/key><string>0\.4\.0<\/string>/);
+  assert.match(macMetadata, /CFBundleVersion<\/key><string>4<\/string>/);
+  assert.match(macHost, /\?\? "0\.4\.0"/);
+  assert.match(windowsHost, /const appVersion = "0\.4\.0"/);
+});
+
 test("the knowledge graph captures wheel input on HTML and normalizes it with the D3 formula", () => {
   const web = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "app.js"), "utf8");
   assert.match(web, /#graph-canvas"\)\.addEventListener\("wheel", handleGraphWheel, \{ passive: false \}\)/);
@@ -272,7 +331,7 @@ test("tables add and delete the current row or column and support Typora-style s
   assert.match(web, /command && event\.shiftKey && event\.key === "Backspace"/);
 });
 
-test("GitHub remains the default while bundled themes warn when preferred fonts are unavailable", () => {
+test("GitHub remains the default while resume and handwriting themes bundle their fonts", () => {
   const html = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "index.html"), "utf8");
   const web = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "app.js"), "utf8");
   const yuluo = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "themes", "yuluo-css.css"), "utf8");
@@ -283,14 +342,34 @@ test("GitHub remains the default while bundled themes warn when preferred fonts 
   assert.match(html, /option value="lapis-cv">Lapis CV<\/option>/);
   assert.match(web, /documentTheme:\s*"github"/);
   assert.match(web, /mory\.documentThemeDefaultVersion", "github-v1"/);
-  assert.match(web, /function updateThemeFontWarning/);
-  assert.match(web, /const lapisCVFonts = \["Source Han Sans CN", "JetBrains Mono", "LapisCV Icon"\]/);
+  assert.match(web, /const bundledThemeFonts =/);
+  assert.match(web, /function exportThemeCSS\(theme\)/);
+  assert.match(web, /Mory LapisCV Icon/);
+  assert.match(web, /Mory LXGW WenKai/);
   assert.doesNotMatch(yuluo, /Segoe Print/);
+  assert.match(yuluo, /fonts\/LXGWWenKai-Regular\.ttf/);
   assert.match(lapis, /Mory Lapis CV document theme/);
+  assert.match(lapis, /fonts\/LapisCV-Icon\.ttf/);
+  assert.match(lapis, /padding: 12mm 8mm 15mm/);
   assert.match(lapis, /img\[alt="avatar"\]/);
-  assert.match(lapis, /@page \{ size: A4; \}/);
+  assert.match(lapis, /@page \{ size: A4; margin: 12mm 8mm; \}/);
   assert.match(license, /MIT License/);
   assert.match(license, /Copyright \(c\) 2024 YiNN/);
+});
+
+test("Lapis CV includes the upstream Chinese resume template and a creation action", () => {
+  const html = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "index.html"), "utf8");
+  const web = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "app.js"), "utf8");
+  const build = fs.readFileSync(path.join(root, "scripts", "build-web.mjs"), "utf8");
+  const template = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "templates", "lapis-cv-cn.md"), "utf8");
+  assert.match(html, /id="resume-template-button" class="quiet-button" hidden/);
+  assert.match(web, /function createResumeFromTemplate\(\)/);
+  assert.match(web, /setDocumentTheme\("lapis-cv"/);
+  assert.match(web, /resume-template-button"\)\.hidden = next !== "lapis-cv"/);
+  assert.match(build, /__MORY_DOCUMENT_TEMPLATES__/);
+  assert.match(template, /^# \u516b\u722a\u732b/m);
+  assert.match(template, /## &#xe80c; \u6559\u80b2\u7ecf\u5386/);
+  assert.match(template, /<div alt="entry-title">/);
 });
 
 test("raw Markdown HTML uses the bundled DOMPurify runtime and preserves source wrappers", () => {

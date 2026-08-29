@@ -5,6 +5,46 @@
  * Distributed under the MIT License; see lapis-cv.LICENSE.
  */
 
+@font-face {
+  font-family: "Mory Source Han Sans CN";
+  src: url("../fonts/SourceHanSansCN-Regular.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Mory Source Han Sans CN";
+  src: url("../fonts/SourceHanSansCN-Medium.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Mory Source Han Sans CN";
+  src: url("../fonts/SourceHanSansCN-Bold.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Mory JetBrains Mono";
+  src: url("../fonts/JetBrainsMono-Regular.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Mory LapisCV Icon";
+  src: url("../fonts/LapisCV-Icon.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+}
+
 [data-doc-theme="lapis-cv"] {
   --lapis-accent: #4870ad;
   --lapis-accent-soft: #dae3ea;
@@ -21,11 +61,11 @@
   width: min(calc(100% - 48px), 210mm);
   min-height: 297mm;
   margin: 20px auto 72px;
-  padding: 14mm 17mm 16mm;
+  padding: 12mm 8mm 15mm;
   color: var(--lapis-ink);
   background: var(--lapis-paper);
   box-shadow: 0 3px 18px rgba(55, 68, 86, .16);
-  font-family: "Source Han Sans CN", "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+  font-family: "Mory Source Han Sans CN", "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei UI", sans-serif;
   font-size: 10pt;
   line-height: 1.72;
 }
@@ -37,7 +77,7 @@
 [data-doc-theme="lapis-cv"] .write h5,
 [data-doc-theme="lapis-cv"] .write h6 {
   color: var(--lapis-ink);
-  font-family: "LapisCV Icon", "Source Han Sans CN", "Noto Sans CJK SC", "PingFang SC", sans-serif;
+  font-family: "Mory LapisCV Icon", "Mory Source Han Sans CN", "Noto Sans CJK SC", "PingFang SC", sans-serif;
   break-after: avoid;
 }
 
@@ -124,7 +164,7 @@
 
 [data-doc-theme="lapis-cv"] .write span[alt="icon"] {
   color: var(--lapis-accent);
-  font-family: "LapisCV Icon", sans-serif;
+  font-family: "Mory LapisCV Icon", sans-serif;
   font-style: normal;
 }
 
@@ -181,7 +221,7 @@
   border-radius: 3px;
   color: #415a77;
   background: #f2f5f8;
-  font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  font-family: "Mory JetBrains Mono", "SFMono-Regular", Consolas, monospace;
   font-size: .88em;
 }
 
@@ -280,7 +320,7 @@
   }
 }
 
-@page { size: A4; }
+@page { size: A4; margin: 12mm 8mm; }
 
 @media print {
   [data-doc-theme="lapis-cv"] .editor-scroll { background: #ffffff; }

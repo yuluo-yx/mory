@@ -22,6 +22,14 @@ struct MacLaunchRequestSmoke {
             throw NSError(domain: "MacLaunchRequestSmoke", code: 2)
         }
 
+        let slides = root.appendingPathComponent("guide.pptx")
+        let slideExport = try LaunchRequest.parse(arguments: [
+            "--mory-cli-export", "--format=pptx", "--output", slides.path, source.path
+        ], currentDirectory: root)
+        guard slideExport.export == LaunchExportRequest(source: source.standardizedFileURL, destination: slides.standardizedFileURL, format: "pptx") else {
+            throw NSError(domain: "MacLaunchRequestSmoke", code: 5)
+        }
+
         let workspace = WorkspaceConfig(dictionary: [
             "id": "remote", "name": "Repository", "provider": "github", "repository": "owner/site",
             "token": "secret", "localPath": root.path, "isImplicit": false

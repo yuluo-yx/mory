@@ -45,7 +45,7 @@ struct LaunchRequest: Equatable {
         }
 
         let normalizedFormat = format.lowercased()
-        let extensions = ["html": "html", "pdf": "pdf", "png": "png", "jpeg": "jpg"]
+        let extensions = ["html": "html", "pdf": "pdf", "png": "png", "jpeg": "jpg", "pptx": "pptx"]
         guard let expectedExtension = extensions[normalizedFormat] else {
             throw launchError("Unsupported export format: \(format)")
         }

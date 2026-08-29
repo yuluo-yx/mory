@@ -26,6 +26,7 @@ type fakePlatform struct {
 	revealed        []string
 	opened          []string
 	urls            []string
+	recent          []string
 }
 
 func (platform *fakePlatform) ChooseDirectory(string) (string, error) {
@@ -66,6 +67,11 @@ func (platform *fakePlatform) SetTitle(title string) {
 func (platform *fakePlatform) SetLocale(locale string) {
 	platform.mu.Lock()
 	platform.locales = append(platform.locales, locale)
+	platform.mu.Unlock()
+}
+func (platform *fakePlatform) NoteRecentDocument(path string) {
+	platform.mu.Lock()
+	platform.recent = append(platform.recent, path)
 	platform.mu.Unlock()
 }
 func (platform *fakePlatform) ToggleMaximise() { platform.maximised++ }
@@ -127,6 +133,34 @@ func TestHostBridgesReadyOpenChangeLocaleAndExport(t *testing.T) {
 	}
 	if len(platform.exports) != 1 || platform.exports[0].HTML == "" {
 		t.Fatalf("invalid export tasks: %#v", platform.exports)
+	}
+	if len(platform.recent) != 1 || platform.recent[0] != filepath.Join(root, "01.md") {
+		t.Fatalf("recent documents = %#v", platform.recent)
+	}
+}
+
+func TestHostPassesCurrentMarkdownAndSourcePathToPowerPointExport(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	document := filepath.Join(root, "slides.md")
+	writeAt(t, document, "# Original", time.Now())
+	platform := &fakePlatform{}
+	host := New(platform, t.TempDir(), root)
+	if err := host.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	defer host.Stop()
+	if err := host.OpenExternalFile(document); err != nil {
+		t.Fatal(err)
+	}
+	if err := host.Send(map[string]any{"type": "changed", "markdown": "# Updated", "name": "slides.md"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := host.Send(map[string]any{"type": "export", "options": map[string]any{"format": "pptx"}}); err != nil {
+		t.Fatal(err)
+	}
+	if len(platform.exports) != 1 || platform.exports[0].Markdown != "# Updated" || platform.exports[0].SourcePath != document {
+		t.Fatalf("PowerPoint export = %#v", platform.exports)
 	}
 }
 
@@ -341,6 +375,9 @@ func TestHostWorkspaceRequestMatrixAndMenuActions(t *testing.T) {
 		t.Fatal(err)
 	}
 	platform.chosenDirectory = filepath.Join(t.TempDir(), "opened-workspace")
+	if err := os.Mkdir(platform.chosenDirectory, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := host.OpenFolder(); err != nil {
 		t.Fatal(err)
 	}

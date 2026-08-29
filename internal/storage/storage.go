@@ -78,7 +78,8 @@ func (config Config) Validate() error {
 	case ProviderLocal:
 		return nil
 	case ProviderGitHub:
-		if len(strings.Split(config.Repository, "/")) != 2 || config.Token == "" {
+		owner, repo, found := strings.Cut(strings.TrimSpace(config.Repository), "/")
+		if !found || owner == "" || repo == "" || strings.Contains(repo, "/") || strings.TrimSpace(config.Token) == "" {
 			return errors.New("github repository and token are required")
 		}
 	case ProviderS3, ProviderS4, ProviderOSS:

@@ -1,6 +1,6 @@
 {
   "name": "mory-markdown-editor",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "author": "Mory Contributors",
   "private": true,
   "description": "A cross-platform Markdown editor combining native desktop hosts with a shared web editor",
@@ -8,6 +8,9 @@
   "type": "module",
   "scripts": {
     "build:web": "node scripts/build-web.mjs",
+    "build:slidev:mac": "node scripts/build-slidev-sidecar.mjs darwin",
+    "build:slidev:win:x64": "node scripts/build-slidev-sidecar.mjs windows x64",
+    "build:slidev:win:arm64": "node scripts/build-slidev-sidecar.mjs windows arm64",
     "predev": "npm run build:web",
     "dev": "electron .",
     "test": "node --test --experimental-test-coverage",
@@ -22,21 +25,22 @@
     "test:mac-drag": "bash scripts/test-macos-drag.sh",
     "test:mac-workspace-watcher": "bash scripts/test-macos-workspace-watcher.sh",
     "test:mac-menu-localization": "bash scripts/test-macos-menu-localization.sh",
+    "test:mac-recent-documents": "bash scripts/test-macos-recent-documents.sh",
     "test:mac-launch-request": "bash scripts/test-macos-launch-request.sh",
     "pretest:e2e": "npm run build:web",
     "test:e2e": "electron Tests/electron-export.cjs && electron Tests/button-interactions.cjs",
     "precheck": "npm run build:web",
-    "check": "npm run check:language && node scripts/build-web.mjs --check && node --check Electron/main.cjs && node --check Electron/preload.cjs && node --check Electron/workspaces.cjs && node --check Electron/workspace-watcher.cjs && node --check Electron/themes.cjs && node --check Sources/Mory/Web/app.js && node --check Sources/Mory/Web/editor-features.js && node --check Sources/Mory/Web/markdown.js && node --check Sources/Mory/Web/knowledge.js && node --check Sources/Mory/Web/app.bundle.js && node --check Tests/electron-export.cjs && node --check Tests/button-interactions.cjs && node --check Tests/host-regressions.test.cjs && node --check Tests/workspaces.test.cjs && node --check Tests/workspace-watcher.test.cjs && node --check Tests/knowledge.test.js",
+    "check": "npm run check:language && node scripts/build-web.mjs --check && node --check Electron/main.cjs && node --check Electron/preload.cjs && node --check Electron/recent-documents.cjs && node --check Electron/workspaces.cjs && node --check Electron/workspace-watcher.cjs && node --check Electron/themes.cjs && node --check Sources/Mory/Web/app.js && node --check Sources/Mory/Web/editor-features.js && node --check Sources/Mory/Web/markdown.js && node --check Sources/Mory/Web/knowledge.js && node --check Sources/Mory/Web/app.bundle.js && node --check Tests/electron-export.cjs && node --check Tests/button-interactions.cjs && node --check Tests/host-regressions.test.cjs && node --check Tests/recent-documents.test.cjs && node --check Tests/workspaces.test.cjs && node --check Tests/workspace-watcher.test.cjs && node --check Tests/knowledge.test.js",
     "prebuild:mac": "npm run build:web",
     "build:mac": "bash scripts/build-macos.sh",
     "dist:mac": "bash scripts/package-macos-release.sh",
-    "prepack:mac:electron": "npm run build:web",
+    "prepack:mac:electron": "npm run build:web && npm run build:slidev:mac",
     "pack:mac:electron": "electron-builder --mac dmg --publish never",
-    "prepack:win": "npm run build:web",
+    "prepack:win": "npm run build:web && npm run build:slidev:win:x64",
     "pack:win": "electron-builder --win nsis portable --x64 --publish never",
-    "prepack:win:portable": "npm run build:web",
+    "prepack:win:portable": "npm run build:web && npm run build:slidev:win:x64",
     "pack:win:portable": "electron-builder --win portable --x64 --publish never",
-    "prepack:win:arm64": "npm run build:web",
+    "prepack:win:arm64": "npm run build:web && npm run build:slidev:win:arm64",
     "pack:win:arm64": "electron-builder --win nsis portable --arm64 --publish never"
   },
   "devDependencies": {
@@ -62,6 +66,14 @@
         "filter": [
           "mory-storage",
           "mory-storage.exe"
+        ]
+      },
+      {
+        "from": ".build/slidev",
+        "to": "slidev",
+        "filter": [
+          "mory-slidev",
+          "mory-slidev.exe"
         ]
       }
     ],

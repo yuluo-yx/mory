@@ -45,7 +45,7 @@ func TestCommandsRouteOpenAndExportRequests(t *testing.T) {
 	output := new(bytes.Buffer)
 	command = newRootCommandWithClient(func(string) desktopClient { return client })
 	command.SetOut(output)
-	command.SetArgs([]string{"export", "--format=png", "--path", root, document})
+	command.SetArgs([]string{"export", "--format=png", "--path=" + root, document})
 	if err := command.ExecuteContext(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -54,5 +54,16 @@ func TestCommandsRouteOpenAndExportRequests(t *testing.T) {
 	}
 	if output.String() != filepath.Join(root, "guide.png")+"\n" {
 		t.Fatalf("output = %q", output.String())
+	}
+
+	help := new(bytes.Buffer)
+	command = newRootCommandWithClient(func(string) desktopClient { return client })
+	command.SetOut(help)
+	command.SetArgs([]string{"export", "--help"})
+	if err := command.ExecuteContext(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(help.Bytes(), []byte("mory export --format=pdf --path=./ guide.md")) {
+		t.Fatalf("export help = %q", help.String())
 	}
 }

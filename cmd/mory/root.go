@@ -44,9 +44,10 @@ func newExportCommand(appPath *string, clientFor func(string) desktopClient) *co
 	var outputDirectory string
 	var force bool
 	command := &cobra.Command{
-		Use:   "export <document>",
-		Short: "Export a document through the native Mory renderer",
-		Args:  cobra.ExactArgs(1),
+		Use:     "export <document>",
+		Short:   "Export a document through the native Mory renderer",
+		Example: "  mory export --format=pdf --path=./ guide.md",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			request, err := appcli.ResolveExport(args[0], format, outputDirectory, force)
 			if err != nil {
@@ -59,7 +60,7 @@ func newExportCommand(appPath *string, clientFor func(string) desktopClient) *co
 			return err
 		},
 	}
-	command.Flags().StringVar(&format, "format", "pdf", "output format: html, pdf, png, or jpeg")
+	command.Flags().StringVar(&format, "format", "pdf", "output format: html, pdf, png, jpeg, or pptx")
 	command.Flags().StringVar(&outputDirectory, "path", ".", "output directory")
 	command.Flags().BoolVarP(&force, "force", "f", false, "replace an existing output file")
 	return command

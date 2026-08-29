@@ -16,10 +16,11 @@ import (
 
 	"github.com/yuluo-yx/mory"
 	"github.com/yuluo-yx/mory/appcli"
+	"github.com/yuluo-yx/mory/internal/recentfiles"
 	"github.com/yuluo-yx/mory/internal/windowshost"
 )
 
-const appVersion = "0.3.0"
+const appVersion = "0.4.0"
 
 type WindowsHost struct {
 	core        *windowshost.Host
@@ -62,7 +63,7 @@ func main() {
 	if err != nil {
 		panic(fmt.Errorf("读取用户目录：%w", err))
 	}
-	platform := &windowsPlatform{}
+	platform := &windowsPlatform{recent: recentfiles.New(filepath.Join(userData, "Mory", "recent-files.json")), locale: "zh-CN"}
 	host := &WindowsHost{
 		platform: platform,
 		core:     windowshost.New(platform, filepath.Join(userData, "Mory"), filepath.Join(home, "Documents", "Mory")),
@@ -113,7 +114,7 @@ func main() {
 		StartHidden:        request.Export != nil,
 		BackgroundColour:   &options.RGBA{R: 251, G: 251, B: 250, A: 255},
 		AssetServer:        &assetserver.Options{Assets: mory.WebAssets()},
-		Menu:               buildMenu(host.core, false),
+		Menu:               buildMenu(platform, false),
 		OnStartup:          host.startup,
 		OnShutdown:         host.shutdown,
 		Bind:               []any{host},
@@ -150,7 +151,8 @@ func main() {
 	}
 }
 
-func buildMenu(host *windowshost.Host, english bool) *menu.Menu {
+func buildMenu(platform *windowsPlatform, english bool) *menu.Menu {
+	host := platform.host
 	label := func(chinese, translated string) string {
 		if english {
 			return translated
@@ -163,6 +165,22 @@ func buildMenu(host *windowshost.Host, english bool) *menu.Menu {
 	file.AddText(label("新建目录", "New Folder"), keys.Combo("n", keys.CmdOrCtrlKey, keys.ShiftKey), func(*menu.CallbackData) { host.Evaluate("window.Mory.newFolder()") })
 	file.AddText(label("打开…", "Open…"), keys.CmdOrCtrl("o"), func(*menu.CallbackData) { _ = host.OpenDocument() })
 	file.AddText(label("打开文件夹…", "Open Folder…"), keys.Combo("o", keys.CmdOrCtrlKey, keys.ShiftKey), func(*menu.CallbackData) { _ = host.OpenFolder() })
+	recent := file.AddSubmenu(label("最近打开", "Open Recent"))
+	paths, _ := platform.recent.List()
+	if len(paths) == 0 {
+		recent.AddText(label("无最近项目", "No Recent Items"), nil, nil)
+	} else {
+		for _, recentPath := range paths {
+			selectedPath := recentPath
+			title := fmt.Sprintf("%s — %s", filepath.Base(selectedPath), filepath.Base(filepath.Dir(selectedPath)))
+			if info, err := os.Stat(selectedPath); err == nil && info.IsDir() {
+				title = fmt.Sprintf("%s — %s", filepath.Base(selectedPath), label("工作区", "Workspace"))
+			}
+			recent.AddText(title, nil, func(*menu.CallbackData) { platform.openRecentItem(selectedPath) })
+		}
+		recent.AddSeparator()
+		recent.AddText(label("清除菜单", "Clear Menu"), nil, func(*menu.CallbackData) { platform.clearRecentDocuments() })
+	}
 	file.AddSeparator()
 	file.AddText(label("保存", "Save"), keys.CmdOrCtrl("s"), func(*menu.CallbackData) { _ = host.Save() })
 	file.AddText(label("另存为…", "Save As…"), keys.Combo("s", keys.CmdOrCtrlKey, keys.ShiftKey), func(*menu.CallbackData) { _ = host.SaveAs() })

@@ -24,6 +24,7 @@ var exportExtensions = map[string]string{
 	"pdf":  ".pdf",
 	"png":  ".png",
 	"jpeg": ".jpg",
+	"pptx": ".pptx",
 }
 
 // ExportRequest describes one non-interactive export delegated to the desktop host.
@@ -75,7 +76,7 @@ func ResolveExport(source, format, outputDirectory string, overwrite bool) (Expo
 	format = strings.ToLower(strings.TrimSpace(format))
 	extension, ok := exportExtensions[format]
 	if !ok {
-		return ExportRequest{}, fmt.Errorf("unsupported export format %q; use html, pdf, png, or jpeg", format)
+		return ExportRequest{}, fmt.Errorf("unsupported export format %q; use html, pdf, png, jpeg, or pptx", format)
 	}
 	directory, err := filepath.Abs(outputDirectory)
 	if err != nil {

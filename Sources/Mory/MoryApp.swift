@@ -2,6 +2,47 @@ import AppKit
 import UniformTypeIdentifiers
 import WebKit
 
+private struct SlidevSidecarResponse: Decodable, Sendable {
+    let ok: Bool?
+    let code: String?
+    let error: String?
+}
+
+private func performSlidevExport(helper: URL, markdown: String, source: URL?, destination: URL) throws {
+    let process = Process()
+    let input = Pipe()
+    let output = Pipe()
+    let diagnostics = Pipe()
+    process.executableURL = helper
+    process.currentDirectoryURL = source?.deletingLastPathComponent() ?? destination.deletingLastPathComponent()
+    process.standardInput = input
+    process.standardOutput = output
+    process.standardError = diagnostics
+    let payload: [String: Any] = [
+        "markdown": markdown,
+        "sourcePath": source?.path ?? "",
+        "destination": destination.path
+    ]
+    let data = try JSONSerialization.data(withJSONObject: payload)
+    try process.run()
+    input.fileHandleForWriting.write(data)
+    try input.fileHandleForWriting.close()
+    let responseData = output.fileHandleForReading.readDataToEndOfFile()
+    let diagnosticData = diagnostics.fileHandleForReading.readDataToEndOfFile()
+    process.waitUntilExit()
+    let response = try? JSONDecoder().decode(SlidevSidecarResponse.self, from: responseData)
+    guard process.terminationStatus == 0, response?.ok == true else {
+        let diagnostic = response?.error
+            ?? String(data: diagnosticData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            ?? "Slidev helper failed"
+        throw NSError(
+            domain: "Mory.Slidev",
+            code: response?.code == "slidev_unavailable" ? 1 : 2,
+            userInfo: [NSLocalizedDescriptionKey: diagnostic]
+        )
+    }
+}
+
 @MainActor
 private final class ExportRenderer: NSObject, WKNavigationDelegate {
     private let format: String
@@ -395,6 +436,19 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         newFolderItem.keyEquivalentModifierMask = [.command, .shift]
         fileMenu.addItem(withTitle: "打开…", action: #selector(openDocument), keyEquivalent: "o")
         fileMenu.addItem(withTitle: "打开文件夹…", action: #selector(openFolder), keyEquivalent: "O").keyEquivalentModifierMask = [.command, .shift]
+        let recentItem = NSMenuItem(title: "最近打开", action: nil, keyEquivalent: "")
+        let recentDocuments = RecentDocuments.entries(from: NSDocumentController.shared.recentDocumentURLs)
+        recentItem.submenu = RecentDocuments.menu(
+            entries: recentDocuments,
+            target: self,
+            openAction: #selector(openRecentItem(_:)),
+            clearAction: #selector(clearRecentDocuments),
+            title: interfaceLocale == "en" ? "Open Recent" : "最近打开",
+            emptyTitle: interfaceLocale == "en" ? "No Recent Items" : "无最近项目",
+            clearTitle: interfaceLocale == "en" ? "Clear Menu" : "清除菜单",
+            workspaceSuffix: interfaceLocale == "en" ? "Workspace" : "工作区"
+        )
+        fileMenu.addItem(recentItem)
         fileMenu.addItem(.separator())
         fileMenu.addItem(withTitle: "保存", action: #selector(saveDocument), keyEquivalent: "s")
         fileMenu.addItem(withTitle: "另存为…", action: #selector(saveDocumentAs), keyEquivalent: "S").keyEquivalentModifierMask = [.command, .shift]
@@ -470,6 +524,25 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         openFile(at: url)
     }
 
+    @objc private func openRecentItem(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
+            configureMenu()
+            return
+        }
+        if isDirectory.boolValue {
+            openWorkspace(at: url)
+        } else {
+            openFile(at: url)
+        }
+    }
+
+    @objc private func clearRecentDocuments() {
+        NSDocumentController.shared.clearRecentDocuments(nil)
+        configureMenu()
+    }
+
     @discardableResult
     private func openFile(at url: URL) -> Bool {
         do {
@@ -480,6 +553,10 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
             window.representedURL = url
             window.title = url.lastPathComponent
             sendDocument(markdown: markdown, url: url)
+            if launchRequest.export == nil {
+                NSDocumentController.shared.noteNewRecentDocumentURL(url)
+                configureMenu()
+            }
             return true
         } catch {
             if launchRequest.export != nil {
@@ -573,11 +650,20 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         panel.canChooseDirectories = true
         guard panel.runModal() == .OK, let folder = panel.url else { return }
 
+        openWorkspace(at: folder)
+    }
+
+    @discardableResult
+    private func openWorkspace(at folder: URL) -> Bool {
         do {
             _ = try workspaceManager.save(["name": folder.lastPathComponent, "provider": "local", "localPath": folder.path])
             refreshWorkspace()
+            NSDocumentController.shared.noteNewRecentDocumentURL(folder)
+            configureMenu()
+            return true
         } catch {
             presentError("无法设置工作区：\(error.localizedDescription)")
+            return false
         }
     }
 
@@ -604,6 +690,45 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         }
         isExporting = true
         runJavaScript("window.Mory.exportStarted('\(format)')")
+
+        if format == "pptx" {
+            guard let helper = Bundle.main.resourceURL?.appendingPathComponent("slidev/mory-slidev"),
+                  FileManager.default.isExecutableFile(atPath: helper.path) else {
+                isExporting = false
+                let message = interfaceLocale == "en"
+                    ? "The Mory Slidev helper is missing from this application build."
+                    : "当前安装包缺少 Mory Slidev 导出组件。"
+                let error = NSError(domain: "Mory.Slidev", code: 3, userInfo: [NSLocalizedDescriptionKey: message])
+                if launchRequest.export != nil { finishCLIExport(error) }
+                else { presentError(message) }
+                return
+            }
+            let markdown = options["markdown"] as? String ?? currentMarkdown
+            let source = currentFileURL
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                do {
+                    try await Task.detached(priority: .userInitiated) {
+                        try performSlidevExport(helper: helper, markdown: markdown, source: source, destination: url)
+                    }.value
+                    isExporting = false
+                    runJavaScript("window.Mory.didExport('pptx')")
+                    finishCLIExport(nil)
+                } catch {
+                    isExporting = false
+                    if launchRequest.export != nil {
+                        finishCLIExport(error)
+                    } else if (error as NSError).domain == "Mory.Slidev", (error as NSError).code == 1 {
+                        presentError(interfaceLocale == "en"
+                            ? "Slidev export is unavailable. Install Node.js, then run: npm install -g @slidev/cli playwright-chromium"
+                            : "未找到 Slidev 导出环境。请安装 Node.js，然后运行：npm install -g @slidev/cli playwright-chromium")
+                    } else {
+                        presentError(interfaceLocale == "en" ? "Slidev export failed: \(error.localizedDescription)" : "Slidev 导出失败：\(error.localizedDescription)")
+                    }
+                }
+            }
+            return
+        }
 
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -946,7 +1071,7 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     }
 
     @objc private func showAbout() {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.3.0"
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.4.0"
         var options: [NSApplication.AboutPanelOptionKey: Any] = [
             .applicationName: "Mory",
             .applicationVersion: version,

@@ -32,6 +32,21 @@ func TestResolveExport(t *testing.T) {
 	}
 }
 
+func TestResolvePowerPointExport(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "slides.md")
+	if err := os.WriteFile(source, []byte("# Slides"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	request, err := ResolveExport(source, "PPTX", root, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.Format != "pptx" || filepath.Ext(request.Destination) != ".pptx" {
+		t.Fatalf("ResolveExport() = %#v", request)
+	}
+}
+
 func TestResolveDocumentRejectsUnsupportedFiles(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "note.rtf")
 	if err := os.WriteFile(path, []byte("text"), 0o644); err != nil {

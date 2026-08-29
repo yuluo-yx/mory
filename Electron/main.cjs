@@ -1,9 +1,12 @@
 const { app, BrowserWindow, dialog, ipcMain, Menu, shell } = require("electron");
+const nativeFS = require("node:fs");
 const fs = require("node:fs/promises");
+const { spawn } = require("node:child_process");
 const path = require("node:path");
 const { copyWorkspaceEntry, createWorkspaceDirectory, createWorkspaceDocument, createWorkspaceManager, importImage, listDirectories, listDocuments, loadDocumentAssets, moveWorkspaceEntry, readDocumentImage, readWorkspaceDocuments, relocateDocumentAssets, renameWorkspaceEntry, sanitizeSegment, workspaceEntryPath } = require("./workspaces.cjs");
 const { createThemeManager } = require("./themes.cjs");
 const { createWorkspaceWatcher } = require("./workspace-watcher.cjs");
+const { addRecentDocument, clearRecentDocuments: clearSystemRecentDocuments, listRecentDocuments } = require("./recent-documents.cjs");
 
 let mainWindow;
 let currentFilePath = null;
@@ -21,7 +24,7 @@ const workspaceWatcher = createWorkspaceWatcher({
 });
 
 const menuEnglish = {
-  "文件": "File", "新建": "New", "新建目录": "New Folder", "打开…": "Open…", "打开文件夹…": "Open Folder…", "保存": "Save", "另存为…": "Save As…", "导出": "Export", "退出": "Quit",
+  "文件": "File", "新建": "New", "新建目录": "New Folder", "打开…": "Open…", "打开文件夹…": "Open Folder…", "最近打开": "Open Recent", "无最近项目": "No Recent Items", "工作区": "Workspace", "清除菜单": "Clear Menu", "保存": "Save", "另存为…": "Save As…", "导出": "Export", "退出": "Quit",
   "编辑": "Edit", "撤销": "Undo", "重做": "Redo", "剪切": "Cut", "复制": "Copy", "粘贴": "Paste", "全选": "Select All", "查找和替换": "Find and Replace",
   "格式": "Format", "加粗": "Bold", "斜体": "Italic", "删除线": "Strikethrough", "行内代码": "Inline Code",
   "显示": "View", "显示／隐藏侧边栏": "Show/Hide Sidebar", "源代码模式": "Source Mode", "专注模式": "Focus Mode", "打字机模式": "Typewriter Mode",
@@ -42,6 +45,63 @@ function storageSidecarPath() {
   return app.isPackaged
     ? path.join(process.resourcesPath, "storage", filename)
     : path.join(__dirname, "..", ".build", "storage", filename);
+}
+
+function slidevSidecarPath() {
+  const filename = process.platform === "win32" ? "mory-slidev.exe" : "mory-slidev";
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "slidev", filename)
+    : path.join(__dirname, "..", ".build", "slidev", filename);
+}
+
+function recentDocuments() {
+  return listRecentDocuments(app, process.platform, nativeFS.existsSync);
+}
+
+function noteRecentDocument(filePath) {
+  if (addRecentDocument(app, process.platform, filePath)) buildMenu();
+}
+
+function clearRecentDocuments() {
+  clearSystemRecentDocuments(app);
+  buildMenu();
+}
+
+function runSlidevExport(request) {
+  return new Promise((resolve, reject) => {
+    const executable = slidevSidecarPath();
+    if (!nativeFS.existsSync(executable)) {
+      reject(new Error(interfaceLocale === "en"
+        ? "The Mory Slidev helper is missing from this application build."
+        : "当前安装包缺少 Mory Slidev 导出组件。"));
+      return;
+    }
+    const child = spawn(executable, [], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+    let output = "";
+    let diagnostics = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", chunk => { output = (output + chunk).slice(-262144); });
+    child.stderr.on("data", chunk => { diagnostics = (diagnostics + chunk).slice(-262144); });
+    child.on("error", reject);
+    child.on("close", code => {
+      let response;
+      try { response = JSON.parse(output.trim() || "{}"); }
+      catch { response = {}; }
+      if (code === 0 && response.ok === true) {
+        resolve();
+        return;
+      }
+      if (response.code === "slidev_unavailable") {
+        reject(new Error(interfaceLocale === "en"
+          ? "Slidev export is unavailable. Install Node.js, then run: npm install -g @slidev/cli playwright-chromium"
+          : "未找到 Slidev 导出环境。请安装 Node.js，然后运行：npm install -g @slidev/cli playwright-chromium"));
+        return;
+      }
+      reject(new Error(response.error || diagnostics.trim() || `Slidev helper exited with code ${code}`));
+    });
+    child.stdin.end(JSON.stringify(request));
+  });
 }
 
 function documentArgument(values, workingDirectory = process.cwd()) {
@@ -75,6 +135,7 @@ async function loadFile(filePath) {
     const document = { markdown, path: filePath, name: path.basename(filePath), assets };
     if (editorReady) await sendJSON("window.Mory.openDocument", document);
     else pendingDocument = document;
+    noteRecentDocument(filePath);
   } catch (error) {
     await dialog.showMessageBox(mainWindow, {
       type: "error",
@@ -100,9 +161,16 @@ async function openDocument() {
 async function openFolder() {
   const result = await dialog.showOpenDialog(mainWindow, { properties: ["openDirectory"] });
   if (result.canceled || !result.filePaths[0]) return;
+  await openWorkspaceFolder(result.filePaths[0]);
+}
+
+async function openWorkspaceFolder(folderPath) {
   try {
-    await workspaceManager.save({ name: path.basename(result.filePaths[0]) || "本地工作区", provider: "local", localPath: result.filePaths[0] });
+    const info = await fs.stat(folderPath);
+    if (!info.isDirectory()) throw new Error("工作区目录不存在");
+    await workspaceManager.save({ name: path.basename(folderPath) || "本地工作区", provider: "local", localPath: folderPath });
     await refreshWorkspace();
+    noteRecentDocument(folderPath);
   } catch (error) {
     await dialog.showMessageBox(mainWindow, { type: "error", title: "Mory", message: "无法读取文件夹", detail: error.message });
   }
@@ -143,6 +211,7 @@ async function writeDocument(filePath, sourceMarkdown) {
     const assets = await loadDocumentAssets(filePath, markdown);
     await sendJSON("window.Mory.didSave", { path: filePath, name: path.basename(filePath), markdown, assets });
     await refreshWorkspace();
+    noteRecentDocument(filePath);
   } catch (error) {
     await dialog.showMessageBox(mainWindow, { type: "error", title: "Mory", message: "无法保存文件", detail: error.message });
   }
@@ -348,7 +417,7 @@ async function createExportView(html, width = 900) {
 async function exportRendered(options = {}) {
   const format = options.format || "html";
   const extension = format === "jpeg" ? "jpg" : (format === "mindmap" ? "html" : format);
-  const filterNames = { html: "HTML", mindmap: "Mind Map", pdf: "PDF", png: "PNG", jpeg: "JPEG" };
+  const filterNames = { html: "HTML", mindmap: "Mind Map", pdf: "PDF", png: "PNG", jpeg: "JPEG", pptx: "PowerPoint" };
   const result = await dialog.showSaveDialog(mainWindow, {
     defaultPath: `${currentFilePath ? path.basename(currentFilePath, path.extname(currentFilePath)) : "未命名"}.${extension}`,
     filters: [{ name: filterNames[format] || format.toUpperCase(), extensions: [extension] }]
@@ -356,6 +425,15 @@ async function exportRendered(options = {}) {
   if (result.canceled || !result.filePath) return;
   let exportView;
   try {
+    if (format === "pptx") {
+      await runSlidevExport({
+        markdown: typeof options.markdown === "string" ? options.markdown : await getMarkdown(),
+        sourcePath: currentFilePath || "",
+        destination: result.filePath
+      });
+      await runEditor(`window.Mory.didExport(${JSON.stringify(format)})`);
+      return;
+    }
     const html = await renderExportHTML(options);
     if (format === "html" || format === "mindmap") {
       await fs.writeFile(result.filePath, html, "utf8");
@@ -395,6 +473,7 @@ function newDocument() {
 }
 
 function buildMenu() {
+  const recent = recentDocuments();
   const template = [
     {
       label: "文件",
@@ -403,6 +482,22 @@ function buildMenu() {
         { label: "新建目录", accelerator: "CmdOrCtrl+Shift+N", click: () => runEditor("window.Mory.newFolder()") },
         { label: "打开…", accelerator: "CmdOrCtrl+O", click: openDocument },
         { label: "打开文件夹…", accelerator: "CmdOrCtrl+Shift+O", click: openFolder },
+        {
+          label: "最近打开",
+          submenu: recent.length === 0
+            ? [{ label: "无最近项目", enabled: false }]
+            : [
+                ...recent.map(filePath => {
+                  const workspace = nativeFS.statSync(filePath).isDirectory();
+                  return {
+                    label: workspace ? `${path.basename(filePath)} — ${interfaceLocale === "en" ? "Workspace" : "工作区"}` : `${path.basename(filePath)} — ${path.basename(path.dirname(filePath))}`,
+                    click: () => workspace ? openWorkspaceFolder(filePath) : loadFile(filePath)
+                  };
+                }),
+                { type: "separator" },
+                { label: "清除菜单", click: clearRecentDocuments }
+              ]
+        },
         { type: "separator" },
         { label: "保存", accelerator: "CmdOrCtrl+S", click: saveDocument },
         { label: "另存为…", accelerator: "CmdOrCtrl+Shift+S", click: saveAs },
@@ -414,6 +509,7 @@ function buildMenu() {
             { label: "HTML…", click: () => exportRendered({ format: "html", theme: "current", background: true }) },
             { label: "PNG…", click: () => exportRendered({ format: "png", theme: "current", width: 900, background: true }) },
             { label: "JPEG…", click: () => exportRendered({ format: "jpeg", theme: "current", width: 900, background: true }) },
+            { label: "PowerPoint (Slidev)…", click: () => exportRendered({ format: "pptx" }) },
             { label: "Mind Map…", click: () => exportRendered({ format: "mindmap" }) }
           ]
         },

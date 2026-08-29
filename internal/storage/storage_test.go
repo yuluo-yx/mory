@@ -22,6 +22,9 @@ func TestConfigValidate(t *testing.T) {
 		{name: "local", config: Config{Provider: ProviderLocal}},
 		{name: "github", config: Config{Provider: ProviderGitHub, Repository: "owner/repo", Token: "token"}},
 		{name: "invalid github", config: Config{Provider: ProviderGitHub}, wantErr: true},
+		{name: "github empty owner", config: Config{Provider: ProviderGitHub, Repository: "/repo", Token: "token"}, wantErr: true},
+		{name: "github empty repository", config: Config{Provider: ProviderGitHub, Repository: "owner/", Token: "token"}, wantErr: true},
+		{name: "github nested repository", config: Config{Provider: ProviderGitHub, Repository: "owner/repo/path", Token: "token"}, wantErr: true},
 		{name: "s3", config: objectConfig(ProviderS3)},
 		{name: "s4", config: objectConfig(ProviderS4)},
 		{name: "oss", config: objectConfig(ProviderOSS)},
@@ -96,14 +99,14 @@ func TestGitHubPullAndPush(t *testing.T) {
 		status := http.StatusOK
 		body := ""
 		switch {
-		case request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/git/trees/main"):
-			body = `{"sha":"tree-pull","tree":[{"path":"docs/article.md","type":"blob","sha":"remote-blob"}]}`
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/owner/repo":
+			body = `{"full_name":"owner/repo","default_branch":"main"}`
+		case request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/git/trees/commit-old") && request.URL.Query().Get("recursive") == "1":
+			body = `{"sha":"tree-old","tree":[{"path":"docs/article.md","type":"blob","sha":"remote-blob"}]}`
 		case request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/git/blobs/remote-blob"):
 			body = string(remoteContent)
 		case request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/git/ref/heads/main"):
 			body = `{"ref":"refs/heads/main","object":{"type":"commit","sha":"commit-old"}}`
-		case request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/git/trees/commit-old"):
-			body = `{"sha":"tree-old","tree":[{"path":"docs/article.md","type":"blob","sha":"remote-blob"}]}`
 		case request.Method == http.MethodPost && strings.HasSuffix(request.URL.Path, "/git/blobs"):
 			status = http.StatusCreated
 			body = `{"sha":"blob-new"}`
@@ -171,6 +174,8 @@ func TestGitHubPushSkipsUnchangedFiles(t *testing.T) {
 	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		body := ""
 		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/owner/repo":
+			body = `{"full_name":"owner/repo","default_branch":"main"}`
 		case request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/git/ref/heads/main"):
 			body = `{"object":{"type":"commit","sha":"commit-old"}}`
 		case request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/git/trees/commit-old"):
@@ -191,6 +196,74 @@ func TestGitHubPushSkipsUnchangedFiles(t *testing.T) {
 	}
 	if summary.Files != 0 || mutatingRequests != 0 {
 		t.Fatalf("unchanged push = %#v, mutating requests = %d", summary, mutatingRequests)
+	}
+}
+
+func TestGitHubPullUsesRepositoryDefaultBranch(t *testing.T) {
+	requests := make(map[string]int)
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		requests[request.Method+" "+request.URL.Path]++
+		body := ""
+		status := http.StatusOK
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/owner/repo":
+			body = `{"full_name":"owner/repo","default_branch":"trunk"}`
+		case request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/git/ref/heads/trunk"):
+			body = `{"ref":"refs/heads/trunk","object":{"type":"commit","sha":"trunk-commit"}}`
+		case request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/git/trees/trunk-commit"):
+			body = `{"sha":"tree","tree":[]}`
+		default:
+			status = http.StatusNotFound
+			body = `{"message":"Not Found"}`
+		}
+		return &http.Response{StatusCode: status, Status: http.StatusText(status), Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: request}, nil
+	})}
+	backend, err := newGitHubBackend(Config{Provider: ProviderGitHub, Repository: "owner/repo", Token: "token", Endpoint: "https://api.example.test"}, client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := backend.Pull(context.Background(), t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	if requests["GET /repos/owner/repo/git/ref/heads/trunk"] != 1 || requests["GET /repos/owner/repo/git/trees/trunk-commit"] != 1 {
+		t.Fatalf("default branch was not resolved: %#v", requests)
+	}
+}
+
+func TestGitHubPullReportsInaccessibleRepository(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusNotFound, Status: "Not Found", Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"message":"Not Found"}`)), Request: request}, nil
+	})}
+	backend, err := newGitHubBackend(Config{Provider: ProviderGitHub, Repository: "owner/missing", Token: "secret-token", Endpoint: "https://api.example.test"}, client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = backend.Pull(context.Background(), t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), `github repository "owner/missing" was not found or the token cannot access it`) {
+		t.Fatalf("unexpected repository error: %v", err)
+	}
+	if strings.Contains(err.Error(), "secret-token") {
+		t.Fatalf("repository error leaked the token: %v", err)
+	}
+}
+
+func TestGitHubPullReportsMissingConfiguredBranch(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		status := http.StatusOK
+		body := `{"full_name":"owner/repo","default_branch":"main"}`
+		if strings.HasSuffix(request.URL.Path, "/git/ref/heads/missing") {
+			status = http.StatusNotFound
+			body = `{"message":"Not Found"}`
+		}
+		return &http.Response{StatusCode: status, Status: http.StatusText(status), Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: request}, nil
+	})}
+	backend, err := newGitHubBackend(Config{Provider: ProviderGitHub, Repository: "owner/repo", Branch: "missing", Token: "token", Endpoint: "https://api.example.test"}, client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = backend.Pull(context.Background(), t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), `github branch "missing" was not found in repository "owner/repo"`) {
+		t.Fatalf("unexpected branch error: %v", err)
 	}
 }
 

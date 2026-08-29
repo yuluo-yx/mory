@@ -22,6 +22,8 @@ type ExportRequest struct {
 	Width       int    `json:"width"`
 	Background  bool   `json:"background"`
 	HTML        string `json:"html"`
+	Markdown    string `json:"markdown"`
+	SourcePath  string `json:"sourcePath,omitempty"`
 	Name        string `json:"name"`
 	Destination string `json:"destination,omitempty"`
 }
@@ -45,6 +47,7 @@ type Platform interface {
 	Evaluate(script string)
 	SetTitle(title string)
 	SetLocale(locale string)
+	NoteRecentDocument(path string)
 	ToggleMaximise()
 	ShowAbout(locale string)
 	Export(ExportRequest) error
@@ -191,6 +194,12 @@ func (host *Host) Send(payload map[string]any) error {
 			request.Name = strings.TrimSuffix(host.currentName, filepath.Ext(host.currentName))
 			host.mu.RUnlock()
 		}
+		host.mu.RLock()
+		request.SourcePath = host.currentPath
+		if request.Markdown == "" {
+			request.Markdown = host.currentMarkdown
+		}
+		host.mu.RUnlock()
 		host.evaluate("window.Mory.exportStarted", request.Format)
 		if err := host.platform.Export(request); err != nil {
 			host.completeStartup(err)
@@ -386,6 +395,29 @@ func (host *Host) OpenExternalFile(path string) error {
 	return host.openFile(path, false)
 }
 
+// OpenExternalFolder activates a workspace selected outside the folder picker.
+func (host *Host) OpenExternalFolder(path string) error {
+	if strings.TrimSpace(path) == "" {
+		return errors.New("工作区路径为空")
+	}
+	resolved, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("解析工作区路径：%w", err)
+	}
+	info, err := os.Stat(resolved)
+	if err != nil || !info.IsDir() {
+		return errors.New("工作区目录不存在")
+	}
+	workspace := Workspace{LocalPath: resolved}
+	workspace.Provider = "local"
+	workspace.Name = filepath.Base(resolved)
+	if _, err := host.workspaces.save(workspace); err != nil {
+		return err
+	}
+	host.platform.NoteRecentDocument(resolved)
+	return host.refreshWorkspace()
+}
+
 // ShowAbout displays platform-native application metadata in the current interface language.
 func (host *Host) ShowAbout() {
 	host.mu.RLock()
@@ -418,6 +450,7 @@ func (host *Host) openFile(path string, requireWorkspace bool) error {
 	host.mu.Unlock()
 	host.platform.SetTitle(filepath.Base(resolved) + " — Mory")
 	host.evaluate("window.Mory.openDocument", document)
+	host.platform.NoteRecentDocument(resolved)
 	return nil
 }
 
@@ -436,13 +469,7 @@ func (host *Host) OpenFolder() error {
 	if err != nil || path == "" {
 		return err
 	}
-	workspace := Workspace{LocalPath: path}
-	workspace.Provider = "local"
-	workspace.Name = filepath.Base(path)
-	if _, err := host.workspaces.save(workspace); err != nil {
-		return err
-	}
-	return host.refreshWorkspace()
+	return host.OpenExternalFolder(path)
 }
 
 // NewDocument clears the active host path and asks the frontend to create a standalone draft.
