@@ -7,6 +7,7 @@ final class MacWebSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     private var window: NSWindow!
     private var webView: WKWebView!
     private var exportWebView: WKWebView?
+    private var exportBaseURL: URL?
     private var errors: [String] = []
     private var started = false
 
@@ -51,6 +52,7 @@ final class MacWebSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         let defaultPath = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
             .appendingPathComponent("Sources/Mory/Web/index.html").path
         let source = URL(fileURLWithPath: ProcessInfo.processInfo.environment["MORY_WEB_INDEX"] ?? defaultPath)
+        exportBaseURL = source.deletingLastPathComponent().appendingPathComponent("themes", isDirectory: true)
         webView.loadFileURL(source, allowingReadAccessTo: source.deletingLastPathComponent())
     }
 
@@ -144,13 +146,15 @@ final class MacWebSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                         window.Mory.loadMarkdown(`# Export regression\\n\\n${sections.join('\\n\\n')}`);
                         return await window.Mory.exportDocument(options);
                         """,
-                        arguments: ["options": ["format": "html", "theme": "current", "paper": "A4", "width": 900, "background": true]],
+                        arguments: ["options": ["format": "html", "theme": "lapis-cv", "paper": "A4", "width": 900, "background": true, "inlineThemeAssets": false]],
                         in: nil,
                         contentWorld: .page
                     )
                     guard let html = exportValue as? String,
                           html.hasPrefix("<!doctype html>"),
-                          html.contains("data-doc-theme=\"github\"") else {
+                          html.contains("data-doc-theme=\"lapis-cv\""),
+                          html.contains("../fonts/SourceHanSansCN-Regular.ttf"),
+                          !html.contains("data:font/ttf;base64,") else {
                         self.finish(failure: "macOS asynchronous HTML export is invalid: \(String(describing: exportValue))")
                         return
                     }
@@ -158,7 +162,7 @@ final class MacWebSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                     let renderer = WKWebView(frame: NSRect(x: 0, y: 0, width: 900, height: 900))
                     renderer.navigationDelegate = self
                     self.exportWebView = renderer
-                    renderer.loadHTMLString(html, baseURL: nil)
+                    renderer.loadHTMLString(html, baseURL: self.exportBaseURL)
                 } catch {
                     self.finish(failure: "macOS asynchronous export JavaScript failed: \(error.localizedDescription); Renderer errors: \(self.errors.joined(separator: " | "))")
                 }

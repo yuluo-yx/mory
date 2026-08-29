@@ -27,6 +27,8 @@ test("desktop hosts defer operating-system document opens until their editors ar
   assert.match(electron, /pendingLaunchPath/);
   assert.match(macOS, /pendingOpenURL/);
   assert.match(macOS, /guard workspaceManager != nil, window != nil/);
+  assert.match(macOS, /sendJSON\(function: "window\.Mory\.openDocument", value: pendingDocument\) \{ \[weak self\] error in/);
+  assert.match(macOS, /startCLIExportIfNeeded\(\)[\s\S]*return/);
   assert.match(windows, /SingleInstanceLock/);
   assert.match(windows, /OpenExternalFile/);
 });
@@ -154,6 +156,10 @@ test("macOS PDF export uses asynchronous WebKit generation and background pagina
   assert.match(source, /webView\.createPDF\(/);
   assert.match(source, /Task\.detached\(priority: \.userInitiated\)/);
   assert.match(source, /PDFPaginator\.write\(/);
+  assert.match(source, /javaScriptOptions\["inlineThemeAssets"\] = false/);
+  assert.match(source, /inlineBundledThemeFonts\(in: html\)/);
+  assert.match(source, /renderer\.start\(html: html, baseURL: bundledWebResourceURL\("themes"\)\)/);
+  assert.match(source, /await document\.fonts\.ready/);
   assert.match(paginator, /context\.beginPDFPage/);
   assert.match(paginator, /context\.drawPDFPage/);
   assert.doesNotMatch(source, /operation\.run\(\)/);
@@ -284,7 +290,7 @@ test("the macOS installer uses a branded drag-to-Applications layout", () => {
   assert.equal(background.readUInt32BE(20), 512);
 });
 
-test("desktop release metadata stays aligned at version 0.4.0", () => {
+test("desktop release metadata stays aligned at version 0.4.1", () => {
   const packageMetadata = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
   const lockMetadata = JSON.parse(fs.readFileSync(path.join(root, "package-lock.json"), "utf8"));
   const windowsMetadata = JSON.parse(fs.readFileSync(path.join(root, "cmd", "mory-windows", "wails.json"), "utf8"));
@@ -292,14 +298,14 @@ test("desktop release metadata stays aligned at version 0.4.0", () => {
   const macHost = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
   const windowsHost = fs.readFileSync(path.join(root, "cmd", "mory-windows", "main_windows.go"), "utf8");
 
-  assert.equal(packageMetadata.version, "0.4.0");
-  assert.equal(lockMetadata.version, "0.4.0");
-  assert.equal(lockMetadata.packages[""].version, "0.4.0");
-  assert.equal(windowsMetadata.info.productVersion, "0.4.0");
-  assert.match(macMetadata, /CFBundleShortVersionString<\/key><string>0\.4\.0<\/string>/);
-  assert.match(macMetadata, /CFBundleVersion<\/key><string>4<\/string>/);
-  assert.match(macHost, /\?\? "0\.4\.0"/);
-  assert.match(windowsHost, /const appVersion = "0\.4\.0"/);
+  assert.equal(packageMetadata.version, "0.4.1");
+  assert.equal(lockMetadata.version, "0.4.1");
+  assert.equal(lockMetadata.packages[""].version, "0.4.1");
+  assert.equal(windowsMetadata.info.productVersion, "0.4.1");
+  assert.match(macMetadata, /CFBundleShortVersionString<\/key><string>0\.4\.1<\/string>/);
+  assert.match(macMetadata, /CFBundleVersion<\/key><string>5<\/string>/);
+  assert.match(macHost, /\?\? "0\.4\.1"/);
+  assert.match(windowsHost, /const appVersion = "0\.4\.1"/);
 });
 
 test("the knowledge graph captures wheel input on HTML and normalizes it with the D3 formula", () => {
@@ -343,7 +349,9 @@ test("GitHub remains the default while resume and handwriting themes bundle thei
   assert.match(web, /documentTheme:\s*"github"/);
   assert.match(web, /mory\.documentThemeDefaultVersion", "github-v1"/);
   assert.match(web, /const bundledThemeFonts =/);
-  assert.match(web, /function exportThemeCSS\(theme\)/);
+  assert.match(web, /function exportThemeCSS\(theme, \{ inlineAssets = true \} = \{\}\)/);
+  assert.match(web, /inlineAssets: options\.inlineThemeAssets !== false/);
+  assert.match(web, /if \(nativeMacHost\) return payload/);
   assert.match(web, /Mory LapisCV Icon/);
   assert.match(web, /Mory LXGW WenKai/);
   assert.doesNotMatch(yuluo, /Segoe Print/);

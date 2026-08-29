@@ -4112,8 +4112,9 @@ async function bundledThemeAssetDataURL(filename) {
   return dataURL;
 }
 
-async function exportThemeCSS(theme) {
+async function exportThemeCSS(theme, { inlineAssets = true } = {}) {
   let css = await readThemeCSS(theme);
+  if (!inlineAssets) return css;
   for (const filename of bundledThemeAssets[theme] || []) {
     const dataURL = await bundledThemeAssetDataURL(filename);
     css = css.replaceAll(`../fonts/${filename}`, dataURL);
@@ -4236,7 +4237,7 @@ async function exportDocument(options = {}) {
   const title = $("#document-title").value || localized("未命名");
   if (options.format === "mindmap") return mindMapHTML(state.markdown, title, locale());
   const theme = options.theme && options.theme !== "current" ? options.theme : state.documentTheme;
-  const themeCSS = await exportThemeCSS(theme);
+  const themeCSS = await exportThemeCSS(theme, { inlineAssets: options.inlineThemeAssets !== false });
   const backgroundOverride = options.background === false ? ".editor-scroll{background:#fff!important}" : "";
   const exportRoot = document.createElement("article");
   exportRoot.className = "write";
@@ -4260,6 +4261,7 @@ async function exportToHost(options = {}) {
 async function hostExportOptions(options) {
   const payload = { ...options, name: $("#document-title").value || "未命名" };
   if (options.format === "pptx") return { ...payload, markdown: state.markdown };
+  if (nativeMacHost) return payload;
   return { ...payload, html: await exportDocument(options) };
 }
 

@@ -8,6 +8,36 @@ private struct SlidevSidecarResponse: Decodable, Sendable {
     let error: String?
 }
 
+private let bundledThemeFontNames = [
+    "LXGWWenKai-Regular.ttf",
+    "SourceHanSansCN-Regular.ttf",
+    "SourceHanSansCN-Medium.ttf",
+    "SourceHanSansCN-Bold.ttf",
+    "JetBrainsMono-Regular.ttf",
+    "LapisCV-Icon.ttf"
+]
+
+private func bundledWebResourceURL(_ subdirectory: String) -> URL? {
+    Bundle.main.resourceURL?
+        .appendingPathComponent("Web", isDirectory: true)
+        .appendingPathComponent(subdirectory, isDirectory: true)
+}
+
+private func inlineBundledThemeFonts(in html: String) throws -> String {
+    guard let fontsURL = bundledWebResourceURL("fonts") else { return html }
+    var result = html
+    for filename in bundledThemeFontNames {
+        let reference = "../fonts/\(filename)"
+        guard result.contains(reference) else { continue }
+        let data = try Data(contentsOf: fontsURL.appendingPathComponent(filename, isDirectory: false))
+        result = result.replacingOccurrences(
+            of: reference,
+            with: "data:font/ttf;base64,\(data.base64EncodedString())"
+        )
+    }
+    return result
+}
+
 private func performSlidevExport(helper: URL, markdown: String, source: URL?, destination: URL) throws {
     let process = Process()
     let input = Pipe()
@@ -65,8 +95,8 @@ private final class ExportRenderer: NSObject, WKNavigationDelegate {
         self.webView.setValue(false, forKey: "drawsBackground")
     }
 
-    func start(html: String) {
-        webView.loadHTMLString(html, baseURL: nil)
+    func start(html: String, baseURL: URL?) {
+        webView.loadHTMLString(html, baseURL: baseURL)
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
@@ -78,6 +108,23 @@ private final class ExportRenderer: NSObject, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                _ = try await webView.callAsyncJavaScript(
+                    "await document.fonts.ready; return true",
+                    arguments: [:],
+                    in: nil,
+                    contentWorld: .page
+                )
+                renderLoadedDocument()
+            } catch {
+                finish(.failure(error))
+            }
+        }
+    }
+
+    private func renderLoadedDocument() {
         if format == "pdf" {
             capturePDF()
             return
@@ -734,9 +781,11 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
             guard let self else { return }
             let value: Any?
             do {
+                var javaScriptOptions = options
+                javaScriptOptions["inlineThemeAssets"] = false
                 value = try await webView.callAsyncJavaScript(
                     "return await window.Mory.exportDocument(options)",
-                    arguments: ["options": options],
+                    arguments: ["options": javaScriptOptions],
                     in: nil,
                     contentWorld: .page
                 )
@@ -756,7 +805,8 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
 
             if format == "html" || format == "mindmap" {
                 do {
-                    try html.write(to: url, atomically: true, encoding: .utf8)
+                    let standaloneHTML = try inlineBundledThemeFonts(in: html)
+                    try standaloneHTML.write(to: url, atomically: true, encoding: .utf8)
                     isExporting = false
                     runJavaScript("window.Mory.didExport('\(format)')")
                     finishCLIExport(nil)
@@ -784,7 +834,7 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
                 }
             }
             exportRenderers.append(renderer)
-            renderer.start(html: html)
+            renderer.start(html: html, baseURL: bundledWebResourceURL("themes"))
         }
     }
 
@@ -809,11 +859,20 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         }
     }
 
-    private func sendJSON(function: String, value: Any) {
+    private func sendJSON(function: String, value: Any, completion: ((Error?) -> Void)? = nil) {
         guard let data = try? JSONSerialization.data(withJSONObject: [value]),
-              let encoded = String(data: data, encoding: .utf8) else { return }
+              let encoded = String(data: data, encoding: .utf8) else {
+            completion?(NSError(
+                domain: "Mory.JavaScript",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "The native payload could not be encoded as JSON."]
+            ))
+            return
+        }
         let argument = String(encoded.dropFirst().dropLast())
-        runJavaScript("\(function)(\(argument))")
+        webView.evaluateJavaScript("\(function)(\(argument))") { _, error in
+            completion?(error)
+        }
     }
 
     private func runJavaScript(_ source: String) {
@@ -1009,8 +1068,17 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
             editorReady = true
             if launchRequest.export == nil { refreshWorkspace() }
             if let pendingDocument {
-                sendJSON(function: "window.Mory.openDocument", value: pendingDocument)
                 self.pendingDocument = nil
+                sendJSON(function: "window.Mory.openDocument", value: pendingDocument) { [weak self] error in
+                    guard let self else { return }
+                    if let error {
+                        if launchRequest.export != nil { finishCLIExport(error) }
+                        else { presentError("无法打开文档：\(error.localizedDescription)") }
+                        return
+                    }
+                    startCLIExportIfNeeded()
+                }
+                return
             }
             startCLIExportIfNeeded()
         case "changed":
@@ -1071,7 +1139,7 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     }
 
     @objc private func showAbout() {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.4.0"
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.4.1"
         var options: [NSApplication.AboutPanelOptionKey: Any] = [
             .applicationName: "Mory",
             .applicationVersion: version,
@@ -1096,7 +1164,10 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     private func finishCLIExport(_ error: Error?) {
         guard launchRequest.export != nil else { return }
         if let error {
-            fputs("Mory export failed: \(error.localizedDescription)\n", stderr)
+            let nativeError = error as NSError
+            let javaScriptMessage = nativeError.userInfo["WKJavaScriptExceptionMessage"] as? String
+            let detail = javaScriptMessage.flatMap { $0.isEmpty ? nil : $0 } ?? nativeError.localizedDescription
+            fputs("Mory export failed: \(detail)\n", stderr)
             Darwin.exit(1)
         }
         Darwin.exit(0)
