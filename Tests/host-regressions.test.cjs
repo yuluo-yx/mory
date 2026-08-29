@@ -222,6 +222,27 @@ test("the macOS bundle declares and generates a complete multi-size ICNS icon", 
   assert.equal(iconPNG[25], 6);
 });
 
+test("the macOS installer uses a branded drag-to-Applications layout", () => {
+  const packageScript = fs.readFileSync(path.join(root, "scripts", "package-macos-release.sh"), "utf8");
+  const layoutScript = fs.readFileSync(path.join(root, "scripts", "configure-macos-dmg.applescript"), "utf8");
+  const background = fs.readFileSync(path.join(root, "assets", "dmg-background.png"));
+
+  assert.match(packageScript, /DMG_BACKGROUND=.*assets\/dmg-background\.png/);
+  assert.match(packageScript, /-srcfolder "\$STAGING_DIR"/);
+  assert.match(packageScript, /-format UDRW/);
+  assert.match(packageScript, /MOUNT_NAME="\$\(basename "\$MOUNT_DIR"\)"/);
+  assert.match(packageScript, /osascript "\$DMG_LAYOUT_SCRIPT" "\$MOUNT_NAME" "\$MOUNT_DIR"/);
+  assert.match(packageScript, /-format UDZO/);
+  assert.match(layoutScript, /set background picture of viewOptions to file "\.background:dmg-background\.png"/);
+  assert.match(layoutScript, /set position of item "Mory\.app" to \{190, 260\}/);
+  assert.match(layoutScript, /set position of item "Applications" to \{578, 260\}/);
+  assert.match(layoutScript, /set extension hidden of item "Mory\.app" to true/);
+  assert.match(packageScript, /if \[\[ ! -f "\$MOUNT_DIR\/\.DS_Store" \]\]/);
+  assert.equal(background.subarray(1, 4).toString(), "PNG");
+  assert.equal(background.readUInt32BE(16), 768);
+  assert.equal(background.readUInt32BE(20), 512);
+});
+
 test("the knowledge graph captures wheel input on HTML and normalizes it with the D3 formula", () => {
   const web = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "app.js"), "utf8");
   assert.match(web, /#graph-canvas"\)\.addEventListener\("wheel", handleGraphWheel, \{ passive: false \}\)/);
