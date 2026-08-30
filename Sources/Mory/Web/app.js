@@ -4102,11 +4102,14 @@ async function bundledThemeAssetDataURL(filename) {
   const response = await fetch(new URL(`fonts/${filename}`, import.meta.url));
   if (!response.ok) throw new Error(String(response.status));
   const blob = await response.blob();
+  // Windows WebView2 may expose local TTF files without a MIME type. Normalize
+  // it so standalone exports have the same data URL on every desktop host.
+  const exportBlob = blob.type === "font/ttf" ? blob : new Blob([blob], { type: "font/ttf" });
   const dataURL = await new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.addEventListener("load", () => resolve(String(reader.result || "")), { once: true });
     reader.addEventListener("error", () => reject(reader.error || new Error("Font asset could not be read")), { once: true });
-    reader.readAsDataURL(blob);
+    reader.readAsDataURL(exportBlob);
   });
   bundledThemeAssetData.set(filename, dataURL);
   return dataURL;

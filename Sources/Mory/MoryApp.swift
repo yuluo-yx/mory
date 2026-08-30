@@ -1139,7 +1139,7 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     }
 
     @objc private func showAbout() {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.4.1"
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.4.2"
         var options: [NSApplication.AboutPanelOptionKey: Any] = [
             .applicationName: "Mory",
             .applicationVersion: version,

@@ -1,6 +1,6 @@
 {
   "name": "mory-markdown-editor",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "author": "Mory Contributors",
   "private": true,
   "description": "A cross-platform Markdown editor combining native desktop hosts with a shared web editor",

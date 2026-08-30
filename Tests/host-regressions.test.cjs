@@ -290,7 +290,7 @@ test("the macOS installer uses a branded drag-to-Applications layout", () => {
   assert.equal(background.readUInt32BE(20), 512);
 });
 
-test("desktop release metadata stays aligned at version 0.4.1", () => {
+test("desktop release metadata stays aligned at version 0.4.2", () => {
   const packageMetadata = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
   const lockMetadata = JSON.parse(fs.readFileSync(path.join(root, "package-lock.json"), "utf8"));
   const windowsMetadata = JSON.parse(fs.readFileSync(path.join(root, "cmd", "mory-windows", "wails.json"), "utf8"));
@@ -298,14 +298,14 @@ test("desktop release metadata stays aligned at version 0.4.1", () => {
   const macHost = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
   const windowsHost = fs.readFileSync(path.join(root, "cmd", "mory-windows", "main_windows.go"), "utf8");
 
-  assert.equal(packageMetadata.version, "0.4.1");
-  assert.equal(lockMetadata.version, "0.4.1");
-  assert.equal(lockMetadata.packages[""].version, "0.4.1");
-  assert.equal(windowsMetadata.info.productVersion, "0.4.1");
-  assert.match(macMetadata, /CFBundleShortVersionString<\/key><string>0\.4\.1<\/string>/);
-  assert.match(macMetadata, /CFBundleVersion<\/key><string>5<\/string>/);
-  assert.match(macHost, /\?\? "0\.4\.1"/);
-  assert.match(windowsHost, /const appVersion = "0\.4\.1"/);
+  assert.equal(packageMetadata.version, "0.4.2");
+  assert.equal(lockMetadata.version, "0.4.2");
+  assert.equal(lockMetadata.packages[""].version, "0.4.2");
+  assert.equal(windowsMetadata.info.productVersion, "0.4.2");
+  assert.match(macMetadata, /CFBundleShortVersionString<\/key><string>0\.4\.2<\/string>/);
+  assert.match(macMetadata, /CFBundleVersion<\/key><string>6<\/string>/);
+  assert.match(macHost, /\?\? "0\.4\.2"/);
+  assert.match(windowsHost, /const appVersion = "0\.4\.2"/);
 });
 
 test("release CI uses the module toolchain and can update an existing release", () => {
@@ -314,6 +314,13 @@ test("release CI uses the module toolchain and can update an existing release", 
   assert.match(workflow, /if gh release view "\$RELEASE_TAG"/);
   assert.match(workflow, /gh release upload "\$RELEASE_TAG" release-assets\/\* --clobber/);
   assert.match(workflow, /gh release edit "\$RELEASE_TAG" --title "Mory \$\{package_version\}" --latest/);
+});
+
+test("bundled fonts use a stable MIME type in standalone exports", () => {
+  const web = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "app.js"), "utf8");
+
+  assert.match(web, /new Blob\(\[blob\], \{ type: "font\/ttf" \}\)/);
+  assert.match(web, /reader\.readAsDataURL\(exportBlob\)/);
 });
 
 test("the knowledge graph captures wheel input on HTML and normalizes it with the D3 formula", () => {
