@@ -308,6 +308,14 @@ test("desktop release metadata stays aligned at version 0.4.1", () => {
   assert.match(windowsHost, /const appVersion = "0\.4\.1"/);
 });
 
+test("release CI uses the module toolchain and can update an existing release", () => {
+  const workflow = fs.readFileSync(path.join(root, ".github", "workflows", "build-binaries.yml"), "utf8");
+  assert.equal((workflow.match(/go-version: "1\.26\.6"/g) || []).length, 2);
+  assert.match(workflow, /if gh release view "\$RELEASE_TAG"/);
+  assert.match(workflow, /gh release upload "\$RELEASE_TAG" release-assets\/\* --clobber/);
+  assert.match(workflow, /gh release edit "\$RELEASE_TAG" --title "Mory \$\{package_version\}" --latest/);
+});
+
 test("the knowledge graph captures wheel input on HTML and normalizes it with the D3 formula", () => {
   const web = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "app.js"), "utf8");
   assert.match(web, /#graph-canvas"\)\.addEventListener\("wheel", handleGraphWheel, \{ passive: false \}\)/);
