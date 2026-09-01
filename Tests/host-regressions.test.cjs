@@ -111,14 +111,28 @@ test("desktop hosts open modified-click web links outside the editor", () => {
   assert.match(web, /workspaceFileForLink\(href\)/);
 });
 
-test("macOS and Windows save drafts into the active workspace when possible", () => {
+test("desktop hosts ask where new drafts should be saved", () => {
   const electron = fs.readFileSync(path.join(root, "Electron", "main.cjs"), "utf8");
   const macOS = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
-  assert.match(electron, /workspaceManager\?\.active\(\)\?\.isImplicit !== true/);
+  const windows = fs.readFileSync(path.join(root, "internal", "windowshost", "host.go"), "utf8");
+  assert.match(electron, /Where would you like to save this new document\?/);
+  assert.match(electron, /Current Workspace/);
   assert.match(electron, /availableDocumentPath\(workspaceManager\.activeRoot\(\), suggestedDocumentName\(markdown\)\)/);
-  assert.match(electron, /else await saveAs\(\)/);
   assert.match(macOS, /workspaceManager\.active\.isImplicit != true else \{ saveDocumentAs\(\); return \}/);
+  assert.match(macOS, /alert\.addButton\(withTitle: english \? "Current Workspace"/);
   assert.match(macOS, /availableDocumentURL\(markdown: markdown\)/);
+  assert.match(windows, /ChooseDraftSaveDestination/);
+  assert.match(windows, /case "workspace":/);
+});
+
+test("desktop edit menus delegate undo and redo to the editor history", () => {
+  const electron = fs.readFileSync(path.join(root, "Electron", "main.cjs"), "utf8");
+  const macOS = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
+  const windows = fs.readFileSync(path.join(root, "cmd", "mory-windows", "main_windows.go"), "utf8");
+  for (const source of [electron, macOS, windows]) {
+    assert.match(source, /window\.Mory\.undo\(\)/);
+    assert.match(source, /window\.Mory\.redo\(\)/);
+  }
 });
 
 test("both desktop hosts provide document actions, image previews, and theme-folder selection", () => {
@@ -132,6 +146,7 @@ test("both desktop hosts provide document actions, image previews, and theme-fol
   assert.match(web, /showFileContextMenu/);
   assert.match(web, /previewDocumentImage/);
   assert.match(web, /firstLevelHeading/);
+  assert.match(web, /documentName: documentHostName\(activeDoc\)/);
 });
 
 test("all three hosts share create, copy, move, rename, and delete contracts", () => {
@@ -350,6 +365,9 @@ test("tables add and delete the current row or column and support Typora-style s
   assert.match(web, /\["delete-row", "\u5220\u9664\u884C", deleteTableRow\]/);
   assert.match(web, /\["delete-column", "\u5220\u9664\u5217", deleteTableColumn\]/);
   assert.match(web, /command && event\.shiftKey && event\.key === "Backspace"/);
+  assert.match(web, /event\.key === "Tab" && selectedTable && tableCell/);
+  assert.match(web, /function beginTableResize\(event, table, column\)/);
+  assert.match(web, /className = "table-resize-handle"/);
 });
 
 test("GitHub remains the default while resume and handwriting themes bundle their fonts", () => {

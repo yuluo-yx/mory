@@ -229,7 +229,11 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width:
 .write li { margin: .24em 0; }
 .write hr { margin: 2.2em 0; border: 0; border-top: 1px solid var(--line); }
 .write table { width: 100%; margin: 1.2em 0; border-collapse: collapse; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; font-size: .88em; }
-.write th, .write td { min-width: 80px; padding: 7px 10px; border: 1px solid var(--line); text-align: left; }
+.write th, .write td { position: relative; min-width: 48px; padding: 7px 10px; border: 1px solid var(--line); text-align: left; }
+.write .table-resize-handle { position: absolute; z-index: 2; top: -1px; right: -5px; bottom: -1px; width: 10px; cursor: col-resize; user-select: none; touch-action: none; }
+.write .table-resize-handle::after { content: ""; position: absolute; top: 0; bottom: 0; left: 4px; width: 2px; background: transparent; transition: background-color .12s ease; }
+.write .table-resize-handle:hover::after, .write .table-resize-handle:focus-visible::after, body.is-resizing-table .write .table-resize-handle::after { background: var(--accent); }
+body.is-resizing-table { cursor: col-resize; user-select: none; }
 .write th { background: var(--code-bg); font-weight: 600; }
 .write table:focus-within { outline: 2px solid color-mix(in srgb, var(--accent) 24%, transparent); outline-offset: 2px; }
 .write .table-tools { width: max-content; display: flex; gap: 3px; margin: calc(-1.2em + 5px) 0 1.2em auto; padding: 3px; border: 1px solid var(--line-soft); border-radius: 5px; background: var(--surface); box-shadow: 0 4px 14px rgba(0,0,0,.08); opacity: .38; transition: opacity .14s ease; }

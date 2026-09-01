@@ -12,21 +12,23 @@ import (
 )
 
 type fakePlatform struct {
-	mu              sync.Mutex
-	chosenDirectory string
-	chosenFile      string
-	savePath        string
-	confirmed       bool
-	scripts         []string
-	titles          []string
-	locales         []string
-	exports         []ExportRequest
-	maximised       int
-	aboutLocales    []string
-	revealed        []string
-	opened          []string
-	urls            []string
-	recent          []string
+	mu               sync.Mutex
+	chosenDirectory  string
+	chosenFile       string
+	savePath         string
+	draftDestination string
+	draftPrompts     int
+	confirmed        bool
+	scripts          []string
+	titles           []string
+	locales          []string
+	exports          []ExportRequest
+	maximised        int
+	aboutLocales     []string
+	revealed         []string
+	opened           []string
+	urls             []string
+	recent           []string
 }
 
 func (platform *fakePlatform) ChooseDirectory(string) (string, error) {
@@ -37,6 +39,10 @@ func (platform *fakePlatform) ChooseFile(string, []string) (string, error) {
 }
 func (platform *fakePlatform) ChooseSavePath(string, []string) (string, error) {
 	return platform.savePath, nil
+}
+func (platform *fakePlatform) ChooseDraftSaveDestination(string) (string, error) {
+	platform.draftPrompts++
+	return platform.draftDestination, nil
 }
 func (platform *fakePlatform) Confirm(string, string, string) (bool, error) {
 	return platform.confirmed, nil
@@ -202,10 +208,10 @@ func TestHostProcessesFileAssociationAndCLIExportAfterReady(t *testing.T) {
 	}
 }
 
-func TestHostSavesUntitledDocumentInsideExplicitWorkspace(t *testing.T) {
+func TestHostAsksBeforeSavingUntitledDocumentInsideExplicitWorkspace(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
-	platform := &fakePlatform{}
+	platform := &fakePlatform{draftDestination: "workspace"}
 	host := New(platform, t.TempDir(), filepath.Join(t.TempDir(), "implicit"))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -226,8 +232,24 @@ func TestHostSavesUntitledDocumentInsideExplicitWorkspace(t *testing.T) {
 	if err := host.Save(); err != nil {
 		t.Fatal(err)
 	}
+	if platform.draftPrompts != 1 {
+		t.Fatalf("draft save prompts = %d, want 1", platform.draftPrompts)
+	}
 	if data, err := os.ReadFile(filepath.Join(root, "\u4E2D\u6587\u6807\u9898.md")); err != nil || string(data) != "# \u4E2D\u6587\u6807\u9898" {
 		t.Fatalf("draft was not written to the explicit workspace: %q, %v", data, err)
+	}
+
+	host.NewDocument()
+	if err := host.Send(map[string]any{"type": "changed", "markdown": "elsewhere", "name": "draft.md"}); err != nil {
+		t.Fatal(err)
+	}
+	platform.draftDestination = "elsewhere"
+	platform.savePath = filepath.Join(t.TempDir(), "elsewhere.md")
+	if err := host.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(platform.savePath); err != nil || string(data) != "elsewhere" {
+		t.Fatalf("draft was not written to the chosen location: %q, %v", data, err)
 	}
 }
 

@@ -139,6 +139,9 @@ func listDirectories(root string) ([]Directory, error) {
 		if !entry.IsDir() {
 			return nil
 		}
+		if companionAssetDirectory(path) {
+			return filepath.SkipDir
+		}
 		info, err := entry.Info()
 		if err != nil {
 			return err
@@ -155,6 +158,24 @@ func listDirectories(root string) ([]Directory, error) {
 	}
 	sort.SliceStable(directories, func(i, j int) bool { return naturalLess(directories[i].Name, directories[j].Name) })
 	return directories, nil
+}
+
+func companionAssetDirectory(directory string) bool {
+	entries, err := os.ReadDir(filepath.Dir(directory))
+	if err != nil {
+		return false
+	}
+	name := filepath.Base(directory)
+	for _, entry := range entries {
+		if entry.IsDir() || !documentExtensions[strings.ToLower(filepath.Ext(entry.Name()))] {
+			continue
+		}
+		base := sanitizeSegment(strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name())))
+		if base == name {
+			return true
+		}
+	}
+	return false
 }
 
 func listDocumentImages(documentPath string) ([]DocumentImage, error) {
@@ -201,7 +222,7 @@ func listDocumentImages(documentPath string) ([]DocumentImage, error) {
 	return images, nil
 }
 
-func loadDocument(path string) (Document, error) {
+func loadDocument(root, path string) (Document, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return Document{}, fmt.Errorf("读取文稿：%w", err)
@@ -222,14 +243,24 @@ func loadDocument(path string) (Document, error) {
 	if err != nil {
 		return Document{}, err
 	}
-	document.Assets = loadDocumentAssets(path, document.Markdown)
+	document.Assets = loadDocumentAssets(root, path, document.Markdown)
 	return document, nil
 }
 
-func loadDocumentAssets(documentPath, markdown string) map[string]string {
+func loadDocumentAssets(root, documentPath, markdown string) map[string]string {
 	assets := make(map[string]string)
+	documentDirectory := filepath.Dir(documentPath)
+	if _, err := safeDescendant(root, documentPath); err != nil {
+		root = documentDirectory
+	}
 	for _, reference := range documentImageReferences(markdown) {
-		resolved, err := safeDescendant(filepath.Dir(documentPath), filepath.FromSlash(reference))
+		base := documentDirectory
+		localReference := reference
+		if strings.HasPrefix(reference, "/") || strings.HasPrefix(reference, `\`) {
+			base = root
+			localReference = strings.TrimLeft(reference, `/\`)
+		}
+		resolved, err := safeDescendant(root, filepath.Join(base, filepath.FromSlash(localReference)))
 		if err != nil {
 			continue
 		}
@@ -416,7 +447,7 @@ func createWorkspaceDocument(root, directory, name string) (Document, error) {
 	if err := os.WriteFile(path, nil, 0o644); err != nil {
 		return Document{}, fmt.Errorf("创建文稿：%w", err)
 	}
-	return loadDocument(path)
+	return loadDocument(root, path)
 }
 
 func copyWorkspaceEntry(root, source, destination string) (WorkspaceMutation, error) {
@@ -709,7 +740,7 @@ func hiddenWorkspaceEntry(name string) bool {
 
 func hasRemoteScheme(reference string) bool {
 	lower := strings.ToLower(reference)
-	return strings.HasPrefix(lower, "data:") || strings.HasPrefix(lower, "http:") || strings.HasPrefix(lower, "https:") || strings.HasPrefix(lower, "file:") || strings.HasPrefix(reference, "/")
+	return strings.HasPrefix(lower, "data:") || strings.HasPrefix(lower, "http:") || strings.HasPrefix(lower, "https:") || strings.HasPrefix(lower, "file:") || strings.HasPrefix(reference, "//")
 }
 
 func dataURL(path string, data []byte) string {

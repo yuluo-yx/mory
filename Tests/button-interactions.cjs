@@ -187,6 +187,7 @@ app.whenReady().then(async () => {
             return Promise.resolve({ name: '\u79FB\u52A8\u9879', path: (args.destinationPath || '/opened') + '/\u79FB\u52A8\u9879.md', sourcePath: args.path, isDirectory: !args.path.endsWith('.md') });
           }
           if (method === 'renameWorkspaceEntry') return Promise.resolve({ name: args.name, path: args.path.replace(/[^/]+$/, args.name), sourcePath: args.path, isDirectory: !args.path.endsWith('.md') });
+          if (method === 'importImage') return Promise.resolve({ relative: '\u6587\u7AE0/cover.png', dataURL: 'data:image/png;base64,iVBORw0KGgo=' });
           if (method === 'documentAssets') return Promise.resolve({ '\u6587\u7AE0/late.svg': 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjwvc3ZnPg==', './photo_1.svg': 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxIDEiPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9IiM0ODcwYWQiLz48L3N2Zz4=' });
           if (method === 'openExternal') {
             window.__openedExternalURL = args.url;
@@ -921,6 +922,25 @@ app.whenReady().then(async () => {
     await click(window, ".table-tools [data-table-action='delete-row']");
     await click(window, ".table-tools [data-table-action='delete-column']");
     await expect(window, "table tools delete the current row and column", "document.querySelectorAll('#write > table tbody tr').length === 1 && document.querySelectorAll('#write > table thead th').length === 2 && window.Mory.getMarkdown().includes('| --- | --- |') && !window.Mory.getMarkdown().includes('\u5220\u9664\u884C')");
+    await inspect(window, `(() => {
+      const cells = [...document.querySelectorAll('#write > table tbody td')];
+      const range = document.createRange();
+      range.selectNodeContents(cells[0]);
+      range.collapse(true);
+      getSelection().removeAllRanges();
+      getSelection().addRange(range);
+      cells[0].dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Tab' }));
+      const anchor = getSelection().anchorNode;
+      window.__tableTabTarget = (anchor?.nodeType === Node.ELEMENT_NODE ? anchor : anchor?.parentElement)?.closest('td, th') === cells[1];
+      const first = document.querySelector('#write > table thead th');
+      window.__tableWidthBefore = first.getBoundingClientRect().width;
+      const handle = first.querySelector('.table-resize-handle');
+      handle.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, pointerId: 7, clientX: 100 }));
+      document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, cancelable: true, pointerId: 7, clientX: 124 }));
+      document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 7, clientX: 124 }));
+      window.__tableWidthAfter = first.getBoundingClientRect().width;
+    })()`);
+    await expect(window, "Tab moves between table cells and column separators resize the table", "window.__tableTabTarget && document.querySelector('#write > table colgroup') && window.__tableWidthAfter > window.__tableWidthBefore");
 
     await inspect(window, `(() => {
       const editor = document.querySelector('#write');
@@ -962,6 +982,89 @@ app.whenReady().then(async () => {
       }
     })()`);
     await expect(window, "dash and numeric markers convert to toolbar-equivalent lists", "document.querySelector('#write > ul > li')?.textContent === '\u65E0\u5E8F\u9879\u76EE' && document.querySelector('#write > ol > li')?.textContent === '\u6709\u5E8F\u9879\u76EE' && window.Mory.getMarkdown().includes('- \u65E0\u5E8F\u9879\u76EE') && window.Mory.getMarkdown().includes('1. \u6709\u5E8F\u9879\u76EE')");
+
+    await inspect(window, `(() => {
+      window.Mory.loadMarkdown('\u4FDD\u7559\u7684\u539F\u6587');
+      const paragraph = document.querySelector('#write p');
+      const range = document.createRange();
+      range.setStart(paragraph.firstChild, 0);
+      range.collapse(true);
+      getSelection().removeAllRanges();
+      getSelection().addRange(range);
+      document.querySelector('#write').focus();
+      document.execCommand('insertText', false, '-');
+      paragraph.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: ' ' }));
+    })()`);
+    await expect(window, "list conversion preserves text after a marker inserted at the start", "document.querySelector('#write > ul > li')?.textContent === '\u4FDD\u7559\u7684\u539F\u6587' && window.Mory.getMarkdown() === '- \u4FDD\u7559\u7684\u539F\u6587'");
+
+    await inspect(window, `(() => {
+      window.Mory.loadMarkdown('> \u5F15\u7528\u5185\u5BB9');
+      const quote = document.querySelector('#write blockquote');
+      const range = document.createRange();
+      range.selectNodeContents(quote);
+      range.collapse(false);
+      getSelection().removeAllRanges();
+      getSelection().addRange(range);
+      quote.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Enter' }));
+      const emptyQuote = document.querySelectorAll('#write > blockquote')[1];
+      emptyQuote.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Enter' }));
+    })()`);
+    await expect(window, "a second Enter exits consecutive blockquotes", "document.querySelectorAll('#write > blockquote').length === 1 && document.querySelector('#write > blockquote')?.textContent === '\u5F15\u7528\u5185\u5BB9' && document.querySelector('#write > blockquote + p')");
+
+    await inspect(window, `(() => {
+      window.Mory.loadMarkdown('## AlphaBeta');
+      const heading = document.querySelector('#write h2');
+      const range = document.createRange();
+      range.setStart(heading.firstChild, 5);
+      range.collapse(true);
+      getSelection().removeAllRanges();
+      getSelection().addRange(range);
+      heading.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Enter' }));
+    })()`);
+    await expect(window, "Enter in the middle of a heading keeps the prefix heading and moves the suffix to a paragraph", "document.querySelector('#write > h2')?.textContent === 'Alpha' && document.querySelector('#write > h2 + p')?.textContent === 'Beta' && window.Mory.getMarkdown() === '## Alpha\\n\\nBeta'");
+
+    await inspect(window, `(() => {
+      window.Mory.loadMarkdown('# Title');
+      const heading = document.querySelector('#write h1');
+      const range = document.createRange();
+      range.setStart(heading.firstChild, 0);
+      range.collapse(true);
+      getSelection().removeAllRanges();
+      getSelection().addRange(range);
+      heading.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Backspace' }));
+    })()`);
+    await expect(window, "Backspace at a heading start removes heading formatting without merging blocks", "!document.querySelector('#write > h1') && document.querySelector('#write > p')?.textContent === 'Title' && window.Mory.getMarkdown() === 'Title'");
+
+    await inspect(window, `(() => {
+      window.Mory.loadMarkdown('# Undo');
+      const heading = document.querySelector('#write h1');
+      const range = document.createRange();
+      range.selectNodeContents(heading);
+      range.collapse(false);
+      getSelection().removeAllRanges();
+      getSelection().addRange(range);
+      document.querySelector('#write').focus();
+    })()`);
+    await window.webContents.insertText('X');
+    await inspect(window, "document.querySelector('#write').dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'z', ctrlKey: true }))");
+    await expectEventually(window, "custom history undoes edits inside rendered headings", "window.Mory.getMarkdown() === '# Undo' && document.querySelector('#write h1')?.textContent === 'Undo'");
+
+    await inspect(window, `(() => {
+      window.Mory.loadMarkdown('# Draft Image');
+      const paragraph = document.querySelector('#write h1');
+      const range = document.createRange();
+      range.selectNodeContents(paragraph);
+      range.collapse(false);
+      getSelection().removeAllRanges();
+      getSelection().addRange(range);
+      const file = new File([new Uint8Array([137, 80, 78, 71])], 'cover.png', { type: 'image/png' });
+      const paste = new Event('paste', { bubbles: true, cancelable: true });
+      Object.defineProperty(paste, 'clipboardData', { value: { files: [file], getData: () => '' } });
+      document.querySelector('#write').dispatchEvent(paste);
+    })()`);
+    await expectEventually(window, "pasted images use the displayed document name and render from the archived asset path", "window.__lastHostRequest.args.documentName === 'Draft Image.md' && window.Mory.getMarkdown().includes('![cover](\\u6587\\u7AE0/cover.png)') && document.querySelector('#write img')");
+    await inspect(window, "document.querySelector('#write').dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'z', ctrlKey: true }))");
+    await expectEventually(window, "custom history undoes asynchronous image insertion", "window.Mory.getMarkdown() === '# Draft Image' && !document.querySelector('#write img')");
 
     await inspect(window, `(() => {
       window.Mory.loadMarkdown('');

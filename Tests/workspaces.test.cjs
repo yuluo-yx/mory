@@ -113,9 +113,12 @@ test("stores images by document name and loads them as embedded assets", async t
   assert.equal(result.relative, "\u6587\u7AE0/\u5C01\u9762-\u56FE.png");
   assert.equal(await fs.readFile(path.join(root, result.relative), "utf8"), "png-data");
   await fs.writeFile(path.join(root, "photo_1.jpg"), "avatar-data");
-  const assets = await loadDocumentAssets(documentPath, `![\u5C01\u9762](${result.relative})\n<img alt="avatar" src="./photo_1.jpg">`);
+  await fs.mkdir(path.join(root, "img", "summary"), { recursive: true });
+  await fs.writeFile(path.join(root, "img", "summary", "cover.jpg"), "root-asset");
+  const assets = await loadDocumentAssets(documentPath, `![\u5C01\u9762](${result.relative})\n<img alt="avatar" src="./photo_1.jpg">\n![root](/img/summary/cover.jpg)`, root);
   assert.match(assets[result.relative], /^data:image\/png;base64,/);
   assert.match(assets["./photo_1.jpg"], /^data:image\/jpeg;base64,/);
+  assert.match(assets["/img/summary/cover.jpg"], /^data:image\/jpeg;base64,/);
 });
 
 test("renames the image directory when a draft is saved under a document name", async t => {
@@ -143,6 +146,7 @@ test("lists documents recursively while ignoring non-documents in asset folders"
   assert.deepEqual(documents[0].images.map(image => image.relative), ["\u6587\u7AE0/image.png"]);
   assert.equal(documents[0].images[0].size, Buffer.byteLength("image"));
   assert.ok(Number.isFinite(documents[0].images[0].updatedAt));
+  assert.deepEqual((await listDirectories(root)).map(directory => directory.name), ["\u4E13\u9898"]);
   const preview = await readDocumentImage(root, documents[0].images[0].path);
   assert.match(preview.dataURL, /^data:image\/png;base64,/);
   await assert.rejects(() => readDocumentImage(root, path.join(root, "\u4E13\u9898", "\u6587\u7AE0.md")), /\u56FE\u7247\u683C\u5F0F/);

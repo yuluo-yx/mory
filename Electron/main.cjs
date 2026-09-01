@@ -131,7 +131,7 @@ async function loadFile(filePath) {
     currentMarkdown = markdown;
     currentDocumentName = path.basename(filePath);
     setWindowTitle(path.basename(filePath));
-    const assets = await loadDocumentAssets(filePath, markdown);
+    const assets = await loadDocumentAssets(filePath, markdown, workspaceManager.activeRoot());
     const document = { markdown, path: filePath, name: path.basename(filePath), assets };
     if (editorReady) await sendJSON("window.Mory.openDocument", document);
     else pendingDocument = document;
@@ -208,7 +208,7 @@ async function writeDocument(filePath, sourceMarkdown) {
     currentFilePath = filePath;
     currentDocumentName = path.basename(filePath);
     setWindowTitle(path.basename(filePath));
-    const assets = await loadDocumentAssets(filePath, markdown);
+    const assets = await loadDocumentAssets(filePath, markdown, workspaceManager.activeRoot());
     await sendJSON("window.Mory.didSave", { path: filePath, name: path.basename(filePath), markdown, assets });
     await refreshWorkspace();
     noteRecentDocument(filePath);
@@ -331,7 +331,7 @@ async function handleWorkspaceRequest(method, args = {}) {
     case "importImage":
       return importImage({ root: workspaceManager.activeRoot(), ...args });
     case "documentAssets":
-      return currentFilePath ? loadDocumentAssets(currentFilePath, String(args.markdown || "")) : {};
+      return currentFilePath ? loadDocumentAssets(currentFilePath, String(args.markdown || ""), workspaceManager.activeRoot()) : {};
     case "openExternal": {
       const url = String(args.url || "");
       if (!/^(?:https?:|mailto:)/i.test(url)) throw new Error("仅支持打开 HTTP、HTTPS 和邮件链接。");
@@ -354,7 +354,7 @@ async function handleWorkspaceRequest(method, args = {}) {
       const local = path.relative(root, filePath);
       if (!local || local === ".." || local.startsWith(`..${path.sep}`) || path.isAbsolute(local)) throw new Error("文稿必须位于当前工作区内。");
       const markdown = await fs.readFile(filePath, "utf8");
-      return { name: path.basename(filePath), path: filePath, markdown, assets: await loadDocumentAssets(filePath, markdown) };
+      return { name: path.basename(filePath), path: filePath, markdown, assets: await loadDocumentAssets(filePath, markdown, workspaceManager.activeRoot()) };
     }
     case "workspaceDocuments":
       return readWorkspaceDocuments(workspaceManager.activeRoot());
@@ -391,10 +391,24 @@ async function handleWorkspaceRequest(method, args = {}) {
 
 async function saveDocument() {
   if (currentFilePath) await writeDocument(currentFilePath);
-  else if (workspaceManager?.active()?.isImplicit !== true) {
-    const markdown = await getMarkdown();
-    await writeDocument(await availableDocumentPath(workspaceManager.activeRoot(), suggestedDocumentName(markdown)), markdown);
-  } else await saveAs();
+  else if (workspaceManager?.active()?.isImplicit === true) await saveAs();
+  else {
+    const english = interfaceLocale === "en";
+    const choice = await dialog.showMessageBox(mainWindow, {
+      type: "question",
+      title: english ? "Save document" : "保存文稿",
+      message: english ? "Where would you like to save this new document?" : "要将新文稿保存到哪里？",
+      detail: english ? "You can use the current workspace or choose another location." : "可以保存到当前工作区，也可以选择其他位置。",
+      buttons: english ? ["Current Workspace", "Choose Another Location…", "Cancel"] : ["当前工作区", "选择其他位置…", "取消"],
+      defaultId: 0,
+      cancelId: 2,
+      noLink: true
+    });
+    if (choice.response === 0) {
+      const markdown = await getMarkdown();
+      await writeDocument(await availableDocumentPath(workspaceManager.activeRoot(), suggestedDocumentName(markdown)), markdown);
+    } else if (choice.response === 1) await saveAs();
+  }
 }
 
 async function renderExportHTML(options) {
@@ -520,7 +534,8 @@ function buildMenu() {
     {
       label: "编辑",
       submenu: [
-        { role: "undo", label: "撤销" }, { role: "redo", label: "重做" },
+        { label: "撤销", accelerator: "CmdOrCtrl+Z", click: () => runEditor("window.Mory.undo()") },
+        { label: "重做", accelerator: "CmdOrCtrl+Shift+Z", click: () => runEditor("window.Mory.redo()") },
         { type: "separator" },
         { role: "cut", label: "剪切" }, { role: "copy", label: "复制" },
         { role: "paste", label: "粘贴" }, { role: "selectAll", label: "全选" },

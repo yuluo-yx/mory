@@ -73,6 +73,39 @@ func (platform *windowsPlatform) ChooseSavePath(defaultPath string, extensions [
 	})
 }
 
+func (platform *windowsPlatform) ChooseDraftSaveDestination(workspaceName string) (string, error) {
+	platform.mu.RLock()
+	english := platform.locale == "en"
+	platform.mu.RUnlock()
+	buttons := []string{"当前工作区", "选择其他位置…", "取消"}
+	title := "保存文稿"
+	message := "要将新文稿保存到哪里？\n\n可以保存到当前工作区“" + workspaceName + "”，也可以选择其他位置。"
+	if english {
+		buttons = []string{"Current Workspace", "Choose Another Location…", "Cancel"}
+		title = "Save document"
+		message = "Where would you like to save this new document?\n\nYou can use the current workspace “" + workspaceName + "” or choose another location."
+	}
+	result, err := runtime.MessageDialog(platform.context(), runtime.MessageDialogOptions{
+		Type:          runtime.QuestionDialog,
+		Title:         title,
+		Message:       message,
+		Buttons:       buttons,
+		DefaultButton: buttons[0],
+		CancelButton:  buttons[2],
+	})
+	if err != nil {
+		return "", err
+	}
+	switch result {
+	case buttons[0]:
+		return "workspace", nil
+	case buttons[1]:
+		return "elsewhere", nil
+	default:
+		return "cancel", nil
+	}
+}
+
 func (platform *windowsPlatform) Confirm(title, message, detail string) (bool, error) {
 	result, err := runtime.MessageDialog(platform.context(), runtime.MessageDialogOptions{
 		Type:          runtime.WarningDialog,

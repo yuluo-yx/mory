@@ -39,6 +39,7 @@ type Platform interface {
 	ChooseDirectory(defaultDirectory string) (string, error)
 	ChooseFile(defaultDirectory string, extensions []string) (string, error)
 	ChooseSavePath(defaultPath string, extensions []string) (string, error)
+	ChooseDraftSaveDestination(workspaceName string) (string, error)
 	Confirm(title, message, detail string) (bool, error)
 	Trash(path string) error
 	Reveal(path string) error
@@ -335,7 +336,7 @@ func (host *Host) Request(method string, args map[string]any) (any, error) {
 		if path == "" {
 			return map[string]string{}, nil
 		}
-		return loadDocumentAssets(path, stringValue(args, "markdown")), nil
+		return loadDocumentAssets(host.workspaces.activeRoot(), path, stringValue(args, "markdown")), nil
 	case "openExternal":
 		value := stringValue(args, "url")
 		parsed, err := url.Parse(value)
@@ -360,7 +361,7 @@ func (host *Host) Request(method string, args map[string]any) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return loadDocument(path)
+		return loadDocument(host.workspaces.activeRoot(), path)
 	case "workspaceDocuments":
 		return listDocuments(host.workspaces.activeRoot(), true)
 	case "listThemes":
@@ -439,7 +440,7 @@ func (host *Host) openFile(path string, requireWorkspace bool) error {
 			return err
 		}
 	}
-	document, err := loadDocument(resolved)
+	document, err := loadDocument(host.workspaces.activeRoot(), resolved)
 	if err != nil {
 		return err
 	}
@@ -483,7 +484,7 @@ func (host *Host) NewDocument() {
 	host.platform.Evaluate("window.Mory.newDocument()")
 }
 
-// Save writes the active note and assigns a collision-free name to drafts in explicit workspaces.
+// Save writes an existing note or asks where a new workspace draft should be stored.
 func (host *Host) Save() error {
 	host.mu.RLock()
 	path, markdown, name := host.currentPath, host.currentMarkdown, host.currentName
@@ -492,7 +493,18 @@ func (host *Host) Save() error {
 		if host.workspaces.active().IsImplicit {
 			return host.SaveAs()
 		}
-		path = availableDocumentPath(host.workspaces.activeRoot(), suggestedDocumentName(markdown, name))
+		destination, err := host.platform.ChooseDraftSaveDestination(host.workspaces.active().Name)
+		if err != nil {
+			return err
+		}
+		switch destination {
+		case "workspace":
+			path = availableDocumentPath(host.workspaces.activeRoot(), suggestedDocumentName(markdown, name))
+		case "elsewhere":
+			return host.SaveAs()
+		default:
+			return nil
+		}
 	}
 	return host.writeDocument(path, markdown)
 }
@@ -530,7 +542,7 @@ func (host *Host) writeDocument(path, markdown string) error {
 	if err := os.WriteFile(path, []byte(markdown), 0o644); err != nil {
 		return fmt.Errorf("保存文稿：%w", err)
 	}
-	document, err := loadDocument(path)
+	document, err := loadDocument(host.workspaces.activeRoot(), path)
 	if err != nil {
 		return err
 	}

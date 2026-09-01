@@ -218,8 +218,12 @@ async function listDirectories(root) {
   const directories = [];
   async function visit(directory) {
     const entries = await fs.readdir(directory, { withFileTypes: true });
+    const companionNames = new Set(entries
+      .filter(entry => entry.isFile() && DOCUMENT_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))
+      .map(entry => sanitizeSegment(path.basename(entry.name, path.extname(entry.name)))));
     for (const entry of entries) {
       if (!entry.isDirectory() || entry.name === ".git" || entry.name === ".mory" || entry.name.startsWith(".")) continue;
+      if (companionNames.has(entry.name)) continue;
       const fullPath = path.join(directory, entry.name);
       const stat = await fs.stat(fullPath);
       const birthtime = Number(stat.birthtimeMs);
@@ -439,7 +443,7 @@ function markdownImagePaths(markdown) {
   for (const expression of expressions) {
     for (const match of markdown.matchAll(expression)) {
       const value = match.slice(1).find(Boolean) || "";
-      if (!value || /^(?:data:|https?:|file:|\/)/i.test(value)) continue;
+      if (!value || /^(?:data:|https?:|file:|\/\/)/i.test(value)) continue;
       try { paths.add(decodeURI(value)); }
       catch { paths.add(value); }
     }
@@ -447,11 +451,17 @@ function markdownImagePaths(markdown) {
   return [...paths];
 }
 
-async function loadDocumentAssets(documentPath, markdown) {
+async function loadDocumentAssets(documentPath, markdown, workspaceRoot = path.dirname(documentPath)) {
   const assets = {};
+  const documentDirectory = path.dirname(documentPath);
+  const configuredRoot = path.resolve(workspaceRoot);
+  const root = isSameOrDescendant(configuredRoot, documentPath) ? configuredRoot : documentDirectory;
   for (const relative of markdownImagePaths(markdown)) {
-    const resolved = path.resolve(path.dirname(documentPath), relative);
-    const local = path.relative(path.dirname(documentPath), resolved);
+    const workspaceRelative = relative.startsWith("/") || relative.startsWith("\\");
+    const resolved = workspaceRelative
+      ? path.resolve(root, relative.replace(/^[\\/]+/, ""))
+      : path.resolve(documentDirectory, relative);
+    const local = path.relative(root, resolved);
     if (local === ".." || local.startsWith(`..${path.sep}`)) continue;
     try {
       const data = await fs.readFile(resolved);

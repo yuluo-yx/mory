@@ -190,8 +190,8 @@ func buildMenu(platform *windowsPlatform, english bool) *menu.Menu {
 	file.AddText(label("退出", "Quit"), nil, func(*menu.CallbackData) { host.Evaluate("window.runtime.Quit()") })
 
 	edit := application.AddSubmenu(label("编辑", "Edit"))
-	edit.AddText(label("撤销", "Undo"), keys.CmdOrCtrl("z"), func(*menu.CallbackData) { host.Evaluate("document.execCommand('undo')") })
-	edit.AddText(label("重做", "Redo"), keys.Combo("z", keys.CmdOrCtrlKey, keys.ShiftKey), func(*menu.CallbackData) { host.Evaluate("document.execCommand('redo')") })
+	edit.AddText(label("撤销", "Undo"), keys.CmdOrCtrl("z"), func(*menu.CallbackData) { host.Evaluate("window.Mory.undo()") })
+	edit.AddText(label("重做", "Redo"), keys.Combo("z", keys.CmdOrCtrlKey, keys.ShiftKey), func(*menu.CallbackData) { host.Evaluate("window.Mory.redo()") })
 	edit.AddSeparator()
 	edit.AddText(label("剪切", "Cut"), keys.CmdOrCtrl("x"), func(*menu.CallbackData) { host.Evaluate("document.execCommand('cut')") })
 	edit.AddText(label("复制", "Copy"), keys.CmdOrCtrl("c"), func(*menu.CallbackData) { host.Evaluate("document.execCommand('copy')") })

@@ -506,8 +506,8 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         let editItem = NSMenuItem()
         main.addItem(editItem)
         let editMenu = NSMenu(title: "编辑")
-        editMenu.addItem(withTitle: "撤销", action: Selector(("undo:")), keyEquivalent: "z")
-        editMenu.addItem(withTitle: "重做", action: Selector(("redo:")), keyEquivalent: "Z").keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(withTitle: "撤销", action: #selector(undoEditor), keyEquivalent: "z")
+        editMenu.addItem(withTitle: "重做", action: #selector(redoEditor), keyEquivalent: "Z").keyEquivalentModifierMask = [.command, .shift]
         editMenu.addItem(.separator())
         editMenu.addItem(withTitle: "剪切", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
         editMenu.addItem(withTitle: "复制", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
@@ -621,14 +621,29 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
             return
         }
         guard workspaceManager != nil, workspaceManager.active.isImplicit != true else { saveDocumentAs(); return }
-        fetchMarkdown { [weak self] markdown in
-            guard let self else { return }
-            do {
-                let url = try availableDocumentURL(markdown: markdown)
-                persistDocument(markdown: markdown, to: url)
-            } catch {
-                presentError("无法保存文件：\(error.localizedDescription)")
+        let english = interfaceLocale == "en"
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = english ? "Where would you like to save this new document?" : "要将新文稿保存到哪里？"
+        alert.informativeText = english ? "You can use the current workspace or choose another location." : "可以保存到当前工作区，也可以选择其他位置。"
+        alert.addButton(withTitle: english ? "Current Workspace" : "当前工作区")
+        alert.addButton(withTitle: english ? "Choose Another Location…" : "选择其他位置…")
+        alert.addButton(withTitle: english ? "Cancel" : "取消")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            fetchMarkdown { [weak self] markdown in
+                guard let self else { return }
+                do {
+                    let url = try availableDocumentURL(markdown: markdown)
+                    persistDocument(markdown: markdown, to: url)
+                } catch {
+                    presentError("无法保存文件：\(error.localizedDescription)")
+                }
             }
+        case .alertSecondButtonReturn:
+            saveDocumentAs()
+        default:
+            return
         }
     }
 
@@ -1175,6 +1190,8 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
 
     @objc private func showPreferences() { runJavaScript("window.Mory.togglePreferences()") }
     @objc private func showFind() { runJavaScript("window.Mory.showFind()") }
+    @objc private func undoEditor() { runJavaScript("window.Mory.undo()") }
+    @objc private func redoEditor() { runJavaScript("window.Mory.redo()") }
     @objc private func toggleBold() { runJavaScript("window.Mory.command('bold')") }
     @objc private func toggleItalic() { runJavaScript("window.Mory.command('italic')") }
     @objc private func toggleStrike() { runJavaScript("window.Mory.command('strike')") }

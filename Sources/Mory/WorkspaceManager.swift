@@ -213,6 +213,10 @@ final class WorkspaceManager: @unchecked Sendable {
         for case let url as URL in enumerator {
             let values = try url.resourceValues(forKeys: keys)
             guard values.isDirectory == true else { continue }
+            if isCompanionAssetDirectory(url) {
+                enumerator.skipDescendants()
+                continue
+            }
             let relative = url.path.replacingOccurrences(of: activeRoot.path + "/", with: "")
             let createdAt = (values.creationDate ?? values.contentModificationDate ?? .distantFuture).timeIntervalSince1970 * 1_000
             result.append(["name": relative, "path": url.path, "createdAt": createdAt])
@@ -448,6 +452,19 @@ final class WorkspaceManager: @unchecked Sendable {
         return images.sorted { ($0["name"] as? String ?? "").localizedStandardCompare($1["name"] as? String ?? "") == .orderedAscending }
     }
 
+    private func isCompanionAssetDirectory(_ directory: URL) -> Bool {
+        guard let entries = try? fileManager.contentsOfDirectory(
+            at: directory.deletingLastPathComponent(),
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else { return false }
+        let documentExtensions = Set(["md", "markdown", "mmd", "mdown", "mkd", "txt", "text"])
+        return entries.contains { entry in
+            documentExtensions.contains(entry.pathExtension.lowercased())
+                && sanitize(entry.deletingPathExtension().lastPathComponent) == directory.lastPathComponent
+        }
+    }
+
     func importImage(arguments: [String: Any]) throws -> [String: String] {
         guard let mime = arguments["mime"] as? String, let fileExtension = imageExtension(for: mime),
               let encoded = arguments["data"] as? String, let data = Data(base64Encoded: encoded), !data.isEmpty, data.count <= 50 * 1024 * 1024 else {
@@ -502,6 +519,9 @@ final class WorkspaceManager: @unchecked Sendable {
     func assets(for documentURL: URL, markdown: String) -> [String: String] {
         let source = markdown as NSString
         var assets: [String: String] = [:]
+        let documentDirectory = documentURL.deletingLastPathComponent().standardizedFileURL
+        let configuredRoot = activeRoot.standardizedFileURL
+        let root = documentURL.standardizedFileURL.path.hasPrefix(configuredRoot.path + "/") ? configuredRoot : documentDirectory
         let patterns = [
             #"!\[[^\]]*\]\((?:<([^>]+)>|([^\s)]+))(?:\s+["'][^"']*["'])?\)"#,
             #"(?is)<img\b[^>]*\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))"#
@@ -516,8 +536,11 @@ final class WorkspaceManager: @unchecked Sendable {
                 guard let range else { return }
                 let encoded = source.substring(with: range)
                 let relative = encoded.removingPercentEncoding ?? encoded
-                guard !relative.contains("://"), !relative.hasPrefix("data:"), !relative.hasPrefix("/") else { return }
-                let fileURL = documentURL.deletingLastPathComponent().appendingPathComponent(relative)
+                guard !relative.contains("://"), !relative.hasPrefix("//"), !relative.hasPrefix("data:"), !relative.hasPrefix("file:") else { return }
+                let workspaceRelative = relative.hasPrefix("/") || relative.hasPrefix("\\")
+                let local = workspaceRelative ? relative.trimmingCharacters(in: CharacterSet(charactersIn: "/\\")) : relative
+                let fileURL = (workspaceRelative ? root : documentDirectory).appendingPathComponent(local).standardizedFileURL
+                guard fileURL.path.hasPrefix(root.path + "/") else { return }
                 guard let data = try? Data(contentsOf: fileURL) else { return }
                 assets[relative.replacingOccurrences(of: "\\", with: "/")] = "data:\(mimeType(for: fileURL));base64,\(data.base64EncodedString())"
             }

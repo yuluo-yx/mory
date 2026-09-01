@@ -201,7 +201,7 @@ test("serializes editor DOM into Markdown", () => {
     element("h1", ["\u6807\u9898"]),
     element("p", ["\u666E\u901A ", element("strong", ["\u7C97\u4F53"]), " ", element("em", ["\u659C\u4F53"]), " ", element("del", ["\u5220\u9664"]), " ", element("code", ["a`b"]), "\u200b", element("br")]),
     element("p", [element("a", ["\u94FE\u63A5"], { href: "https://example.com" }), " ", element("img", [], { alt: "\u56FE", src: "data:image/png;base64,a", dataset: { markdownSrc: "\u6587\u7AE0/a.png" } })]),
-    element("blockquote", ["\u7B2C\u4E00\u884C\n\u7B2C\u4E8C\u884C"]),
+    element("blockquote", [element("p", ["\u7B2C\u4E00\u884C"]), element("p", ["\u7B2C\u4E8C\u884C"])]),
     element("ul", [
       element("li", [element("input", [], { type: "checkbox", checked: true }), "\u4EFB\u52A1"]),
       element("li", ["\u666E\u901A\u9879"])

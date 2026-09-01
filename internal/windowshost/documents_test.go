@@ -62,13 +62,17 @@ func TestImportAndLoadDocumentImages(t *testing.T) {
 		t.Fatalf("relative path = %v", result["relative"])
 	}
 	writeAt(t, filepath.Join(root, "photo_1.jpg"), "avatar", time.Now())
-	markdown := "![\u5C01\u9762](\u793A\u4F8B/\u5C01\u9762.png)\n<img alt=\"avatar\" src=\"./photo_1.jpg\">"
-	assets := loadDocumentAssets(documentPath, markdown)
+	writeAt(t, filepath.Join(root, "img", "summary", "cover.jpg"), "root asset", time.Now())
+	markdown := "![\u5C01\u9762](\u793A\u4F8B/\u5C01\u9762.png)\n<img alt=\"avatar\" src=\"./photo_1.jpg\">\n![root](/img/summary/cover.jpg)"
+	assets := loadDocumentAssets(root, documentPath, markdown)
 	if assets["\u793A\u4F8B/\u5C01\u9762.png"] == "" {
 		t.Fatal("document image was not converted to a data URL immediately")
 	}
 	if !strings.HasPrefix(assets["./photo_1.jpg"], "data:image/jpeg;base64,") {
 		t.Fatal("raw HTML avatar was not converted to a data URL")
+	}
+	if !strings.HasPrefix(assets["/img/summary/cover.jpg"], "data:image/jpeg;base64,") {
+		t.Fatal("workspace-root image was not converted to a data URL")
 	}
 	images, err := listDocumentImages(documentPath)
 	if err != nil || len(images) != 1 {
@@ -76,6 +80,15 @@ func TestImportAndLoadDocumentImages(t *testing.T) {
 	}
 	if images[0].Size != int64(len(pixel)) || images[0].UpdatedAt <= 0 {
 		t.Fatalf("image metadata = size %d, updated %d", images[0].Size, images[0].UpdatedAt)
+	}
+	directories, err := listDirectories(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, directory := range directories {
+		if directory.Name == "\u793A\u4F8B" {
+			t.Fatal("companion image directory should be hidden from the workspace tree")
+		}
 	}
 }
 
@@ -234,10 +247,10 @@ func TestDocumentAssetsIgnoreRemoteMissingAndEscapingPaths(t *testing.T) {
 	documentPath := filepath.Join(root, "note.md")
 	writeAt(t, documentPath, "", time.Now())
 	markdown := "![remote](https://example.com/a.png)\n![missing](missing.png)\n![escape](../outside.png)"
-	if assets := loadDocumentAssets(documentPath, markdown); len(assets) != 0 {
+	if assets := loadDocumentAssets(root, documentPath, markdown); len(assets) != 0 {
 		t.Fatalf("unexpected assets were loaded: %#v", assets)
 	}
-	if _, err := loadDocument(filepath.Join(root, "missing.md")); err == nil {
+	if _, err := loadDocument(root, filepath.Join(root, "missing.md")); err == nil {
 		t.Fatal("missing document should fail")
 	}
 }

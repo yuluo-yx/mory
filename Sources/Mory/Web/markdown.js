@@ -306,8 +306,13 @@ export function editorToMarkdown(root, { escapeText = true } = {}) {
       case "H1": case "H2": case "H3": case "H4": case "H5": case "H6":
         blocks.push(`${"#".repeat(Number(element.tagName[1]))} ${content}`); break;
       case "P": case "DIV": blocks.push(content); break;
-      case "BLOCKQUOTE":
-        blocks.push(content.split("\n").map(line => `> ${line}`).join("\n")); break;
+      case "BLOCKQUOTE": {
+        const quoteContent = [...element.children].some(child => /^(P|DIV)$/.test(child.tagName))
+          ? [...element.children].map(child => inlineNodeToMarkdown(child, escapeText).trim()).join("\n")
+          : content;
+        blocks.push(quoteContent.split("\n").map(line => `> ${line}`).join("\n"));
+        break;
+      }
       case "UL": case "OL": {
         const ordered = element.tagName === "OL";
         const items = [...element.children].map((item, index) => {
