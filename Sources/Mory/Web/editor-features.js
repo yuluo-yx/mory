@@ -191,6 +191,20 @@ export function formatUpdatedAt(value, locale = "zh-CN") {
   }).format(date);
 }
 
+export function headingFoldVisibility(blocks) {
+  const collapsedLevels = [];
+  return Array.from(blocks ?? [], block => {
+    const level = Number(block?.headingLevel);
+    const isHeading = Number.isInteger(level) && level >= 1 && level <= 6;
+    if (isHeading) {
+      while (collapsedLevels.length && collapsedLevels.at(-1) >= level) collapsedLevels.pop();
+    }
+    const hidden = collapsedLevels.length > 0;
+    if (isHeading && level <= 4 && block?.collapsed) collapsedLevels.push(level);
+    return hidden;
+  });
+}
+
 function plainHeadingText(value) {
   return String(value)
     .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")

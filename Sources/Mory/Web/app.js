@@ -8,6 +8,7 @@ import {
   calendarRangeDayCount,
   formatFileSize,
   formatUpdatedAt,
+  headingFoldVisibility,
   localDateKey,
   mermaidColorThemes,
   mindMapHTML,
@@ -24,6 +25,7 @@ const write = $("#write");
 const sourceEditor = $("#source-editor");
 const workspace = $(".workspace");
 const editorScroll = $("#editor-scroll");
+const headingFoldToggle = $("#heading-fold-toggle");
 const nativeMacHost = Boolean(window.webkit?.messageHandlers?.mory);
 const nativeWailsHost = () => window.go?.main?.WindowsHost;
 document.documentElement.dataset.host = nativeMacHost ? "mac-native" : (nativeWailsHost() ? "windows-webview2" : (window.moryNative?.platform || "browser"));
@@ -130,6 +132,7 @@ let calendarEditor = null;
 let calendarInsertRange = null;
 let calendarQuickEditor = null;
 let calendarDrag = null;
+let headingFoldTarget = null;
 const pendingHostRequests = new Map();
 const caretMarker = "\u200b";
 const renderCaretMarker = "\ue000";
@@ -195,7 +198,8 @@ const englishText = {
   "日期标记": "Date mark", "日期范围": "Date range", "日期事项": "Date items", "标题": "Title", "颜色": "Color", "重要日期": "Important date", "前端开发": "Frontend development",
   "移除标记": "Remove mark", "保存标记": "Save mark", "重新选择": "Select again", "添加范围": "Add range", "添加事项": "Add item", "添加": "Add", "删除日历": "Delete calendar", "保存日历": "Save calendar",
   "Mermaid 源码": "Mermaid source", "Mermaid 图表": "Mermaid diagram", "Mermaid 无法渲染": "Mermaid could not render", "Mermaid 运行时未加载": "Mermaid runtime is unavailable",
-  "收起源码": "Collapse source", "展开源码": "Expand source", "放大编辑框": "Expand editor", "退出放大": "Exit expanded view"
+  "收起源码": "Collapse source", "展开源码": "Expand source", "放大编辑框": "Expand editor", "退出放大": "Exit expanded view",
+  "折叠标题内容": "Collapse section", "展开标题内容": "Expand section"
 };
 const staticLocaleNodes = new WeakMap();
 const staticLocaleAttributes = new WeakMap();
@@ -252,6 +256,7 @@ function applyLocale(next = state.locale) {
   updateThemeFontWarning();
   updateDocumentBacklinks();
   enhanceCalendars(write);
+  updateHeadingFoldControls(write);
   updateMermaidWorkbenchLocale(write);
   if ($("#knowledge-graph").classList.contains("is-open")) updateGraphLabels();
   bridge({ type: "localeChanged", locale: state.locale });
@@ -379,6 +384,7 @@ function renderDocument(document, announce = false) {
   state.titleTouched = false;
   sourceEditor.value = state.markdown;
   write.innerHTML = markdownToHTML(state.markdown) || "<p><br></p>";
+  updateHeadingFoldControls(write);
   enhanceRawHTML(write);
   enhanceTables(write);
   enhanceCalendars(write);
@@ -525,6 +531,7 @@ function applyDocumentAssets(root, document = activeDocument(), { refreshMissing
 }
 
 function syncFromWrite() {
+  updateHeadingFoldControls(write);
   state.markdown = editorToMarkdown(write);
   sourceEditor.value = state.markdown;
   const document = activeDocument();
@@ -1156,6 +1163,63 @@ function enhanceTables(root = write) {
     });
     table.after(tools);
   });
+}
+
+function headingLevel(element) {
+  return element?.matches?.("h1, h2, h3, h4, h5, h6") ? Number(element.tagName.slice(1)) : 0;
+}
+
+function isRenderedFoldHeading(element) {
+  return element?.parentElement === write
+    && element.matches("h1, h2, h3, h4")
+    && Boolean((element.textContent || "").replaceAll(caretMarker, "").trim());
+}
+
+function updateHeadingFoldButton(heading = headingFoldTarget) {
+  if (!heading) return;
+  const expanded = !heading.classList.contains("is-heading-folded");
+  const label = localized(expanded ? "折叠标题内容" : "展开标题内容");
+  headingFoldToggle.setAttribute("aria-expanded", String(expanded));
+  headingFoldToggle.setAttribute("aria-label", label);
+  headingFoldToggle.title = label;
+}
+
+function applyHeadingFoldVisibility(root = write) {
+  const blocks = [...root.children];
+  const hidden = headingFoldVisibility(blocks.map(block => ({
+    headingLevel: headingLevel(block),
+    collapsed: block.classList.contains("is-heading-folded")
+  })));
+  blocks.forEach((block, index) => block.classList.toggle("is-heading-fold-hidden", hidden[index]));
+}
+
+function toggleHeadingFold(heading) {
+  if (!isRenderedFoldHeading(heading)) return;
+  heading.classList.toggle("is-heading-folded");
+  updateHeadingFoldButton(heading);
+  applyHeadingFoldVisibility(heading.parentElement);
+}
+
+function hideHeadingFoldControl() {
+  headingFoldTarget = null;
+  headingFoldToggle.hidden = true;
+}
+
+function showHeadingFoldControl(heading) {
+  if (state.sourceMode || !isRenderedFoldHeading(heading)) return;
+  headingFoldTarget = heading;
+  updateHeadingFoldButton(heading);
+  const bounds = heading.getBoundingClientRect();
+  headingFoldToggle.style.left = `${bounds.left - 31}px`;
+  headingFoldToggle.style.top = `${bounds.top + bounds.height / 2}px`;
+  headingFoldToggle.hidden = false;
+}
+
+function updateHeadingFoldControls(root = write) {
+  applyHeadingFoldVisibility(root);
+  if (root !== write) return;
+  if (!isRenderedFoldHeading(headingFoldTarget) || headingFoldTarget.classList.contains("is-heading-fold-hidden")) hideHeadingFoldControl();
+  else if (!headingFoldToggle.hidden) showHeadingFoldControl(headingFoldTarget);
 }
 
 function calendarWeekdayLabels() {
@@ -2336,6 +2400,7 @@ function syncFromSource(render = false) {
   if (document) document.markdown = state.markdown;
   if (render) {
     write.innerHTML = markdownToHTML(state.markdown) || "<p><br></p>";
+    updateHeadingFoldControls(write);
     enhanceRawHTML(write);
     enhanceTables(write);
     enhanceCalendars(write);
@@ -3150,6 +3215,7 @@ function renderQuickResults(files = visibleFileEntries(), query = "") {
 function toggleSource(force) {
   const next = typeof force === "boolean" ? force : !state.sourceMode;
   if (next === state.sourceMode) return;
+  hideHeadingFoldControl();
   closePathSuggestions();
   if (next) {
     syncFromWrite();
@@ -4554,6 +4620,7 @@ function insertCodeLineBreak(block) {
 }
 
 function exitHeadingToParagraph(block, renderedHeading = block) {
+  renderedHeading.classList.remove("is-heading-folded");
   const paragraph = document.createElement("p");
   paragraph.append(document.createElement("br"));
   if (renderedHeading === block) block.after(paragraph);
@@ -4597,6 +4664,7 @@ function appendEditableContent(block, fragment) {
 function splitHeadingAtCaret(block) {
   const tail = extractContentAfterCaret(block);
   if (!tail) return false;
+  block.classList.remove("is-heading-folded");
   const paragraph = document.createElement("p");
   appendEditableContent(paragraph, tail);
   if (!block.childNodes.length) block.append(document.createElement("br"));
@@ -4921,6 +4989,27 @@ $("#toolbar").addEventListener("mouseout", event => {
   if (button && !button.contains(event.relatedTarget)) hideToolbarTooltip();
 });
 $("#toolbar").addEventListener("scroll", hideToolbarTooltip);
+write.addEventListener("mouseover", event => {
+  const heading = event.target.closest?.("h1, h2, h3, h4");
+  if (heading?.parentElement === write) showHeadingFoldControl(heading);
+});
+write.addEventListener("mouseout", event => {
+  const heading = event.target.closest?.("h1, h2, h3, h4");
+  const related = event.relatedTarget instanceof Node ? event.relatedTarget : null;
+  if (heading !== headingFoldTarget || heading?.contains(related) || related === headingFoldToggle || headingFoldToggle.contains(related)) return;
+  hideHeadingFoldControl();
+});
+headingFoldToggle.addEventListener("mousedown", event => event.preventDefault());
+headingFoldToggle.addEventListener("click", event => {
+  event.preventDefault();
+  toggleHeadingFold(headingFoldTarget);
+});
+headingFoldToggle.addEventListener("mouseout", event => {
+  const related = event.relatedTarget instanceof Node ? event.relatedTarget : null;
+  if (headingFoldTarget?.contains(related)) return;
+  hideHeadingFoldControl();
+});
+editorScroll.addEventListener("scroll", hideHeadingFoldControl);
 write.addEventListener("input", handleWriteInput);
 write.addEventListener("beforeinput", event => {
   if (handleHeadingCompositionInput(event)) return;

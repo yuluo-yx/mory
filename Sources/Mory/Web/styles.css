@@ -203,6 +203,12 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width:
 .write h2 { padding-bottom: .24em; border-bottom: 1px solid var(--line-soft); font-size: 1.55em; font-weight: 620; }
 .write h3 { font-size: 1.24em; font-weight: 620; }
 .write h4 { font-size: 1.08em; }
+.heading-fold-toggle { position: fixed; z-index: 34; width: 24px; height: 24px; display: grid; place-items: center; padding: 0; border-radius: 4px; color: var(--faint); transform: translateY(-50%); transition: color .12s ease, background-color .12s ease; }
+.heading-fold-toggle[hidden] { display: none; }
+.heading-fold-toggle:hover, .heading-fold-toggle:focus-visible { outline: 0; background: var(--accent-soft); color: var(--accent); }
+.heading-fold-toggle svg { width: 13px; height: 13px; transition: transform .14s ease; }
+.heading-fold-toggle[aria-expanded="false"] svg { transform: rotate(-90deg); }
+.write > .is-heading-fold-hidden { display: none !important; }
 .write p { margin: .75em 0; }
 .write a { color: var(--accent); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); }
 .write a.document-link::before { content: "MD"; min-width: 20px; height: 15px; display: inline-grid; place-items: center; margin-right: 5px; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius: 3px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 8px; font-weight: 700; line-height: 1; vertical-align: 1px; }

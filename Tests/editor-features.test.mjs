@@ -8,6 +8,7 @@ import {
   calendarRangeDayCount,
   formatFileSize,
   formatUpdatedAt,
+  headingFoldVisibility,
   localDateKey,
   markdownHeadingTree,
   mermaidColorThemes,
@@ -96,6 +97,38 @@ test("formats file sizes and update timestamps for sidebar details", () => {
   assert.equal(formatFileSize(-1), "");
   assert.match(formatUpdatedAt(Date.UTC(2026, 7, 18, 12, 30), "en"), /2026/);
   assert.equal(formatUpdatedAt("invalid", "en"), "");
+});
+
+test("keeps folded heading sections bounded by the next peer heading", () => {
+  const blocks = [
+    { headingLevel: 1 },
+    { headingLevel: 2, collapsed: true },
+    {},
+    { headingLevel: 3 },
+    {},
+    { headingLevel: 2 },
+    {},
+    { headingLevel: 5, collapsed: true },
+    {},
+    { headingLevel: 1 },
+    {}
+  ];
+  assert.deepEqual(headingFoldVisibility(blocks), [false, false, true, true, true, false, false, false, false, false, false]);
+});
+
+test("retains nested folds while their collapsed parent is hidden", () => {
+  const blocks = [
+    { headingLevel: 1, collapsed: true },
+    {},
+    { headingLevel: 2, collapsed: true },
+    {},
+    { headingLevel: 2 },
+    {},
+    { headingLevel: 1 },
+    {}
+  ];
+  assert.deepEqual(headingFoldVisibility(blocks), [false, true, true, true, true, true, false, false]);
+  assert.deepEqual(headingFoldVisibility(blocks.map((block, index) => index === 0 ? { ...block, collapsed: false } : block)), [false, false, false, true, false, false, false, false]);
 });
 
 test("builds and exports a heading-based mind map while ignoring fenced headings", () => {

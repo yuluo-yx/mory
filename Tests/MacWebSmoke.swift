@@ -88,6 +88,16 @@ final class MacWebSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             && Math.abs(parseFloat(folderStyle.minHeight) - parseFloat(fileStyle.minHeight)) < 0.1;
           folderSample.remove();
           fileSample.remove();
+          window.Mory.loadMarkdown('# Fold\\n\\nBody\\n\\n# Next\\n\\nVisible');
+          const foldHeading = document.querySelector('#write > h1');
+          foldHeading.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+          const foldControl = document.querySelector('#heading-fold-toggle');
+          result.headingFoldHover = foldControl.hidden === false;
+          foldControl.click();
+          result.headingFolded = foldHeading.classList.contains('is-heading-folded')
+            && foldHeading.nextElementSibling.classList.contains('is-heading-fold-hidden')
+            && !document.querySelectorAll('#write > h1')[1].classList.contains('is-heading-fold-hidden')
+            && window.Mory.getMarkdown() === '# Fold\\n\\nBody\\n\\n# Next\\n\\nVisible';
           window.Mory.loadMarkdown('```go\\npackage main\\nfunc main() {}\\n```');
           result.codeHighlighted = Boolean(document.querySelector('#write pre[data-language="go"] .hljs-keyword'));
           document.querySelector('#export-button')?.click();
@@ -125,6 +135,8 @@ final class MacWebSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                   result["highlight"] as? String == "11.12.0",
                   result["defaultTheme"] as? String == "github",
                   result["codeHighlighted"] as? Bool == true,
+                  result["headingFoldHover"] as? Bool == true,
+                  result["headingFolded"] as? Bool == true,
                   result["host"] as? String == "mac-native",
                   result["exportOpen"] as? Bool == true,
                   result["preferencesOpen"] as? Bool == true,

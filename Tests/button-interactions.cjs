@@ -1261,6 +1261,58 @@ app.whenReady().then(async () => {
     })()`);
     await expectEventually(window, "Command-click opens workspace-relative Markdown links in Mory", "window.__lastHostRequest.method === 'readDocument' && window.__lastHostRequest.args.path === '/links/\u8D44\u6599/\u76EE\u6807.md'");
 
+    await inspect(window, `(() => {
+      window.Mory.loadMarkdown('Plain paragraph');
+      const paragraph = document.querySelector('#write > p');
+      paragraph.textContent = '# Pending heading';
+      paragraph.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    })()`);
+    await expect(window, "raw heading markers do not reveal a fold control before rendering", "document.querySelector('#heading-fold-toggle').hidden");
+    await inspect(window, "(() => { const heading = document.createElement('h2'); document.querySelector('#write').append(heading); heading.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); })()");
+    await expect(window, "an empty rendered heading does not reveal a fold control", "document.querySelector('#heading-fold-toggle').hidden");
+    const foldingMarkdown = "# Parent\n\nParent body\n\n## First child\n\nFirst child body\n\n### Nested\n\nNested body\n\n#### Leaf\n\nLeaf body\n\n##### Detail\n\nDetail body\n\n## Sibling\n\nSibling body\n\n# Next\n\nNext body";
+    await inspect(window, `window.Mory.loadMarkdown(${JSON.stringify(foldingMarkdown)})`);
+    await expect(window, "level-one through level-four headings are eligible for the shared fold control", "document.querySelectorAll('#write > h1, #write > h2, #write > h3, #write > h4').length === 6 && document.querySelectorAll('#write > h5').length === 1 && document.querySelector('#heading-fold-toggle').hidden");
+    window.webContents.sendInputEvent({ type: "mouseMove", x: 1, y: 1 });
+    await wait(50);
+    await expect(window, "the heading fold control stays hidden when no rendered heading is hovered", "document.querySelector('#heading-fold-toggle').hidden");
+    const foldHoverPoint = await inspect(window, `(() => {
+      const heading = [...document.querySelectorAll('#write > h2')].find(item => item.textContent.trim() === 'First child');
+      heading.scrollIntoView({ block: 'center' });
+      const rect = heading.getBoundingClientRect();
+      return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
+    })()`);
+    window.webContents.sendInputEvent({ type: "mouseMove", x: foldHoverPoint.x, y: foldHoverPoint.y });
+    await wait(80);
+    if (await inspect(window, "document.querySelector('#heading-fold-toggle').hidden")) {
+      await inspect(window, "[...document.querySelectorAll('#write > h2')].find(item => item.textContent.trim() === 'First child').dispatchEvent(new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body }))");
+    }
+    await expect(window, "hovering a rendered heading reveals its fold control", "!document.querySelector('#heading-fold-toggle').hidden && document.querySelector('#heading-fold-toggle').getAttribute('aria-expanded') === 'true'");
+    await inspect(window, "(() => { const select = document.querySelector('#language-select'); select.value = 'en'; select.dispatchEvent(new Event('change', { bubbles: true })); })()");
+    await expect(window, "the heading fold control switches to English", "document.querySelector('#heading-fold-toggle').getAttribute('aria-label') === 'Collapse section'");
+    await inspect(window, "(() => { const select = document.querySelector('#language-select'); select.value = 'zh-CN'; select.dispatchEvent(new Event('change', { bubbles: true })); })()");
+    await inspect(window, "(() => { const heading = [...document.querySelectorAll('#write > h2')].find(item => item.textContent.trim() === 'First child'); heading.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); document.querySelector('#heading-fold-toggle').click(); })()");
+    await expect(window, "folding a child heading hides its section through the next peer heading", "(() => { const blocks = [...document.querySelector('#write').children]; const byText = text => blocks.find(item => item.textContent.trim() === text); return byText('First child').classList.contains('is-heading-folded') && byText('First child').nextElementSibling.classList.contains('is-heading-fold-hidden') && byText('Nested').classList.contains('is-heading-fold-hidden') && byText('Leaf').classList.contains('is-heading-fold-hidden') && byText('Detail').classList.contains('is-heading-fold-hidden') && !byText('Sibling').classList.contains('is-heading-fold-hidden') && !byText('Sibling body').classList.contains('is-heading-fold-hidden'); })()");
+    await inspect(window, "(() => { const heading = [...document.querySelectorAll('#write > h1')].find(item => item.textContent.trim() === 'Parent'); heading.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); document.querySelector('#heading-fold-toggle').click(); })()");
+    await expect(window, "folding a parent heading hides nested sections but not the next peer", "(() => { const blocks = [...document.querySelector('#write').children]; const byText = text => blocks.find(item => item.textContent.trim() === text); return byText('First child').classList.contains('is-heading-fold-hidden') && byText('Sibling').classList.contains('is-heading-fold-hidden') && !byText('Next').classList.contains('is-heading-fold-hidden') && !byText('Next body').classList.contains('is-heading-fold-hidden'); })()");
+    await inspect(window, "document.querySelector('#heading-fold-toggle').click()");
+    await expect(window, "expanding a parent preserves the nested heading fold", "(() => { const blocks = [...document.querySelector('#write').children]; const byText = text => blocks.find(item => item.textContent.trim() === text); return !byText('First child').classList.contains('is-heading-fold-hidden') && byText('First child').classList.contains('is-heading-folded') && byText('Nested').classList.contains('is-heading-fold-hidden') && !byText('Sibling').classList.contains('is-heading-fold-hidden'); })()");
+    await inspect(window, "(() => { const heading = [...document.querySelectorAll('#write > h2')].find(item => item.textContent.trim() === 'First child'); heading.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); document.querySelector('#heading-fold-toggle').click(); })()");
+    await expect(window, "heading folds leave Markdown and dirty state unchanged", `window.Mory.getMarkdown() === ${JSON.stringify(foldingMarkdown)} && document.querySelector('#save-state').textContent === '\u5DF2\u4FDD\u5B58' && !document.querySelector('#write > .is-heading-fold-hidden')`);
+    await inspect(window, `(() => {
+      const heading = [...document.querySelectorAll('#write > h2')].find(item => item.textContent.trim() === 'Sibling');
+      heading.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      document.querySelector('#heading-fold-toggle').click();
+      const range = document.createRange();
+      range.selectNodeContents(heading);
+      range.collapse(false);
+      getSelection().removeAllRanges();
+      getSelection().addRange(range);
+      document.querySelector('#write').focus();
+      heading.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Enter' }));
+    })()`);
+    await expect(window, "editing a folded heading expands it before creating content", "(() => { const heading = [...document.querySelectorAll('#write > h2')].find(item => item.textContent.trim() === 'Sibling'); return !heading.classList.contains('is-heading-folded') && heading.nextElementSibling.matches('p') && !heading.nextElementSibling.classList.contains('is-heading-fold-hidden'); })()");
+
     await inspect(window, `window.Mory.loadMarkdown('# \u683C\u5F0F\u6D4B\u8BD5\\n\\n\u9700\u8981\u52A0\u7C97\u7684\u6BB5\u843D')`);
     await inspect(window, `(() => {
       const paragraph = document.querySelector('#write p');
@@ -1274,7 +1326,7 @@ app.whenReady().then(async () => {
     await expect(window, "format button is clickable", "document.querySelector('#write strong, #write b') !== null");
 
     if (errors.length) throw new Error(`Renderer errors: ${errors.join(" | ")}`);
-    process.stdout.write(JSON.stringify({ status: "passed", interactions: interactionCount, rendererErrors: 0, dpiStableTypography: true, tableRowColumnDeletion: true, bundledThemeFonts: true, lapisCVResumeTheme: true, multipleUntitledDocuments: true, draftSwitchingPreservesContent: true, removableUntitledDocuments: true, savedDocumentTrash: true, deleteCancellation: true, activeDocumentCloseFallback: true, lastCloseCreatesBlankDocument: true, emptyWorkspacePlaceholder: true, nonEmptyWorkspaceAutoOpen: true, deletedWorkspaceFileReconciled: true, headingEnterCreatesParagraph: true, compositionHeadingRendering: true, immediateCompositionEnter: true, separateConsecutiveHeadings: true, staleHeadingRecovery: true, liveBold: true, pastedMarkdownRendering: true, liveFencedCode: true, multiLineFencedCode: true, fencedCodeExit: true, doubleEnterCodeExit: true, codeMetadataNavigation: true, liveInlineCode: true, instantHeading: true, liveUnsavedOutline: true, workspaceCreationOrder: true, stableOpenedFilePosition: true, statusbarSetting: true, zoomedStatusbar: true, readableSidebarContrast: true, coherentDarkDocument: true, readableGroupedPreferences: true, iconOnlyToolbar: true, hoverTooltip: true, sidebarSearchRemoved: true, verticalFloatingToolbar: true, singleSettingsEntry: true, macTrafficLightSafeArea: true, screenshot: screenshotPath, preferencesScreenshot: preferencesScreenshotPath, codeMetaScreenshot: codeMetaScreenshotPath, lapisCVScreenshot: lapisCVScreenshotPath, darkThemeScreenshot: darkThemeScreenshotPath, mermaidScreenshot: mermaidScreenshotPath, mermaidExpandedScreenshot: mermaidExpandedScreenshotPath, mermaidNarrowScreenshot: mermaidNarrowScreenshotPath, calendarDirectScreenshot: calendarDirectScreenshotPath }, null, 2) + "\n");
+    process.stdout.write(JSON.stringify({ status: "passed", interactions: interactionCount, rendererErrors: 0, dpiStableTypography: true, tableRowColumnDeletion: true, bundledThemeFonts: true, lapisCVResumeTheme: true, multipleUntitledDocuments: true, draftSwitchingPreservesContent: true, removableUntitledDocuments: true, savedDocumentTrash: true, deleteCancellation: true, activeDocumentCloseFallback: true, lastCloseCreatesBlankDocument: true, emptyWorkspacePlaceholder: true, nonEmptyWorkspaceAutoOpen: true, deletedWorkspaceFileReconciled: true, headingEnterCreatesParagraph: true, headingSectionFolding: true, compositionHeadingRendering: true, immediateCompositionEnter: true, separateConsecutiveHeadings: true, staleHeadingRecovery: true, liveBold: true, pastedMarkdownRendering: true, liveFencedCode: true, multiLineFencedCode: true, fencedCodeExit: true, doubleEnterCodeExit: true, codeMetadataNavigation: true, liveInlineCode: true, instantHeading: true, liveUnsavedOutline: true, workspaceCreationOrder: true, stableOpenedFilePosition: true, statusbarSetting: true, zoomedStatusbar: true, readableSidebarContrast: true, coherentDarkDocument: true, readableGroupedPreferences: true, iconOnlyToolbar: true, hoverTooltip: true, sidebarSearchRemoved: true, verticalFloatingToolbar: true, singleSettingsEntry: true, macTrafficLightSafeArea: true, screenshot: screenshotPath, preferencesScreenshot: preferencesScreenshotPath, codeMetaScreenshot: codeMetaScreenshotPath, lapisCVScreenshot: lapisCVScreenshotPath, darkThemeScreenshot: darkThemeScreenshotPath, mermaidScreenshot: mermaidScreenshotPath, mermaidExpandedScreenshot: mermaidExpandedScreenshotPath, mermaidNarrowScreenshot: mermaidNarrowScreenshotPath, calendarDirectScreenshot: calendarDirectScreenshotPath }, null, 2) + "\n");
   } catch (error) {
     process.stderr.write(`${error.stack || error}${errors.length ? `\nRenderer errors: ${errors.join(" | ")}` : ""}\n`);
     exitCode = 1;
