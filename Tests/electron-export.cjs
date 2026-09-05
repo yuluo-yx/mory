@@ -98,7 +98,7 @@ app.whenReady().then(async () => {
     if (!result.mermaidWorkbench || !result.exportMermaidClean) throw new Error("Mermaid workbench leaked into the exported document");
     if (!result.mermaidThemeRoundTrip) throw new Error("Mermaid color theme did not round-trip through Markdown");
     if (result.defaultTheme !== "github") throw new Error("GitHub did not become the default document theme");
-    if (result.highlightRuntime !== "11.11.1" || !result.codeHighlighted || !result.exportCodeHighlighted) throw new Error("Highlight.js did not cover both the editor and exported HTML");
+    if (result.highlightRuntime !== "11.12.0" || !result.codeHighlighted || !result.exportCodeHighlighted) throw new Error("Highlight.js did not cover both the editor and exported HTML");
     if (!result.namedCodeRoundTrip) throw new Error("The code snippet title did not round-trip through Markdown and export");
     if (!result.nightExport) throw new Error("Mermaid export failed with the Night theme");
     if (!result.lapisExport) throw new Error("Lapis CV theme was not embedded in the exported document");
