@@ -1019,6 +1019,10 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
                 answerHostRequest(id: id, result: ["opened": NSWorkspace.shared.open(url)])
             case "documentImage":
                 answerHostRequest(id: id, result: try workspaceManager.image(at: arguments["path"] as? String ?? ""))
+            case "copyText":
+                let pasteboard = NSPasteboard.general
+                pasteboard.clearContents()
+                answerHostRequest(id: id, result: ["copied": pasteboard.setString(arguments["text"] as? String ?? "", forType: .string)])
             case "readDocument":
                 answerHostRequest(id: id, result: try workspaceManager.document(at: arguments["path"] as? String ?? ""))
             case "revealFile":

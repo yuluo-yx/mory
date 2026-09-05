@@ -45,6 +45,7 @@ type Platform interface {
 	Reveal(path string) error
 	OpenDirectory(path string) error
 	OpenURL(url string) error
+	CopyText(text string) error
 	Evaluate(script string)
 	SetTitle(title string)
 	SetLocale(locale string)
@@ -350,6 +351,8 @@ func (host *Host) Request(method string, args map[string]any) (any, error) {
 		return map[string]bool{"opened": true}, host.platform.OpenURL(value)
 	case "documentImage":
 		return readDocumentImage(host.workspaces.activeRoot(), stringValue(args, "path"))
+	case "copyText":
+		return map[string]bool{"copied": true}, host.platform.CopyText(stringValue(args, "text"))
 	case "revealFile":
 		path, err := safeExistingPath(host.workspaces.activeRoot(), stringValue(args, "path"))
 		if err != nil {

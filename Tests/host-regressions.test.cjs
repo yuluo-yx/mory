@@ -149,6 +149,21 @@ test("both desktop hosts provide document actions, image previews, and theme-fol
   assert.match(web, /documentName: documentHostName\(activeDoc\)/);
 });
 
+test("desktop hosts copy absolute and relative workspace paths through native clipboards", () => {
+  const electron = fs.readFileSync(path.join(root, "Electron", "main.cjs"), "utf8");
+  const macOS = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
+  const windowsHost = fs.readFileSync(path.join(root, "internal", "windowshost", "host.go"), "utf8");
+  const windowsPlatform = fs.readFileSync(path.join(root, "cmd", "mory-windows", "platform_windows.go"), "utf8");
+  const web = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "app.js"), "utf8");
+  for (const source of [electron, macOS, windowsHost]) assert.match(source, /case "copyText"/);
+  assert.match(electron, /clipboard\.writeText/);
+  assert.match(macOS, /NSPasteboard\.general/);
+  assert.match(windowsPlatform, /runtime\.ClipboardSetText/);
+  assert.match(web, /copy-absolute-path/);
+  assert.match(web, /copy-relative-path/);
+  assert.match(web, /hostRequest\("copyText"/);
+});
+
 test("all three hosts share create, copy, move, rename, and delete contracts", () => {
   const electron = fs.readFileSync(path.join(root, "Electron", "main.cjs"), "utf8");
   const macOS = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");

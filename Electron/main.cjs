@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, Menu, shell } = require("electron");
+const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } = require("electron");
 const nativeFS = require("node:fs");
 const fs = require("node:fs/promises");
 const { spawn } = require("node:child_process");
@@ -340,6 +340,10 @@ async function handleWorkspaceRequest(method, args = {}) {
     }
     case "documentImage":
       return readDocumentImage(workspaceManager.activeRoot(), args.path);
+    case "copyText": {
+      clipboard.writeText(String(args.text || ""));
+      return { copied: true };
+    }
     case "revealFile": {
       const root = path.resolve(workspaceManager.activeRoot());
       const filePath = path.resolve(String(args.path || ""));

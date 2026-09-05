@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/url"
 	"os"
@@ -17,6 +18,7 @@ import (
 const (
 	maxDocumentBytes = 2 * 1024 * 1024
 	maxImageBytes    = 50 * 1024 * 1024
+	headingReadBytes = 64 * 1024
 )
 
 var (
@@ -26,6 +28,7 @@ var (
 	markdownImage      = regexp.MustCompile(`!\[[^\]]*\]\((?:<([^>]+)>|([^\s)]+))(?:\s+["'][^"']*["'])?\)`)
 	rawHTMLImage       = regexp.MustCompile("(?is)<img\\b[^>]*\\bsrc\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'=<>`]+))")
 	unsafeSegment      = regexp.MustCompile(`[<>:"/\\|?*\x00-\x1f\s]+`)
+	levelOneHeading    = regexp.MustCompile(`(?m)^#\s+(.+?)\s*#*\s*$`)
 )
 
 // Document is a note snapshot shared by the file tree and knowledge graph.
@@ -91,7 +94,14 @@ func listDocuments(root string, includeMarkdown bool) ([]Document, error) {
 			UpdatedAt: info.ModTime().UnixMilli(),
 			Size:      info.Size(),
 		}
-		document.Images, err = listDocumentImages(path)
+		markdownPrefix, readErr := readDocumentPrefix(path)
+		if readErr != nil {
+			if errors.Is(readErr, os.ErrNotExist) {
+				return nil
+			}
+			return readErr
+		}
+		document.Images, err = listDocumentImages(path, markdownPrefix)
 		if err != nil {
 			return err
 		}
@@ -125,8 +135,12 @@ func sortDocuments(documents []Document) {
 }
 
 func listDirectories(root string) ([]Directory, error) {
+	companionDirectories, err := findCompanionAssetDirectories(root)
+	if err != nil {
+		return nil, fmt.Errorf("识别文稿图片目录：%w", err)
+	}
 	directories := make([]Directory, 0)
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -139,7 +153,7 @@ func listDirectories(root string) ([]Directory, error) {
 		if !entry.IsDir() {
 			return nil
 		}
-		if companionAssetDirectory(path) {
+		if companionDirectories[filepath.Clean(path)] {
 			return filepath.SkipDir
 		}
 		info, err := entry.Info()
@@ -160,63 +174,130 @@ func listDirectories(root string) ([]Directory, error) {
 	return directories, nil
 }
 
-func companionAssetDirectory(directory string) bool {
-	entries, err := os.ReadDir(filepath.Dir(directory))
+func readDocumentPrefix(documentPath string) (string, error) {
+	file, err := os.Open(documentPath)
 	if err != nil {
-		return false
+		return "", err
 	}
-	name := filepath.Base(directory)
-	for _, entry := range entries {
-		if entry.IsDir() || !documentExtensions[strings.ToLower(filepath.Ext(entry.Name()))] {
-			continue
-		}
-		base := sanitizeSegment(strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name())))
-		if base == name {
-			return true
-		}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, headingReadBytes))
+	if err != nil {
+		return "", err
 	}
-	return false
+	return string(data), nil
 }
 
-func listDocumentImages(documentPath string) ([]DocumentImage, error) {
-	assetRoot := filepath.Join(filepath.Dir(documentPath), sanitizeSegment(strings.TrimSuffix(filepath.Base(documentPath), filepath.Ext(documentPath))))
-	images := make([]DocumentImage, 0)
-	err := filepath.WalkDir(assetRoot, func(path string, entry fs.DirEntry, walkErr error) error {
-		if errors.Is(walkErr, os.ErrNotExist) {
-			return nil
+func firstLevelHeading(markdown string) string {
+	fence := ""
+	for _, line := range strings.Split(strings.ReplaceAll(markdown, "\r\n", "\n"), "\n") {
+		trimmed := strings.TrimSpace(line)
+		marker := ""
+		if strings.HasPrefix(trimmed, "```") {
+			marker = "```"
+		} else if strings.HasPrefix(trimmed, "~~~") {
+			marker = "~~~"
 		}
+		if marker != "" {
+			if fence == "" {
+				fence = marker
+			} else if fence == marker {
+				fence = ""
+			}
+			continue
+		}
+		if fence != "" {
+			continue
+		}
+		match := levelOneHeading.FindStringSubmatch(line)
+		if len(match) > 1 {
+			return strings.TrimSpace(strings.NewReplacer("*", "", "_", "", "`", "", "~", "").Replace(match[1]))
+		}
+	}
+	return ""
+}
+
+func documentAssetDirectories(documentPath, markdown string) []string {
+	parent := filepath.Dir(documentPath)
+	names := map[string]bool{sanitizeSegment(strings.TrimSuffix(filepath.Base(documentPath), filepath.Ext(documentPath))): true}
+	if heading := firstLevelHeading(markdown); heading != "" {
+		if strings.HasSuffix(strings.ToLower(heading), ".md") {
+			heading = heading[:len(heading)-3]
+		}
+		names[sanitizeSegment(heading)] = true
+	}
+	directories := make([]string, 0, len(names))
+	for name := range names {
+		directories = append(directories, filepath.Join(parent, name))
+	}
+	return directories
+}
+
+func findCompanionAssetDirectories(root string) (map[string]bool, error) {
+	directories := make(map[string]bool)
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
-		if path != assetRoot && entry.IsDir() && strings.HasPrefix(entry.Name(), ".") {
+		if path != root && entry.IsDir() && hiddenWorkspaceEntry(entry.Name()) {
 			return filepath.SkipDir
 		}
-		if entry.IsDir() || !imageExtensions[strings.ToLower(filepath.Ext(entry.Name()))] {
+		if entry.IsDir() || !documentExtensions[strings.ToLower(filepath.Ext(entry.Name()))] {
 			return nil
 		}
-		info, err := entry.Info()
+		markdownPrefix, err := readDocumentPrefix(path)
 		if err != nil {
 			return err
 		}
-		name, err := filepath.Rel(assetRoot, path)
-		if err != nil {
-			return err
+		for _, directory := range documentAssetDirectories(path, markdownPrefix) {
+			directories[filepath.Clean(directory)] = true
 		}
-		relative, err := filepath.Rel(filepath.Dir(documentPath), path)
-		if err != nil {
-			return err
-		}
-		images = append(images, DocumentImage{
-			Name:      filepath.ToSlash(name),
-			Path:      path,
-			Relative:  filepath.ToSlash(relative),
-			UpdatedAt: info.ModTime().UnixMilli(),
-			Size:      info.Size(),
-		})
 		return nil
 	})
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("扫描文稿图片：%w", err)
+	return directories, err
+}
+
+func listDocumentImages(documentPath, markdown string) ([]DocumentImage, error) {
+	images := make([]DocumentImage, 0)
+	visited := make(map[string]bool)
+	for _, assetRoot := range documentAssetDirectories(documentPath, markdown) {
+		err := filepath.WalkDir(assetRoot, func(path string, entry fs.DirEntry, walkErr error) error {
+			if errors.Is(walkErr, os.ErrNotExist) {
+				return nil
+			}
+			if walkErr != nil {
+				return walkErr
+			}
+			if path != assetRoot && entry.IsDir() && strings.HasPrefix(entry.Name(), ".") {
+				return filepath.SkipDir
+			}
+			if entry.IsDir() || !imageExtensions[strings.ToLower(filepath.Ext(entry.Name()))] || visited[path] {
+				return nil
+			}
+			visited[path] = true
+			info, err := entry.Info()
+			if err != nil {
+				return err
+			}
+			name, err := filepath.Rel(assetRoot, path)
+			if err != nil {
+				return err
+			}
+			relative, err := filepath.Rel(filepath.Dir(documentPath), path)
+			if err != nil {
+				return err
+			}
+			images = append(images, DocumentImage{
+				Name:      filepath.ToSlash(name),
+				Path:      path,
+				Relative:  filepath.ToSlash(relative),
+				UpdatedAt: info.ModTime().UnixMilli(),
+				Size:      info.Size(),
+			})
+			return nil
+		})
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("扫描文稿图片：%w", err)
+		}
 	}
 	sort.SliceStable(images, func(i, j int) bool { return naturalLess(images[i].Name, images[j].Name) })
 	return images, nil
@@ -239,7 +320,7 @@ func loadDocument(root, path string) (Document, error) {
 		Size:      info.Size(),
 		Markdown:  string(data),
 	}
-	document.Images, err = listDocumentImages(path)
+	document.Images, err = listDocumentImages(path, document.Markdown)
 	if err != nil {
 		return Document{}, err
 	}

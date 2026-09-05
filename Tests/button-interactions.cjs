@@ -195,6 +195,10 @@ app.whenReady().then(async () => {
           }
           if (method === 'documentImage') return Promise.resolve({ dataURL: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjwvc3ZnPg==' });
           if (method === 'readDocument') return Promise.resolve({ name: args.path.split('/').at(-1), path: args.path, markdown: '# \u7B2C\u4E00\u7BC7', assets: {} });
+          if (method === 'copyText') {
+            window.__copiedTexts = [...(window.__copiedTexts || []), args.text];
+            return Promise.resolve({ copied: true });
+          }
           if (method === 'revealFile') return Promise.resolve({ revealed: true });
           if (method === 'chooseThemeFolder') return Promise.resolve({ directory: '/themes', themes: [{ id: 'user-folder-test', name: '\u76EE\u5F55\u4E3B\u9898', css: '#write{word-spacing:2px}' }] });
           return Promise.reject(new Error('The test host does not implement this request'));
@@ -304,7 +308,7 @@ app.whenReady().then(async () => {
     await expectEventually(window, "changing a workspace heading immediately updates the sidebar name", "document.querySelector('.file-item.is-active .file-name')?.textContent === '\u66F4\u65B0\u540E\u7684\u6807\u9898.md' && document.querySelector('.file-item.is-active')?.dataset.path === '/opened/\u8D44\u6599\u76EE\u5F55/\u56FA\u5B9A\u6587\u4EF6\u540D.md'");
     await inspect(window, "window.Mory.closeDocument(document.querySelector('.file-item.is-active').dataset.documentId)");
     await inspect(window, `document.querySelector(".folder-item[data-path='/opened/\u8D44\u6599\u76EE\u5F55']").dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 150, clientY: 160 }))`);
-    await expect(window, "directory context menu exposes create, reveal, rename, copy, move, and delete", "document.querySelector('#file-context-menu').classList.contains('is-open') && document.querySelectorAll('#file-context-menu [data-entry-action]:not([hidden])').length === 7 && document.querySelector('#file-context-menu [data-entry-action=\"delete\"]').textContent === '\u5220\u9664\u76EE\u5F55'");
+    await expect(window, "directory context menu exposes create, path, reveal, rename, copy, move, and delete actions", "document.querySelector('#file-context-menu').classList.contains('is-open') && document.querySelectorAll('#file-context-menu [data-entry-action]:not([hidden])').length === 9 && document.querySelector('#file-context-menu [data-entry-action=\"delete\"]').textContent === '\u5220\u9664\u76EE\u5F55'");
     await expect(window, "context menu remains compact, legible, and free of backdrop blur", "(() => { const menu = document.querySelector('#file-context-menu'); const style = getComputedStyle(menu); return menu.getBoundingClientRect().width <= 160 && parseFloat(style.fontSize || getComputedStyle(menu.querySelector('button')).fontSize) >= 13 && (style.backdropFilter === 'none' || style.backdropFilter === ''); })()");
     await click(window, "#file-context-menu [data-entry-action='copy']");
     await expect(window, "copying a directory allows destination selection", "document.querySelector('#entry-operation-dialog').classList.contains('is-open') && document.querySelector('#entry-operation-destination option').textContent === '\u5DE5\u4F5C\u533A\u6839\u76EE\u5F55'");
@@ -325,7 +329,13 @@ app.whenReady().then(async () => {
     await expectEventually(window, "clicking an associated image opens its preview immediately", "document.querySelector('#image-preview').classList.contains('is-open') && document.querySelector('#image-preview-content').src.startsWith('data:image/svg+xml;base64,')");
     await click(window, "#image-preview-close");
     await inspect(window, `document.querySelector(".file-item[data-path='/opened/\u7B2C\u4E00\u7BC7.md']").dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 160, clientY: 180 }))`);
-    await expect(window, "document context menu exposes open, reveal, rename, copy, move, export, and delete", "document.querySelector('#file-context-menu').classList.contains('is-open') && document.querySelectorAll('#file-context-menu [data-entry-action]:not([hidden])').length === 7");
+    await expect(window, "document context menu exposes open, path, reveal, rename, copy, move, export, and delete actions", "document.querySelector('#file-context-menu').classList.contains('is-open') && document.querySelectorAll('#file-context-menu [data-entry-action]:not([hidden])').length === 9");
+    await click(window, "#file-context-menu [data-entry-action='copy-relative-path']");
+    await expectEventually(window, "document context menu copies a workspace-relative path", "window.__lastHostRequest.method === 'copyText' && window.__lastHostRequest.args.text === '\u7B2C\u4E00\u7BC7.md' && window.__copiedTexts.at(-1) === '\u7B2C\u4E00\u7BC7.md'");
+    await inspect(window, `document.querySelector(".file-item[data-path='/opened/\u7B2C\u4E00\u7BC7.md']").dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 160, clientY: 180 }))`);
+    await click(window, "#file-context-menu [data-entry-action='copy-absolute-path']");
+    await expectEventually(window, "document context menu copies an absolute path", "window.__lastHostRequest.method === 'copyText' && window.__lastHostRequest.args.text === '/opened/\u7B2C\u4E00\u7BC7.md' && window.__copiedTexts.at(-1) === '/opened/\u7B2C\u4E00\u7BC7.md'");
+    await inspect(window, `document.querySelector(".file-item[data-path='/opened/\u7B2C\u4E00\u7BC7.md']").dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 160, clientY: 180 }))`);
     await click(window, "#file-context-menu [data-entry-action='reveal']");
     await expectEventually(window, "context menu reveals documents in the system file manager", "window.__lastHostRequest.method === 'revealFile' && window.__lastHostRequest.args.path === '/opened/\u7B2C\u4E00\u7BC7.md'");
     await inspect(window, `document.querySelector(".file-item[data-path='/opened/\u7B2C\u4E00\u7BC7.md']").dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 160, clientY: 180 }))`);

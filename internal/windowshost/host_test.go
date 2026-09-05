@@ -28,6 +28,7 @@ type fakePlatform struct {
 	revealed         []string
 	opened           []string
 	urls             []string
+	copiedTexts      []string
 	recent           []string
 }
 
@@ -58,6 +59,10 @@ func (platform *fakePlatform) OpenDirectory(path string) error {
 }
 func (platform *fakePlatform) OpenURL(url string) error {
 	platform.urls = append(platform.urls, url)
+	return nil
+}
+func (platform *fakePlatform) CopyText(text string) error {
+	platform.copiedTexts = append(platform.copiedTexts, text)
 	return nil
 }
 func (platform *fakePlatform) Evaluate(script string) {
@@ -355,6 +360,9 @@ func TestHostWorkspaceRequestMatrixAndMenuActions(t *testing.T) {
 	}
 	if _, err := host.Request("openExternal", map[string]any{"url": "file:///outside"}); err == nil {
 		t.Fatal("unsafe external URL should fail")
+	}
+	if _, err := host.Request("copyText", map[string]any{"text": "nested/note.md"}); err != nil || len(platform.copiedTexts) != 1 || platform.copiedTexts[0] != "nested/note.md" {
+		t.Fatalf("copy text: %v, %#v", err, platform.copiedTexts)
 	}
 	if _, err := host.Request("documentImage", map[string]any{"path": filepath.Join(root, "note", "p.png")}); err != nil {
 		t.Fatal(err)

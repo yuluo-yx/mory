@@ -437,19 +437,55 @@ final class WorkspaceManager: @unchecked Sendable {
     }
 
     private func documentImages(for documentURL: URL) -> [[String: Any]] {
-        let directory = documentURL.deletingLastPathComponent().appendingPathComponent(sanitize(documentURL.deletingPathExtension().lastPathComponent), isDirectory: true)
         let supported = Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"])
         let keys: Set<URLResourceKey> = [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey]
-        guard let enumerator = fileManager.enumerator(at: directory, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles]) else { return [] }
         var images: [[String: Any]] = []
-        for case let url as URL in enumerator where supported.contains(url.pathExtension.lowercased()) {
-            guard let values = try? url.resourceValues(forKeys: keys), values.isRegularFile == true else { continue }
-            let name = url.path.replacingOccurrences(of: directory.path + "/", with: "")
-            let relative = url.path.replacingOccurrences(of: documentURL.deletingLastPathComponent().path + "/", with: "")
-            let updatedAt = (values.contentModificationDate ?? .distantPast).timeIntervalSince1970 * 1_000
-            images.append(["name": name, "path": url.path, "relative": relative, "updatedAt": updatedAt, "size": values.fileSize ?? 0])
+        var visited = Set<String>()
+        for directory in documentAssetDirectories(for: documentURL) {
+            guard let enumerator = fileManager.enumerator(at: directory, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles]) else { continue }
+            for case let url as URL in enumerator where supported.contains(url.pathExtension.lowercased()) && !visited.contains(url.path) {
+                guard let values = try? url.resourceValues(forKeys: keys), values.isRegularFile == true else { continue }
+                visited.insert(url.path)
+                let name = url.path.replacingOccurrences(of: directory.path + "/", with: "")
+                let relative = url.path.replacingOccurrences(of: documentURL.deletingLastPathComponent().path + "/", with: "")
+                let updatedAt = (values.contentModificationDate ?? .distantPast).timeIntervalSince1970 * 1_000
+                images.append(["name": name, "path": url.path, "relative": relative, "updatedAt": updatedAt, "size": values.fileSize ?? 0])
+            }
         }
         return images.sorted { ($0["name"] as? String ?? "").localizedStandardCompare($1["name"] as? String ?? "") == .orderedAscending }
+    }
+
+    private func firstLevelHeading(for documentURL: URL) -> String? {
+        guard let markdown = try? String(contentsOf: documentURL, encoding: .utf8),
+              let expression = try? NSRegularExpression(pattern: #"(?m)^#\s+(.+?)\s*#*\s*$"#) else { return nil }
+        var fence: String?
+        for line in markdown.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            let marker = trimmed.hasPrefix("```") ? "```" : (trimmed.hasPrefix("~~~") ? "~~~" : nil)
+            if let marker {
+                fence = fence == nil ? marker : (fence == marker ? nil : fence)
+                continue
+            }
+            guard fence == nil else { continue }
+            let source = line as NSString
+            guard let match = expression.firstMatch(in: line, range: NSRange(location: 0, length: source.length)),
+                  match.range(at: 1).location != NSNotFound else { continue }
+            let heading = source.substring(with: match.range(at: 1))
+                .replacingOccurrences(of: #"[*_`~]"#, with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !heading.isEmpty { return heading }
+        }
+        return nil
+    }
+
+    private func documentAssetDirectories(for documentURL: URL) -> [URL] {
+        var directories = [companionAssetsURL(for: documentURL)]
+        if let heading = firstLevelHeading(for: documentURL) {
+            let headingBase = heading.lowercased().hasSuffix(".md") ? String(heading.dropLast(3)) : heading
+            directories.append(documentURL.deletingLastPathComponent().appendingPathComponent(sanitize(headingBase), isDirectory: true))
+        }
+        var seen = Set<String>()
+        return directories.filter { seen.insert($0.standardizedFileURL.path).inserted }
     }
 
     private func isCompanionAssetDirectory(_ directory: URL) -> Bool {
@@ -461,7 +497,7 @@ final class WorkspaceManager: @unchecked Sendable {
         let documentExtensions = Set(["md", "markdown", "mmd", "mdown", "mkd", "txt", "text"])
         return entries.contains { entry in
             documentExtensions.contains(entry.pathExtension.lowercased())
-                && sanitize(entry.deletingPathExtension().lastPathComponent) == directory.lastPathComponent
+                && documentAssetDirectories(for: entry).contains { $0.standardizedFileURL == directory.standardizedFileURL }
         }
     }
 

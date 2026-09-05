@@ -152,6 +152,19 @@ test("lists documents recursively while ignoring non-documents in asset folders"
   await assert.rejects(() => readDocumentImage(root, path.join(root, "\u4E13\u9898", "\u6587\u7AE0.md")), /\u56FE\u7247\u683C\u5F0F/);
 });
 
+test("associates heading-named image directories with their document", async t => {
+  const root = await fixture(t);
+  const documentPath = path.join(root, "notes.md");
+  await fs.writeFile(documentPath, "```text\n# Code Sample\n```\n\n# Project Overview\n\n![diagram](Project-Overview/diagram.png)");
+  await fs.mkdir(path.join(root, "Project-Overview"));
+  await fs.writeFile(path.join(root, "Project-Overview", "diagram.png"), "image");
+
+  const documents = await listDocuments(root);
+  assert.equal(documents.length, 1);
+  assert.deepEqual(documents[0].images.map(image => image.relative), ["Project-Overview/diagram.png"]);
+  assert.deepEqual(await listDirectories(root), []);
+});
+
 test("creates nested workspace directories and rejects path traversal", async t => {
   const root = await fixture(t);
   const created = await createWorkspaceDirectory(root, "\u8D44\u6599/\u9879\u76EE A");

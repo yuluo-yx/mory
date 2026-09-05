@@ -74,7 +74,7 @@ func TestImportAndLoadDocumentImages(t *testing.T) {
 	if !strings.HasPrefix(assets["/img/summary/cover.jpg"], "data:image/jpeg;base64,") {
 		t.Fatal("workspace-root image was not converted to a data URL")
 	}
-	images, err := listDocumentImages(documentPath)
+	images, err := listDocumentImages(documentPath, markdown)
 	if err != nil || len(images) != 1 {
 		t.Fatalf("list images: %v, count %d", err, len(images))
 	}
@@ -89,6 +89,30 @@ func TestImportAndLoadDocumentImages(t *testing.T) {
 		if directory.Name == "\u793A\u4F8B" {
 			t.Fatal("companion image directory should be hidden from the workspace tree")
 		}
+	}
+}
+
+func TestHeadingNamedImageDirectoryStaysAttachedToDocument(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	documentPath := filepath.Join(root, "notes.md")
+	markdown := "```text\n# Code Sample\n```\n\n# Project Overview\n\n![diagram](Project-Overview/diagram.png)"
+	writeAt(t, documentPath, markdown, time.Now())
+	writeAt(t, filepath.Join(root, "Project-Overview", "diagram.png"), "image", time.Now())
+
+	documents, err := listDocuments(root, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(documents) != 1 || len(documents[0].Images) != 1 || documents[0].Images[0].Relative != "Project-Overview/diagram.png" {
+		t.Fatalf("heading-named images were not attached: %#v", documents)
+	}
+	directories, err := listDirectories(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(directories) != 0 {
+		t.Fatalf("heading-named companion directory should be hidden: %#v", directories)
 	}
 }
 

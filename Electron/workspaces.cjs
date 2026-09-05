@@ -10,6 +10,7 @@ const IMAGE_MIME = new Map([
   ["image/webp", ".webp"], ["image/svg+xml", ".svg"], ["image/bmp", ".bmp"]
 ]);
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp"]);
+const DOCUMENT_HEADING_BYTES = 64 * 1024;
 const SECRET_FIELDS = ["token", "accessKeySecret", "sessionToken", "password", "privateKey"];
 const STORAGE_FIELDS = [
   "id", "name", "provider", "endpoint", "region", "bucket", "prefix", "accessKeyId",
@@ -159,6 +160,7 @@ async function listDocuments(root) {
       if (entry.isDirectory()) await visit(fullPath);
       else if (entry.isFile() && DOCUMENT_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
         const stat = await fs.stat(fullPath);
+        const markdownPrefix = await readDocumentPrefix(fullPath);
         const birthtime = Number(stat.birthtimeMs);
         const createdAt = Number.isFinite(birthtime) && birthtime > 0 ? birthtime : Number(stat.ctimeMs);
         files.push({
@@ -167,7 +169,7 @@ async function listDocuments(root) {
           createdAt,
           updatedAt: Number(stat.mtimeMs),
           size: Number(stat.size),
-          images: await listDocumentImages(fullPath)
+          images: await listDocumentImages(fullPath, markdownPrefix)
         });
       }
     }
@@ -176,18 +178,51 @@ async function listDocuments(root) {
   return files.sort(compareDocumentsByCreation);
 }
 
-async function listDocumentImages(documentPath) {
-  const directory = path.join(path.dirname(documentPath), sanitizeSegment(path.basename(documentPath, path.extname(documentPath))));
+async function readDocumentPrefix(documentPath) {
+  const handle = await fs.open(documentPath, "r");
+  try {
+    const buffer = Buffer.alloc(DOCUMENT_HEADING_BYTES);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    return buffer.toString("utf8", 0, bytesRead);
+  } finally {
+    await handle.close();
+  }
+}
+
+function firstLevelHeading(markdown) {
+  let fence = "";
+  for (const line of String(markdown || "").replace(/\r\n?/g, "\n").split("\n")) {
+    const marker = line.match(/^\s*(```|~~~)/)?.[1] || "";
+    if (marker) { fence = fence ? (fence === marker ? "" : fence) : marker; continue; }
+    if (fence) continue;
+    const heading = line.match(/^#\s+(.+?)\s*#*\s*$/)?.[1]?.replace(/[*_`~]/g, "").trim();
+    if (heading) return heading;
+  }
+  return "";
+}
+
+function documentAssetDirectories(documentPath, markdown) {
+  const parent = path.dirname(documentPath);
+  const names = new Set([sanitizeSegment(path.basename(documentPath, path.extname(documentPath)))]);
+  const heading = firstLevelHeading(markdown);
+  if (heading) names.add(sanitizeSegment(heading.replace(/\.md$/i, "")));
+  return [...names].map(name => path.join(parent, name));
+}
+
+async function listDocumentImages(documentPath, markdown) {
+  const source = markdown === undefined ? await readDocumentPrefix(documentPath) : markdown;
   const images = [];
-  async function visit(current) {
+  const visited = new Set();
+  async function visit(directory, current) {
     let entries;
     try { entries = await fs.readdir(current, { withFileTypes: true }); }
     catch (error) { if (error.code === "ENOENT") return; throw error; }
     for (const entry of entries) {
       if (entry.name.startsWith(".")) continue;
       const fullPath = path.join(current, entry.name);
-      if (entry.isDirectory()) await visit(fullPath);
-      else if (entry.isFile() && IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+      if (entry.isDirectory()) await visit(directory, fullPath);
+      else if (entry.isFile() && IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase()) && !visited.has(fullPath)) {
+        visited.add(fullPath);
         const stat = await fs.stat(fullPath);
         images.push({
           name: path.relative(directory, fullPath).replaceAll("\\", "/"),
@@ -199,7 +234,7 @@ async function listDocumentImages(documentPath) {
       }
     }
   }
-  await visit(directory);
+  for (const directory of documentAssetDirectories(documentPath, source)) await visit(directory, directory);
   return images.sort((left, right) => left.name.localeCompare(right.name, "zh-CN", { numeric: true }));
 }
 
@@ -218,9 +253,12 @@ async function listDirectories(root) {
   const directories = [];
   async function visit(directory) {
     const entries = await fs.readdir(directory, { withFileTypes: true });
-    const companionNames = new Set(entries
-      .filter(entry => entry.isFile() && DOCUMENT_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))
-      .map(entry => sanitizeSegment(path.basename(entry.name, path.extname(entry.name)))));
+    const companionNames = new Set();
+    for (const entry of entries.filter(item => item.isFile() && DOCUMENT_EXTENSIONS.has(path.extname(item.name).toLowerCase()))) {
+      const documentPath = path.join(directory, entry.name);
+      const markdownPrefix = await readDocumentPrefix(documentPath);
+      documentAssetDirectories(documentPath, markdownPrefix).forEach(assetPath => companionNames.add(path.basename(assetPath)));
+    }
     for (const entry of entries) {
       if (!entry.isDirectory() || entry.name === ".git" || entry.name === ".mory" || entry.name.startsWith(".")) continue;
       if (companionNames.has(entry.name)) continue;

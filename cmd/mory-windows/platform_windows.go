@@ -133,6 +133,10 @@ func (platform *windowsPlatform) OpenURL(url string) error {
 	return nil
 }
 
+func (platform *windowsPlatform) CopyText(text string) error {
+	return runtime.ClipboardSetText(platform.context(), text)
+}
+
 func (platform *windowsPlatform) Evaluate(script string) {
 	runtime.WindowExecJS(platform.context(), script)
 }
