@@ -4,14 +4,54 @@
 globalThis.__MORY_THEME_CSS__ = {"yuluo-css":"/*\n * Mory's Yuluo CSS document theme.\n * Adapted from the user's existing Typora theme while excluding Typora-only selectors,\n * remote fonts, and font files without explicit redistribution permission.\n */\n@font-face {\n  font-family: \"Mory LXGW WenKai\";\n  src: url(\"../fonts/LXGWWenKai-Regular.ttf\") format(\"truetype\");\n  font-style: normal;\n  font-weight: 400 700;\n  font-display: swap;\n}\n\n[data-doc-theme=\"yuluo-css\"] .editor-scroll { background: #fff; }\n\n[data-doc-theme=\"yuluo-css\"] .write {\n  color: #333;\n  font-family: \"Hannotate SC\", \"Mory LXGW WenKai\", \"Kaiti SC\", \"STKaiti\", \"Microsoft YaHei UI\", \"PingFang SC\", sans-serif;\n  font-size: 1.0625rem;\n  line-height: 1.6;\n}\n\n[data-doc-theme=\"yuluo-css\"] .write h1,\n[data-doc-theme=\"yuluo-css\"] .write h2,\n[data-doc-theme=\"yuluo-css\"] .write h3,\n[data-doc-theme=\"yuluo-css\"] .write h4,\n[data-doc-theme=\"yuluo-css\"] .write h5,\n[data-doc-theme=\"yuluo-css\"] .write h6 {\n  margin-top: 1rem;\n  margin-bottom: 1rem;\n  font-family: inherit;\n  font-weight: 700;\n  line-height: 1.4;\n}\n\n[data-doc-theme=\"yuluo-css\"] .write h1 {\n  color: #0077bb;\n  font-size: 2.25em;\n  line-height: 1.2;\n  border-color: #eee;\n}\n\n[data-doc-theme=\"yuluo-css\"] .write h2 {\n  color: #6a5acd;\n  font-size: 1.75em;\n  line-height: 1.225;\n  border-color: #eee;\n}\n\n[data-doc-theme=\"yuluo-css\"] .write h3 { color: rgb(26, 143, 55); font-size: 1.5em; line-height: 1.43; }\n[data-doc-theme=\"yuluo-css\"] .write h4,\n[data-doc-theme=\"yuluo-css\"] .write h5 { color: #87cefa; }\n[data-doc-theme=\"yuluo-css\"] .write h4 { font-size: 1.25em; }\n[data-doc-theme=\"yuluo-css\"] .write h5 { font-size: 1em; }\n[data-doc-theme=\"yuluo-css\"] .write h6 { color: #777; font-size: 1em; }\n[data-doc-theme=\"yuluo-css\"] .write strong { color: #40e0d0; }\n[data-doc-theme=\"yuluo-css\"] .write a { color: #4183c4; }\n[data-doc-theme=\"yuluo-css\"] .write ::selection { background: #d1ff79; }\n[data-doc-theme=\"yuluo-css\"] .write mark { padding: 0; background: #fff; color: #db3f1e; font-weight: 700; }\n\n[data-doc-theme=\"yuluo-css\"] .write code,\n[data-doc-theme=\"yuluo-css\"] .write pre {\n  border-color: #e7eaed;\n  border-radius: 3px;\n  background: #f8f8f8;\n}\n\n[data-doc-theme=\"yuluo-css\"] .write code { background: #f3f4f4; }\n[data-doc-theme=\"yuluo-css\"] .write pre code { background: transparent; }\n[data-doc-theme=\"yuluo-css\"] .write blockquote { border-color: #dfe2e5; color: #777; }\n[data-doc-theme=\"yuluo-css\"] .write hr { border-color: #e7e7e7; }\n\n[data-doc-theme=\"yuluo-css\"] .write table { table-layout: fixed; word-break: break-word; }\n[data-doc-theme=\"yuluo-css\"] .write thead { white-space: nowrap; background: #f8f8f8; }\n[data-doc-theme=\"yuluo-css\"] .write th,\n[data-doc-theme=\"yuluo-css\"] .write td { border-color: #dfe2e5; }\n[data-doc-theme=\"yuluo-css\"] .write tbody tr:nth-child(even) { background: #effaff; }\n[data-doc-theme=\"yuluo-css\"] .write tbody tr:nth-child(odd) { background: #fff1f6; }\n[data-doc-theme=\"yuluo-css\"] .write tbody tr:nth-child(1) { background: #8ae1fc; }\n[data-doc-theme=\"yuluo-css\"] .write tbody tr:nth-child(2) { background: #efa7a7; }\n[data-doc-theme=\"yuluo-css\"] .write tbody tr:nth-child(3) { background: #ffd972; }\n[data-doc-theme=\"yuluo-css\"] .write tbody tr:nth-child(4) { background: #fcf5fc; }\n[data-doc-theme=\"yuluo-css\"] .write tbody tr:nth-child(5) { background: #f3f1ec; }\n[data-doc-theme=\"yuluo-css\"] .write tbody tr:nth-child(6) { background: #ccecd6; }\n[data-doc-theme=\"yuluo-css\"] .write tbody tr:nth-child(7) { background: #c2dda6; }\n[data-doc-theme=\"yuluo-css\"] .write tbody tr:nth-child(8) { background: #c9af98; }\n[data-doc-theme=\"yuluo-css\"] .write tbody tr:nth-child(9) { background: #f5e5fc; }\n[data-doc-theme=\"yuluo-css\"] .write tbody tr:nth-child(10) { background: #ed8a63; }\n[data-doc-theme=\"yuluo-css\"] .write input[type=\"checkbox\"] { transform: scale(1.18); }\n\n[data-doc-theme=\"yuluo-css\"] .write .hljs-comment,\n[data-doc-theme=\"yuluo-css\"] .write .hljs-quote { color: #6a737d; font-style: italic; }\n[data-doc-theme=\"yuluo-css\"] .write .hljs-keyword,\n[data-doc-theme=\"yuluo-css\"] .write .hljs-selector-tag,\n[data-doc-theme=\"yuluo-css\"] .write .hljs-type { color: #6a5acd; font-weight: 600; }\n[data-doc-theme=\"yuluo-css\"] .write .hljs-title,\n[data-doc-theme=\"yuluo-css\"] .write .hljs-section,\n[data-doc-theme=\"yuluo-css\"] .write .hljs-function { color: #0077bb; }\n[data-doc-theme=\"yuluo-css\"] .write .hljs-string,\n[data-doc-theme=\"yuluo-css\"] .write .hljs-attr,\n[data-doc-theme=\"yuluo-css\"] .write .hljs-symbol { color: #1a8f37; }\n[data-doc-theme=\"yuluo-css\"] .write .hljs-number,\n[data-doc-theme=\"yuluo-css\"] .write .hljs-literal,\n[data-doc-theme=\"yuluo-css\"] .write .hljs-built_in { color: #b4654d; }\n[data-doc-theme=\"yuluo-css\"] .write .hljs-variable,\n[data-doc-theme=\"yuluo-css\"] .write .hljs-params { color: #333; }\n\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .editor-scroll { background: #1f2224; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write { color: #dde2e5; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write h1 { color: #4eb3e8; border-color: #3b4145; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write h2 { color: #a99bf2; border-color: #373c40; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write h3 { color: #58c978; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write h4,\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write h5 { color: #8dcdf0; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write h6,\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write blockquote { color: #aeb6bb; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write strong { color: #55d9cb; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write a { color: #78b7e4; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write ::selection { background: #365a72; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write mark { background: #3b3324; color: #ff9b7c; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write code,\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write pre,\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write thead { border-color: #3c4348; background: #292e32; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write blockquote,\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write hr,\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write th,\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write td { border-color: #41484d; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write tbody tr:nth-child(n) { background: #252a2e; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write tbody tr:nth-child(even) { background: #2a3034; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write .hljs-comment,\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write .hljs-quote { color: #9aa4aa; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write .hljs-keyword,\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write .hljs-selector-tag,\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write .hljs-type { color: #a99bf2; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write .hljs-title,\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write .hljs-section,\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write .hljs-function { color: #78b7e4; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write .hljs-string,\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write .hljs-attr,\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write .hljs-symbol { color: #7bc98b; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write .hljs-number,\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write .hljs-literal,\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write .hljs-built_in { color: #f0a77e; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write .hljs-variable,\n:root[data-appearance=\"dark\"][data-doc-theme=\"yuluo-css\"] .write .hljs-params { color: #dde2e5; }\n\n@media print {\n  [data-doc-theme=\"yuluo-css\"] .write { font-size: 13px; }\n  [data-doc-theme=\"yuluo-css\"] .write table,\n  [data-doc-theme=\"yuluo-css\"] .write pre { break-inside: avoid; }\n}\n","lapis-cv":"/*\n * Mory Lapis CV document theme.\n * Adapted for standard Markdown from LapisCV by YiNN/BingyanStudio.\n * Upstream project: https://github.com/BingyanStudio/LapisCV\n * Distributed under the MIT License; see lapis-cv.LICENSE.\n */\n\n@font-face {\n  font-family: \"Mory Source Han Sans CN\";\n  src: url(\"../fonts/SourceHanSansCN-Regular.ttf\") format(\"truetype\");\n  font-style: normal;\n  font-weight: 400;\n  font-display: swap;\n}\n\n@font-face {\n  font-family: \"Mory Source Han Sans CN\";\n  src: url(\"../fonts/SourceHanSansCN-Medium.ttf\") format(\"truetype\");\n  font-style: normal;\n  font-weight: 500;\n  font-display: swap;\n}\n\n@font-face {\n  font-family: \"Mory Source Han Sans CN\";\n  src: url(\"../fonts/SourceHanSansCN-Bold.ttf\") format(\"truetype\");\n  font-style: normal;\n  font-weight: 700;\n  font-display: swap;\n}\n\n@font-face {\n  font-family: \"Mory JetBrains Mono\";\n  src: url(\"../fonts/JetBrainsMono-Regular.ttf\") format(\"truetype\");\n  font-style: normal;\n  font-weight: 400;\n  font-display: swap;\n}\n\n@font-face {\n  font-family: \"Mory LapisCV Icon\";\n  src: url(\"../fonts/LapisCV-Icon.ttf\") format(\"truetype\");\n  font-style: normal;\n  font-weight: 400;\n  font-display: block;\n}\n\n[data-doc-theme=\"lapis-cv\"] {\n  --lapis-accent: #4870ad;\n  --lapis-accent-soft: #dae3ea;\n  --lapis-ink: #353a42;\n  --lapis-muted: #68717d;\n  --lapis-paper: #ffffff;\n  --lapis-canvas: #e9eef4;\n}\n\n[data-doc-theme=\"lapis-cv\"] .editor-scroll { background: #e9eef4; }\n\n[data-doc-theme=\"lapis-cv\"] .write {\n  box-sizing: border-box;\n  width: min(calc(100% - 48px), 210mm);\n  min-height: 297mm;\n  margin: 20px auto 72px;\n  padding: 12mm 8mm 15mm;\n  color: var(--lapis-ink);\n  background: var(--lapis-paper);\n  box-shadow: 0 3px 18px rgba(55, 68, 86, .16);\n  font-family: \"Mory Source Han Sans CN\", \"Noto Sans CJK SC\", \"PingFang SC\", \"Microsoft YaHei UI\", sans-serif;\n  font-size: 10pt;\n  line-height: 1.72;\n}\n\n[data-doc-theme=\"lapis-cv\"] .write h1,\n[data-doc-theme=\"lapis-cv\"] .write h2,\n[data-doc-theme=\"lapis-cv\"] .write h3,\n[data-doc-theme=\"lapis-cv\"] .write h4,\n[data-doc-theme=\"lapis-cv\"] .write h5,\n[data-doc-theme=\"lapis-cv\"] .write h6 {\n  color: var(--lapis-ink);\n  font-family: \"Mory LapisCV Icon\", \"Mory Source Han Sans CN\", \"Noto Sans CJK SC\", \"PingFang SC\", sans-serif;\n  break-after: avoid;\n}\n\n[data-doc-theme=\"lapis-cv\"] .write h1 {\n  margin: 0 0 1mm;\n  padding: 0;\n  border: 0;\n  font-size: 16pt;\n  line-height: 1.45;\n  text-align: center;\n  letter-spacing: .04em;\n}\n\n[data-doc-theme=\"lapis-cv\"] .write h2 {\n  margin: 2.8mm 0 1.7mm;\n  padding: .8mm 0 1mm;\n  border: 0;\n  border-bottom: 1px solid var(--lapis-accent-soft);\n  color: var(--lapis-accent);\n  font-size: 12pt;\n  line-height: 1.25;\n  letter-spacing: .035em;\n}\n\n[data-doc-theme=\"lapis-cv\"] .write h3,\n[data-doc-theme=\"lapis-cv\"] .write h4,\n[data-doc-theme=\"lapis-cv\"] .write h5,\n[data-doc-theme=\"lapis-cv\"] .write h6 {\n  margin: 1.3mm 0 .4mm;\n  font-size: 10.5pt;\n  line-height: 1.55;\n}\n\n[data-doc-theme=\"lapis-cv\"] .write h3 {\n  display: flex;\n  align-items: baseline;\n  gap: 8px;\n}\n\n[data-doc-theme=\"lapis-cv\"] .write h3 > strong:last-child {\n  flex: none;\n  margin-left: auto;\n  color: var(--lapis-muted);\n  font-size: 9pt;\n  font-weight: 500;\n  letter-spacing: 0;\n}\n\n[data-doc-theme=\"lapis-cv\"] .write p {\n  margin: .35mm 0 1mm;\n}\n\n[data-doc-theme=\"lapis-cv\"] .write blockquote {\n  margin: 0 0 2.2mm;\n  padding: 0;\n  border: 0;\n  color: var(--lapis-muted);\n  text-align: center;\n  font-size: 9.2pt;\n  font-style: normal;\n}\n\n[data-doc-theme=\"lapis-cv\"] .write blockquote p { margin: 0; }\n\n[data-doc-theme=\"lapis-cv\"] .write p:has(img[alt=\"avatar\"]) {\n  height: 0;\n  margin: 0;\n  overflow: visible;\n}\n\n[data-doc-theme=\"lapis-cv\"] .write img[alt=\"avatar\"] {\n  position: relative;\n  z-index: 1;\n  float: right;\n  width: 28mm;\n  height: 28mm;\n  margin: 1mm 0 2mm 4mm;\n  border: 1px solid var(--lapis-accent-soft);\n  border-radius: 50%;\n  object-fit: cover;\n  background: var(--lapis-paper);\n  box-shadow: 0 0 0 2.2mm var(--lapis-paper);\n}\n\n[data-doc-theme=\"lapis-cv\"] .write span[alt=\"icon\"] {\n  color: var(--lapis-accent);\n  font-family: \"Mory LapisCV Icon\", sans-serif;\n  font-style: normal;\n}\n\n[data-doc-theme=\"lapis-cv\"] .write div[alt=\"entry-title\"] {\n  display: flex;\n  align-items: baseline;\n  justify-content: space-between;\n  gap: 12px;\n  margin: 1.3mm 0 .4mm;\n}\n\n[data-doc-theme=\"lapis-cv\"] .write div[alt=\"entry-title\"] > h3 {\n  display: block;\n  min-width: 0;\n  margin: 0;\n}\n\n[data-doc-theme=\"lapis-cv\"] .write div[alt=\"entry-title\"] > p,\n[data-doc-theme=\"lapis-cv\"] .write div[alt=\"entry-title\"] > a {\n  flex: none;\n  margin: 0 0 0 auto;\n  color: var(--lapis-muted);\n  font-size: 9pt;\n  line-height: 1.55;\n  white-space: nowrap;\n}\n\n[data-doc-theme=\"lapis-cv\"] .write ul,\n[data-doc-theme=\"lapis-cv\"] .write ol {\n  margin: .45mm 0 1.25mm;\n  padding-left: 4.5mm;\n}\n\n[data-doc-theme=\"lapis-cv\"] .write li {\n  margin: 0;\n  padding-left: .6mm;\n  break-inside: avoid;\n}\n\n[data-doc-theme=\"lapis-cv\"] .write li + li { margin-top: .25mm; }\n\n[data-doc-theme=\"lapis-cv\"] .write li::marker { color: var(--lapis-accent); }\n\n[data-doc-theme=\"lapis-cv\"] .write a {\n  color: var(--lapis-accent);\n  text-decoration-color: rgba(72, 112, 173, .35);\n  text-underline-offset: .12em;\n}\n\n[data-doc-theme=\"lapis-cv\"] .write strong { color: #2d333b; }\n\n[data-doc-theme=\"lapis-cv\"] .write code {\n  padding: .08em .28em;\n  border-radius: 3px;\n  color: #415a77;\n  background: #f2f5f8;\n  font-family: \"Mory JetBrains Mono\", \"SFMono-Regular\", Consolas, monospace;\n  font-size: .88em;\n}\n\n[data-doc-theme=\"lapis-cv\"] .write pre,\n[data-doc-theme=\"lapis-cv\"] .write table,\n[data-doc-theme=\"lapis-cv\"] .write .mermaid-diagram {\n  break-inside: avoid;\n}\n\n[data-doc-theme=\"lapis-cv\"] .write pre {\n  margin: 1.5mm 0;\n  border: 1px solid var(--lapis-accent-soft);\n  border-radius: 4px;\n  background: #f7f9fb;\n}\n\n[data-doc-theme=\"lapis-cv\"] .write pre code {\n  padding: 0;\n  color: inherit;\n  background: transparent;\n}\n\n[data-doc-theme=\"lapis-cv\"] .write table {\n  width: 100%;\n  margin: 1.5mm 0;\n  border-collapse: collapse;\n  font-size: 9.2pt;\n}\n\n[data-doc-theme=\"lapis-cv\"] .write th,\n[data-doc-theme=\"lapis-cv\"] .write td {\n  padding: 1mm 1.4mm;\n  border: 1px solid var(--lapis-accent-soft);\n}\n\n[data-doc-theme=\"lapis-cv\"] .write th {\n  color: var(--lapis-accent);\n  background: #f4f7fa;\n  text-align: left;\n}\n\n[data-doc-theme=\"lapis-cv\"] .write hr {\n  height: 0;\n  margin: 5mm 0;\n  border: 0;\n  border-top: 1px dashed var(--lapis-accent-soft);\n}\n\n:root[data-export=\"true\"][data-doc-theme=\"lapis-cv\"] .editor-scroll { background: #ffffff; }\n\n:root[data-export=\"true\"][data-doc-theme=\"lapis-cv\"] .write {\n  margin: 0 auto;\n  box-shadow: none;\n}\n\n:root[data-appearance=\"dark\"][data-doc-theme=\"lapis-cv\"] {\n  --lapis-accent: #93b4e3;\n  --lapis-accent-soft: #48596f;\n  --lapis-ink: #e8edf4;\n  --lapis-muted: #b8c2cf;\n  --lapis-paper: #252f3b;\n  --lapis-canvas: #1f2732;\n}\n\n:root[data-appearance=\"dark\"][data-doc-theme=\"lapis-cv\"] .editor-scroll { background: #1f2732; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"lapis-cv\"] .write { color: #e8edf4; }\n\n:root[data-appearance=\"dark\"][data-doc-theme=\"lapis-cv\"] .write {\n  background: #252f3b;\n  box-shadow: 0 3px 18px rgba(0, 0, 0, .28);\n}\n\n:root[data-appearance=\"dark\"][data-doc-theme=\"lapis-cv\"] .write strong { color: #f5f7fa; }\n\n:root[data-appearance=\"dark\"][data-doc-theme=\"lapis-cv\"] .write code {\n  color: #c8d8eb;\n  background: #303d4c;\n}\n\n:root[data-appearance=\"dark\"][data-doc-theme=\"lapis-cv\"] .write pre,\n:root[data-appearance=\"dark\"][data-doc-theme=\"lapis-cv\"] .write th {\n  background: #2b3745;\n}\n\n@media (max-width: 720px) {\n  [data-doc-theme=\"lapis-cv\"] .write {\n    width: calc(100% - 24px);\n    min-height: calc(100vh - 36px);\n    margin: 12px auto 52px;\n    padding: 22px 20px 42px;\n  }\n\n  [data-doc-theme=\"lapis-cv\"] .write img[alt=\"avatar\"] {\n    width: 24mm;\n    height: 24mm;\n  }\n}\n\n@page { size: A4; margin: 12mm 8mm; }\n\n@media print {\n  [data-doc-theme=\"lapis-cv\"] .editor-scroll { background: #ffffff; }\n\n  [data-doc-theme=\"lapis-cv\"] .write {\n    width: auto;\n    min-height: 0;\n    margin: 0;\n    padding: 0;\n    color: #353a42;\n    background: #ffffff;\n    box-shadow: none;\n  }\n}\n","github":"[data-doc-theme=\"github\"] .editor-scroll { background: #fff; }\n[data-doc-theme=\"github\"] .write {\n  color: #24292f;\n  font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", sans-serif;\n  font-size: 1.0625rem;\n  line-height: 1.65;\n}\n[data-doc-theme=\"github\"] .write h1,\n[data-doc-theme=\"github\"] .write h2,\n[data-doc-theme=\"github\"] .write h3,\n[data-doc-theme=\"github\"] .write h4 { font-family: inherit; color: #1f2328; }\n[data-doc-theme=\"github\"] .write h1,\n[data-doc-theme=\"github\"] .write h2 { border-color: #d8dee4; }\n[data-doc-theme=\"github\"] .write a { color: #0969da; }\n[data-doc-theme=\"github\"] .write code,\n[data-doc-theme=\"github\"] .write pre { background: #f6f8fa; }\n[data-doc-theme=\"github\"] .write blockquote { border-color: #d0d7de; color: #59636e; }\n[data-doc-theme=\"github\"] .write th { background: #f6f8fa; }\n[data-doc-theme=\"github\"] .write th,\n[data-doc-theme=\"github\"] .write td { border-color: #d0d7de; }\n\n:root[data-appearance=\"dark\"][data-doc-theme=\"github\"] .editor-scroll { background: #0d1117; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"github\"] .write { color: #e6edf3; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"github\"] .write h1,\n:root[data-appearance=\"dark\"][data-doc-theme=\"github\"] .write h2,\n:root[data-appearance=\"dark\"][data-doc-theme=\"github\"] .write h3,\n:root[data-appearance=\"dark\"][data-doc-theme=\"github\"] .write h4 { color: #f0f6fc; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"github\"] .write h1,\n:root[data-appearance=\"dark\"][data-doc-theme=\"github\"] .write h2 { border-color: #30363d; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"github\"] .write a { color: #58a6ff; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"github\"] .write code,\n:root[data-appearance=\"dark\"][data-doc-theme=\"github\"] .write pre,\n:root[data-appearance=\"dark\"][data-doc-theme=\"github\"] .write th { background: #161b22; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"github\"] .write blockquote { border-color: #3b434b; color: #8b949e; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"github\"] .write th,\n:root[data-appearance=\"dark\"][data-doc-theme=\"github\"] .write td,\n:root[data-appearance=\"dark\"][data-doc-theme=\"github\"] .write hr { border-color: #30363d; }\n","whitey":"[data-doc-theme=\"whitey\"] .editor-scroll { background: #fff; }\n[data-doc-theme=\"whitey\"] .write {\n  color: #3a3a38;\n  font-family: \"Avenir Next\", Avenir, \"PingFang SC\", sans-serif;\n  font-size: 1.0625rem;\n  line-height: 1.82;\n}\n[data-doc-theme=\"whitey\"] .write h1,\n[data-doc-theme=\"whitey\"] .write h2,\n[data-doc-theme=\"whitey\"] .write h3 { border: 0; font-family: inherit; font-weight: 500; letter-spacing: .02em; }\n[data-doc-theme=\"whitey\"] .write h1 { text-align: center; font-size: 2.25em; }\n[data-doc-theme=\"whitey\"] .write h2 { margin-top: 2.2em; font-size: 1.42em; }\n[data-doc-theme=\"whitey\"] .write a { color: #4183a8; border: 0; }\n[data-doc-theme=\"whitey\"] .write code,\n[data-doc-theme=\"whitey\"] .write pre { background: #f5f5f3; }\n[data-doc-theme=\"whitey\"] .write blockquote { border-color: #d9d9d5; color: #8a8a85; }\n\n:root[data-appearance=\"dark\"][data-doc-theme=\"whitey\"] .editor-scroll { background: #1f2020; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"whitey\"] .write { color: #deded9; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"whitey\"] .write h1,\n:root[data-appearance=\"dark\"][data-doc-theme=\"whitey\"] .write h2,\n:root[data-appearance=\"dark\"][data-doc-theme=\"whitey\"] .write h3 { color: #f0f0eb; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"whitey\"] .write a { color: #72b1d2; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"whitey\"] .write code,\n:root[data-appearance=\"dark\"][data-doc-theme=\"whitey\"] .write pre,\n:root[data-appearance=\"dark\"][data-doc-theme=\"whitey\"] .write th { background: #292a29; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"whitey\"] .write blockquote { border-color: #555752; color: #a5a69f; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"whitey\"] .write th,\n:root[data-appearance=\"dark\"][data-doc-theme=\"whitey\"] .write td,\n:root[data-appearance=\"dark\"][data-doc-theme=\"whitey\"] .write hr { border-color: #3f413e; }\n","newsprint":"[data-doc-theme=\"newsprint\"] .editor-scroll { background: #f7f4ed; }\n[data-doc-theme=\"newsprint\"] .write {\n  color: #2d2b27;\n  font-family: \"Iowan Old Style\", \"Songti SC\", Georgia, serif;\n  font-size: 1.125rem;\n  line-height: 1.78;\n}\n[data-doc-theme=\"newsprint\"] .write h1,\n[data-doc-theme=\"newsprint\"] .write h2,\n[data-doc-theme=\"newsprint\"] .write h3 { border: 0; color: #191816; font-family: Georgia, \"Songti SC\", serif; font-weight: 700; }\n[data-doc-theme=\"newsprint\"] .write h1 { text-align: center; font-size: 2.4em; }\n[data-doc-theme=\"newsprint\"] .write h1::after { content: \"\"; display: block; width: 54px; margin: .5em auto 0; border-bottom: 3px double #8d877b; }\n[data-doc-theme=\"newsprint\"] .write h2 { font-size: 1.55em; }\n[data-doc-theme=\"newsprint\"] .write a { color: #7c4935; border-color: #bba295; }\n[data-doc-theme=\"newsprint\"] .write code,\n[data-doc-theme=\"newsprint\"] .write pre,\n[data-doc-theme=\"newsprint\"] .write th { background: #ebe6dc; }\n[data-doc-theme=\"newsprint\"] .write blockquote { border-color: #9d9587; color: #6d685f; font-style: italic; }\n[data-doc-theme=\"newsprint\"] .write th,\n[data-doc-theme=\"newsprint\"] .write td { border-color: #c9c1b3; }\n\n:root[data-appearance=\"dark\"][data-doc-theme=\"newsprint\"] .editor-scroll { background: #24221e; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"newsprint\"] .write { color: #ded8ca; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"newsprint\"] .write h1,\n:root[data-appearance=\"dark\"][data-doc-theme=\"newsprint\"] .write h2,\n:root[data-appearance=\"dark\"][data-doc-theme=\"newsprint\"] .write h3 { color: #f0eadc; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"newsprint\"] .write h1::after { border-color: #807768; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"newsprint\"] .write a { color: #d69a78; border-color: #805d49; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"newsprint\"] .write code,\n:root[data-appearance=\"dark\"][data-doc-theme=\"newsprint\"] .write pre,\n:root[data-appearance=\"dark\"][data-doc-theme=\"newsprint\"] .write th { background: #302d27; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"newsprint\"] .write blockquote { border-color: #6d665a; color: #aaa193; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"newsprint\"] .write th,\n:root[data-appearance=\"dark\"][data-doc-theme=\"newsprint\"] .write td,\n:root[data-appearance=\"dark\"][data-doc-theme=\"newsprint\"] .write hr { border-color: #514c43; }\n","pixyll":"[data-doc-theme=\"pixyll\"] .editor-scroll { background: #fffdf9; }\n[data-doc-theme=\"pixyll\"] .write {\n  color: #444;\n  font-family: \"Iowan Old Style\", Georgia, \"Songti SC\", serif;\n  font-size: 1.0625rem;\n  line-height: 1.75;\n}\n[data-doc-theme=\"pixyll\"] .write h1,\n[data-doc-theme=\"pixyll\"] .write h2,\n[data-doc-theme=\"pixyll\"] .write h3 { border: 0; color: #333; font-family: \"Avenir Next\", \"PingFang SC\", sans-serif; font-weight: 700; }\n[data-doc-theme=\"pixyll\"] .write h1 { color: #cf4944; font-size: 2.25em; }\n[data-doc-theme=\"pixyll\"] .write h2 { color: #c14e4a; font-size: 1.55em; }\n[data-doc-theme=\"pixyll\"] .write a { color: #d04f4a; border-color: #e8aaa7; }\n[data-doc-theme=\"pixyll\"] .write code,\n[data-doc-theme=\"pixyll\"] .write pre,\n[data-doc-theme=\"pixyll\"] .write th { background: #f8eeea; }\n[data-doc-theme=\"pixyll\"] .write blockquote { border-color: #e5aaa6; color: #796c67; }\n\n:root[data-appearance=\"dark\"][data-doc-theme=\"pixyll\"] .editor-scroll { background: #211f20; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"pixyll\"] .write { color: #ded9d8; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"pixyll\"] .write h1 { color: #f27972; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"pixyll\"] .write h2 { color: #e87872; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"pixyll\"] .write h3 { color: #eee8e6; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"pixyll\"] .write a { color: #ef817a; border-color: #8e514e; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"pixyll\"] .write code,\n:root[data-appearance=\"dark\"][data-doc-theme=\"pixyll\"] .write pre,\n:root[data-appearance=\"dark\"][data-doc-theme=\"pixyll\"] .write th { background: #302728; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"pixyll\"] .write blockquote { border-color: #8f5351; color: #b8a9a5; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"pixyll\"] .write th,\n:root[data-appearance=\"dark\"][data-doc-theme=\"pixyll\"] .write td,\n:root[data-appearance=\"dark\"][data-doc-theme=\"pixyll\"] .write hr { border-color: #4e3c3d; }\n","gothic":"[data-doc-theme=\"gothic\"] .editor-scroll { background: #efeee9; }\n[data-doc-theme=\"gothic\"] .write {\n  color: #20201f;\n  font-family: \"Baskerville\", \"Songti SC\", Georgia, serif;\n  font-size: 1.125rem;\n  line-height: 1.72;\n}\n[data-doc-theme=\"gothic\"] .write h1,\n[data-doc-theme=\"gothic\"] .write h2,\n[data-doc-theme=\"gothic\"] .write h3 { border-color: #2b2b29; color: #111; font-family: \"Avenir Next Condensed\", \"PingFang SC\", sans-serif; font-weight: 800; letter-spacing: .045em; text-transform: uppercase; }\n[data-doc-theme=\"gothic\"] .write h1 { border: 3px solid #222; padding: .35em .5em; text-align: center; }\n[data-doc-theme=\"gothic\"] .write h2 { border-bottom: 2px solid #222; }\n[data-doc-theme=\"gothic\"] .write a { color: #222; border-bottom: 2px solid #777; }\n[data-doc-theme=\"gothic\"] .write code,\n[data-doc-theme=\"gothic\"] .write pre,\n[data-doc-theme=\"gothic\"] .write th { background: #deddd7; }\n[data-doc-theme=\"gothic\"] .write blockquote { border-color: #222; color: #555; }\n[data-doc-theme=\"gothic\"] .write th,\n[data-doc-theme=\"gothic\"] .write td { border-color: #555; }\n\n:root[data-appearance=\"dark\"][data-doc-theme=\"gothic\"] .editor-scroll { background: #1c1c1b; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"gothic\"] .write { color: #d8d7d2; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"gothic\"] .write h1,\n:root[data-appearance=\"dark\"][data-doc-theme=\"gothic\"] .write h2,\n:root[data-appearance=\"dark\"][data-doc-theme=\"gothic\"] .write h3 { border-color: #deddd7; color: #f2f1ec; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"gothic\"] .write h1,\n:root[data-appearance=\"dark\"][data-doc-theme=\"gothic\"] .write h2 { border-color: #c2c1bc; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"gothic\"] .write a { color: #f1f0ea; border-color: #85847f; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"gothic\"] .write code,\n:root[data-appearance=\"dark\"][data-doc-theme=\"gothic\"] .write pre,\n:root[data-appearance=\"dark\"][data-doc-theme=\"gothic\"] .write th { background: #292927; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"gothic\"] .write blockquote { border-color: #c2c1bc; color: #aaa9a4; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"gothic\"] .write th,\n:root[data-appearance=\"dark\"][data-doc-theme=\"gothic\"] .write td,\n:root[data-appearance=\"dark\"][data-doc-theme=\"gothic\"] .write hr { border-color: #686762; }\n","night":"[data-doc-theme=\"night\"] .editor-scroll { background: #1f2328; }\n[data-doc-theme=\"night\"] .write { color: #d7dce2; font-family: \"Avenir Next\", \"PingFang SC\", sans-serif; font-size: 1.0625rem; line-height: 1.75; }\n[data-doc-theme=\"night\"] .write h1,\n[data-doc-theme=\"night\"] .write h2,\n[data-doc-theme=\"night\"] .write h3,\n[data-doc-theme=\"night\"] .write h4 { color: #f0f3f6; font-family: inherit; border-color: #404750; }\n[data-doc-theme=\"night\"] .write a { color: #78b7e4; border-color: #416b89; }\n[data-doc-theme=\"night\"] .write code,\n[data-doc-theme=\"night\"] .write pre,\n[data-doc-theme=\"night\"] .write th { background: #292f36; color: #e7ebef; }\n[data-doc-theme=\"night\"] .write blockquote { border-color: #53606c; color: #9ca7b1; }\n[data-doc-theme=\"night\"] .write th,\n[data-doc-theme=\"night\"] .write td { border-color: #414851; }\n[data-doc-theme=\"night\"] .write hr { border-color: #414851; }\n[data-doc-theme=\"night\"] .write .hljs-comment,\n[data-doc-theme=\"night\"] .write .hljs-quote { color: #8b949e; }\n[data-doc-theme=\"night\"] .write .hljs-keyword,\n[data-doc-theme=\"night\"] .write .hljs-selector-tag,\n[data-doc-theme=\"night\"] .write .hljs-type { color: #ff7b72; }\n[data-doc-theme=\"night\"] .write .hljs-title,\n[data-doc-theme=\"night\"] .write .hljs-section,\n[data-doc-theme=\"night\"] .write .hljs-function { color: #d2a8ff; }\n[data-doc-theme=\"night\"] .write .hljs-string,\n[data-doc-theme=\"night\"] .write .hljs-attr,\n[data-doc-theme=\"night\"] .write .hljs-symbol { color: #a5d6ff; }\n[data-doc-theme=\"night\"] .write .hljs-number,\n[data-doc-theme=\"night\"] .write .hljs-literal,\n[data-doc-theme=\"night\"] .write .hljs-built_in { color: #79c0ff; }\n\n:root[data-appearance=\"dark\"][data-doc-theme=\"night\"] .editor-scroll { background: #171a1f; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"night\"] .write { color: #dce2e8; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"night\"] .write h1,\n:root[data-appearance=\"dark\"][data-doc-theme=\"night\"] .write h2,\n:root[data-appearance=\"dark\"][data-doc-theme=\"night\"] .write h3,\n:root[data-appearance=\"dark\"][data-doc-theme=\"night\"] .write h4 { border-color: #343b44; color: #f0f3f6; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"night\"] .write a { color: #83c2ef; border-color: #416b89; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"night\"] .write code,\n:root[data-appearance=\"dark\"][data-doc-theme=\"night\"] .write pre,\n:root[data-appearance=\"dark\"][data-doc-theme=\"night\"] .write th { background: #22272e; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"night\"] .write blockquote { border-color: #4b5662; color: #9da7b1; }\n:root[data-appearance=\"dark\"][data-doc-theme=\"night\"] .write th,\n:root[data-appearance=\"dark\"][data-doc-theme=\"night\"] .write td,\n:root[data-appearance=\"dark\"][data-doc-theme=\"night\"] .write hr { border-color: #343b44; }\n"};
 globalThis.__MORY_DOCUMENT_TEMPLATES__ = {"lapis-cv-cn":"# 八爪猫\n\n> <span alt=\"icon\">&#xe60f;</span> `(123)456-7890`&emsp;&emsp; <span alt=\"icon\">&#xe7ca;</span> `octocat@github.com`&emsp;&emsp; <span alt=\"icon\">&#xe600;</span> [octocat](https://github.com/octocat)\n\n<img alt=\"avatar\" src=\"https://avatars.githubusercontent.com/u/583231?v=4\">\n\n## &#xe80c; 教育经历\n\n<div alt=\"entry-title\">\n    <h3>八爪科技大学 - 本科 - 软件工程专业  (2008.02 - 2024.06)</h3>\n</div>\n\n- 曾获奖项： GitHub 认证八爪编码员，敏捷章鱼实践者\n- 校园经历： 担任 OctoStudio 队长，致力于推动服务于八爪生物的技术创新和项目开发。\n\n## &#xe618; 工作经验\n\n<div alt=\"entry-title\">\n    <h3>软件工程师 - 章小鱼有限公司</h3>\n    <p>2008.03 - 2009.07</p>\n</div>\n\n作为核心开发成员及技术负责人，主导了八爪生物社交平台（OctoHub）的全栈开发与架构设计。\n\n- 设计并实现独特的\"八爪风格\"用户交互体系，包括：动态触手消息传递系统、墨水喷溅情感反应功能、自适应伪装个人主页，以促进全球八爪生物和猫之间的社区参与，使用户互动频率提升210%。\n- 集成 OAuth 认证，与 GitHub 账户进行同步，为 Octocat 和其他在 GitHub 上活跃的八爪生物提供无缝登录和个人资料同步，将认证流程耗时从12.8s缩短至2.3s，获选GitHub年度最佳身份集成案例。\n\n<div alt=\"entry-title\">\n    <h3>软件开发实习生 - 八爪科技</h3>\n    <p>2008.06 - 2008.08</p>\n</div>\n\n与软件工程师团队合作，使用 Octolang 开发数据可视化仪表盘，为海洋保护工作提供八爪种群趋势的洞察。\n- 参与会议和代码审议，按照敏捷章鱼论交付高质量的软件，在紧迫的截止日期内完成任务。\n- 协助解决技术问题，展现解决问题的技巧和在快节奏环境下积极主动解决挑战的态度。为项目需求、架构设计和编码标准的文档撰写做出贡献，促进团队成员间的知识共享和新成员的快速适应。\n\n## &#xe635; 项目经历\n\n<div alt=\"entry-title\">\n    <h3>GitFlix</h3>\n    <a href=\"https://github.com/YiNNx/cmd-wrapped\">github.com/octocat/gitflix</a>\n</div>\n\n全栈 Web 应用程序，前端使用 Octo.js，后端使用 OctoScript，允许用户发现和评价八爪生物主题电影。\n- 实现了一个复杂的推荐算法，分析八爪生物的偏好和观影历史，为八爪生物跨多个流派提供八爪主题的电影推荐，确保了个性化和吸引人的内容发现。\n- 使用 JSON Web Tokens 和 bcrypt 实现用户身份验证和授权，用于安全密码哈希。利用 GitHub Actions 进行持续集成和部署，确保流畅高效的开发工作流程。\n\n<div alt=\"entry-title\">\n    <h3>OctoGithubber</h3>\n    <a href=\"https://github.com/YiNNx/cmd-wrapped\">github.com/octocat/gitflix</a>\n</div>\n\n一款专门针对八爪生物的 GitHub 活动和贡献的网络应用程序，利用 Octo.js 构建前端，Octolang 构建后端。\n- 与 GitHub API 集成，检索和分析八爪生物的存储库统计信息、提交历史和拉取请求活动，提供个性化的见解和可视化，深入了解八爪生物的开源之旅。\n- 实现了八爪主题的勋章和成就等游戏化元素，激励和鼓励八爪生物达成编码里程碑，促进持续学习和改进。\n- 设计了响应式和直观的仪表板界面，具有八爪主题的数据可视化，使八爪生物能够跟踪进度、设定编码目标，并以有趣和吸引人的方式庆祝成就。\n\n## &#xecfa; 专业技能\n\n- 熟练掌握多种编程语言，包括 Octolang，OctoScript 等，对面向对象和函数式编程范式有很好的理解，专注于编写清晰，高效，可维护的代码。\n- 出色的沟通和语言能力，无论八爪生物抑或来自不同地区的猫，都能进行有效的团队合作和技术沟通。\n- 扎实的软件开发原理，数据结构和算法理解，熟悉计算机底层原理。\n- 在版本控制方面有丰富的经验，熟练管理代码库、解决合并冲突，并促进代码审议。\n"};
 
+function readMarkdownFence(line) {
+  const match = line.match(/^( {0,3})(`{3,}|~{3,})(.*)$/);
+  if (!match || (match[2][0] === "`" && match[3].includes("`"))) return null;
+  return { marker: match[2], info: match[3].trim(), indent: match[1].length };
+}
+
+function isMarkdownFenceEnd(line, fence) {
+  const match = line.match(/^ {0,3}(`{3,}|~{3,})[\t ]*$/);
+  return Boolean(match && match[1][0] === fence.marker[0] && match[1].length >= fence.marker.length);
+}
+
+function mapMarkdownFences(source, transform) {
+  const lines = String(source).split(/(\r\n|\r|\n)/);
+  const parts = [];
+  let fence = null;
+  let block = [];
+  for (let index = 0; index < lines.length; index += 2) {
+    const line = lines[index];
+    const text = line + (lines[index + 1] ?? "");
+    if (fence) {
+      block.push(text);
+      if (isMarkdownFenceEnd(line, fence)) {
+        parts.push(transform(block.join("")));
+        fence = null;
+        block = [];
+      }
+    } else {
+      fence = readMarkdownFence(line);
+      if (fence) block.push(text);
+      else parts.push(text);
+    }
+  }
+  // An unfinished fence consumes the remainder of the document.
+  if (fence) parts.push(transform(block.join("")));
+  return parts.join("");
+}
+
 function protectMarkdownSyntax(source) {
   const values = [];
   const token = value => {
     const index = values.push(value) - 1;
     return `\uE100${index}\uE101`;
   };
-  const protectedSource = String(source)
-    .replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, token)
+  const protectedSource = mapMarkdownFences(source, value => {
+    // Leave the final line ending outside the token to preserve the next block boundary.
+    const ending = value.match(/(?:\r\n|\r|\n)$/)?.[0] ?? "";
+    return token(ending ? value.slice(0, -ending.length) : value) + ending;
+  })
     .replace(/`[^`\n]*`/g, token)
     .replace(/(?<=\]\()[^)\s]+(?=(?:\s+["'][^"']*["'])?\))/g, token)
     .replace(/https?:\/\/[^\s)]+/g, token)
@@ -29,6 +69,27 @@ function optimizeMarkdownTypography(markdown, spacingText) {
   if (typeof spacingText !== "function") throw new TypeError("A text-spacing function is required");
   const protectedMarkdown = protectMarkdownSyntax(String(markdown ?? ""));
   return protectedMarkdown.restore(spacingText(protectedMarkdown.source));
+}
+
+function findTextMatches(source, query) {
+  if (!query) return [];
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Match the original text so Unicode case folding cannot shift source offsets.
+  return Array.from(source.matchAll(new RegExp(escaped, "giu")), match => ({
+    start: match.index,
+    end: match.index + match[0].length
+  }));
+}
+
+function replaceTextMatches(source, matches, replacement) {
+  const parts = [];
+  let offset = 0;
+  for (const match of matches) {
+    parts.push(source.slice(offset, match.start), replacement);
+    offset = match.end;
+  }
+  parts.push(source.slice(offset));
+  return parts.join("");
 }
 
 const calendarColors = ["red", "amber", "green", "blue", "violet", "gray"];
@@ -223,14 +284,8 @@ function plainHeadingText(value) {
 function markdownHeadingTree(markdown, title = "Untitled") {
   const root = { text: String(title || "Untitled"), level: 0, children: [] };
   const stack = [{ level: 0, node: root }];
-  let fence = "";
-  for (const line of String(markdown ?? "").replace(/\r\n?/g, "\n").split("\n")) {
-    const fenceMatch = line.match(/^\s*(```|~~~)/);
-    if (fenceMatch) {
-      fence = fence ? (fence === fenceMatch[1] ? "" : fence) : fenceMatch[1];
-      continue;
-    }
-    if (fence) continue;
+  const source = mapMarkdownFences(String(markdown ?? "").replace(/^\uFEFF/, ""), () => "\n");
+  for (const line of source.replace(/\r\n?/g, "\n").split("\n")) {
     const heading = line.match(/^(#{1,6})\s+(.+?)\s*#*\s*$/);
     if (!heading) continue;
     const text = plainHeadingText(heading[2]);
@@ -420,6 +475,14 @@ function mermaidFenceTheme(value) {
   return theme === "auto" ? "" : ` theme=${theme}`;
 }
 
+function serializeCodeFence(source, info) {
+  const character = info.includes("`") ? "~" : "`";
+  const runs = source.match(character === "`" ? /`+/g : /~+/g) ?? [];
+  const length = runs.reduce((longest, run) => Math.max(longest, run.length + 1), 3);
+  const marker = character.repeat(length);
+  return `${marker}${info}\n${source}\n${marker}`;
+}
+
 function markdownToHTML(markdown) {
   // A UTF-8 BOM is valid only at the start; remove it before parsing the first Markdown block.
   const lines = String(markdown ?? "").replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n").split("\n");
@@ -430,16 +493,18 @@ function markdownToHTML(markdown) {
     const line = lines[index];
     if (!line.trim()) { index += 1; continue; }
 
-    const fence = line.match(/^\s*(```|~~~)\s*(.*?)\s*$/);
+    const fence = readMarkdownFence(line);
     if (fence) {
-      const marker = fence[1];
-      const { language, title, theme } = parseFenceInfo(fence[2]);
+      const { language, title, theme } = parseFenceInfo(fence.info);
       const code = [];
       index += 1;
-      while (index < lines.length && !new RegExp(`^\\s*${marker}`).test(lines[index])) code.push(lines[index++]);
+      while (index < lines.length && !isMarkdownFenceEnd(lines[index], fence)) {
+        code.push(lines[index++].replace(new RegExp(`^ {0,${fence.indent}}`), ""));
+      }
       if (index < lines.length) index += 1;
       const rawSource = code.join("\n");
       const source = escapeHTML(rawSource);
+      const fenceAttribute = ` data-fence-marker="${fence.marker}"`;
       if (language.toLocaleLowerCase() === "mermaid") {
         html.push(`<div class="mermaid-diagram" data-mermaid-source="${source}" data-mermaid-theme="${normalizeMermaidColorTheme(theme)}" data-mermaid-state="pending" contenteditable="false"></div>`);
       } else if (language.toLocaleLowerCase() === "calendar") {
@@ -447,11 +512,11 @@ function markdownToHTML(markdown) {
         if (calendar) {
           html.push(`<div class="calendar-block" data-calendar-source="${escapeHTML(serializeCalendarDocument(calendar))}" contenteditable="false"></div>`);
         } else {
-          html.push(`<pre data-language="calendar"><code>${source}</code></pre>`);
+          html.push(`<pre data-language="calendar"${fenceAttribute}><code>${source}</code></pre>`);
         }
       } else {
         const titleAttribute = title ? ` data-title="${escapeHTML(title)}"` : "";
-        html.push(`<pre data-language="${escapeHTML(language)}"${titleAttribute}><code>${source}</code></pre>`);
+        html.push(`<pre data-language="${escapeHTML(language)}"${titleAttribute}${fenceAttribute}><code>${source}</code></pre>`);
       }
       continue;
     }
@@ -518,7 +583,7 @@ function markdownToHTML(markdown) {
 
     const paragraph = [line];
     index += 1;
-    while (index < lines.length && lines[index].trim() && !blockStart.test(lines[index]) && !htmlBlockStart.test(lines[index]) && !(index + 1 < lines.length && isTableSeparator(lines[index + 1]))) {
+    while (index < lines.length && lines[index].trim() && !blockStart.test(lines[index]) && !readMarkdownFence(lines[index]) && !htmlBlockStart.test(lines[index]) && !(index + 1 < lines.length && isTableSeparator(lines[index + 1]))) {
       paragraph.push(lines[index++]);
     }
     html.push(`<p>${inlineMarkdown(paragraph.join("\n")).replaceAll("\n", " ")}</p>`);
@@ -583,12 +648,12 @@ function editorToMarkdown(root, { escapeText = true } = {}) {
     }
     if (element.tagName === "DIV" && classNames.includes("mermaid-diagram")) {
       const source = element.dataset.mermaidSource ?? "";
-      blocks.push(`\`\`\`mermaid${mermaidFenceTheme(element.dataset.mermaidTheme)}\n${source}\n\`\`\``);
+      blocks.push(serializeCodeFence(source, `mermaid${mermaidFenceTheme(element.dataset.mermaidTheme)}`));
       continue;
     }
     if (element.tagName === "DIV" && classNames.includes("calendar-block")) {
       const calendar = parseCalendarSource(element.dataset.calendarSource ?? "");
-      if (calendar) blocks.push(`\`\`\`calendar\n${serializeCalendarDocument(calendar)}\n\`\`\``);
+      if (calendar) blocks.push(serializeCodeFence(serializeCalendarDocument(calendar), "calendar"));
       continue;
     }
     const content = [...element.childNodes].map(child => inlineNodeToMarkdown(child, escapeText)).join("").trim();
@@ -618,20 +683,19 @@ function editorToMarkdown(root, { escapeText = true } = {}) {
         const language = element.dataset.language ?? "";
         const title = fenceTitle(element.dataset.title ?? "");
         const code = element.innerText.replaceAll("\u200b", "").replace(/\n$/, "");
-        blocks.push(`\`\`\`${language}${title}\n${code}\n\`\`\``); break;
+        blocks.push(serializeCodeFence(code, `${language}${title}`)); break;
       }
       case "TABLE": blocks.push(tableToMarkdown(element, escapeText)); break;
       case "HR": blocks.push("---"); break;
       default: if (content) blocks.push(content);
     }
   }
-  return blocks.join("\n\n").replace(/\n{3,}/g, "\n\n").trimEnd();
+  return blocks.join("\n\n").trimEnd();
 }
 
 function documentStats(markdown) {
   const value = String(markdown ?? "");
-  const plain = value
-    .replace(/```[\s\S]*?```/g, " ")
+  const plain = mapMarkdownFences(value.replace(/^\uFEFF/, ""), () => "\n")
     .replace(/<[^>]*>/g, " ")
     .replace(/!?(?:\[([^\]]*)\])\([^)]*\)/g, "$1")
     .replace(/[#>*_~`|\-[\]]/g, " ");
@@ -662,16 +726,14 @@ function withoutExtension(value) {
 }
 
 function graphTitle(document) {
-  const heading = String(document.markdown || "").match(/^#\s+(.+)$/m)?.[1]
+  const heading = mapMarkdownFences(String(document.markdown || "").replace(/^\uFEFF/, ""), () => "\n").match(/^#\s+(.+)$/m)?.[1]
     ?.replace(/[*_`~]/g, "").trim();
   const filename = withoutExtension(document.name || document.path || "未命名").split("/").pop();
   return heading || filename || "未命名";
 }
 
 function stripIgnoredMarkdown(markdown) {
-  return String(markdown || "")
-    .replace(/```[\s\S]*?```/g, "")
-    .replace(/~~~[\s\S]*?~~~/g, "")
+  return mapMarkdownFences(String(markdown || "").replace(/^\uFEFF/, ""), () => "\n")
     .replace(/`[^`\n]*`/g, "");
 }
 
@@ -837,6 +899,8 @@ const state = {
   dirty: false,
   findMatches: [],
   findIndex: -1,
+  findSource: null,
+  findQuery: "",
   zoom: 1,
   titleTouched: false,
   documentTheme: "github",
@@ -1081,11 +1145,8 @@ function untitledName(sequence) {
 }
 
 function firstLevelHeading(markdown) {
-  let fence = "";
-  for (const line of String(markdown || "").replace(/\r\n?/g, "\n").split("\n")) {
-    const marker = line.match(/^\s*(```|~~~)/)?.[1] || "";
-    if (marker) { fence = fence ? (fence === marker ? "" : fence) : marker; continue; }
-    if (fence) continue;
+  const source = mapMarkdownFences(String(markdown || "").replace(/^\uFEFF/, ""), () => "\n");
+  for (const line of source.replace(/\r\n?/g, "\n").split("\n")) {
     const heading = line.match(/^#\s+(.+?)\s*#*\s*$/)?.[1]?.replace(/[*_`~]/g, "").trim();
     if (heading) return heading;
   }
@@ -1144,6 +1205,7 @@ function renderDocument(document, announce = false) {
   state.titleTouched = false;
   sourceEditor.value = state.markdown;
   write.innerHTML = markdownToHTML(state.markdown) || "<p><br></p>";
+  updateFindMatches();
   updateHeadingFoldControls(write);
   enhanceRawHTML(write);
   enhanceTables(write);
@@ -3014,8 +3076,10 @@ function closeFencedCodeAtCaret(block) {
     return false;
   }
   const text = (code.innerText || code.textContent || "").replaceAll(caretMarker, "").replace(/\n$/, "");
-  if (tail.toString() || !/(```|~~~)$/.test(text)) return false;
-  code.textContent = text.replace(/(```|~~~)$/, "").replace(/\n$/, "");
+  const lastLine = text.slice(text.lastIndexOf("\n") + 1);
+  const fence = { marker: block.dataset.fenceMarker || "```" };
+  if (tail.toString() || !isMarkdownFenceEnd(lastLine, fence)) return false;
+  code.textContent = text.slice(0, text.length - lastLine.length).replace(/\n$/, "");
   return exitCodeBlock(block);
 }
 
@@ -3154,7 +3218,7 @@ function scheduleMarkdownNormalization() {
   });
 }
 
-function syncFromSource(render = false) {
+function syncFromSource(render = false, changed = true) {
   state.markdown = sourceEditor.value;
   const document = activeDocument();
   if (document) document.markdown = state.markdown;
@@ -3168,10 +3232,11 @@ function syncFromSource(render = false) {
     highlightCodeBlocks(write);
     void renderMermaidDiagrams(write, state.documentTheme);
   }
-  markChanged();
+  if (changed) markChanged();
 }
 
 function markChanged() {
+  if ($("#find-panel").classList.contains("is-open")) updateFindMatches(false);
   state.dirty = true;
   const document = activeDocument();
   const becameDirty = document && !document.dirty;
@@ -3978,10 +4043,10 @@ function toggleSource(force) {
   hideHeadingFoldControl();
   closePathSuggestions();
   if (next) {
-    syncFromWrite();
+    // Input handlers already synchronize edits; viewing source must preserve its original formatting.
     sourceEditor.value = state.markdown;
   } else {
-    syncFromSource(true);
+    syncFromSource(true, false);
   }
   state.sourceMode = next;
   workspace.classList.toggle("source-mode", next);
@@ -4093,57 +4158,57 @@ function closeFind() {
   (state.sourceMode ? sourceEditor : write).focus();
 }
 
-function updateFindMatches() {
+function updateFindMatches(reset = true) {
   const query = $("#find-input").value;
-  state.findMatches = [];
+  if (!reset && state.findSource === state.markdown && state.findQuery === query) return;
+  state.findSource = state.markdown;
+  state.findQuery = query;
+  state.findMatches = findTextMatches(state.markdown, query);
   state.findIndex = -1;
-  if (query) {
-    const haystack = state.markdown.toLocaleLowerCase();
-    const needle = query.toLocaleLowerCase();
-    let start = 0;
-    while ((start = haystack.indexOf(needle, start)) >= 0) {
-      state.findMatches.push(start);
-      start += Math.max(needle.length, 1);
-    }
-  }
   $("#find-count").textContent = state.findMatches.length ? `0 / ${state.findMatches.length}` : "0 / 0";
 }
 
 function stepFind(direction = 1) {
+  updateFindMatches(false);
   if (!state.findMatches.length) return;
-  state.findIndex = (state.findIndex + direction + state.findMatches.length) % state.findMatches.length;
-  const index = state.findMatches[state.findIndex];
-  const length = $("#find-input").value.length;
   if (!state.sourceMode) toggleSource(true);
+  if (!state.findMatches.length) return;
+  state.findIndex = state.findIndex < 0
+    ? (direction < 0 ? state.findMatches.length - 1 : 0)
+    : (state.findIndex + direction + state.findMatches.length) % state.findMatches.length;
+  const { start, end } = state.findMatches[state.findIndex];
   sourceEditor.focus();
-  sourceEditor.setSelectionRange(index, index + length);
+  sourceEditor.setSelectionRange(start, end);
   const lineHeight = Number.parseFloat(getComputedStyle(sourceEditor).lineHeight);
-  const line = state.markdown.slice(0, index).split("\n").length;
+  const line = state.markdown.slice(0, start).split("\n").length;
   editorScroll.scrollTop = Math.max(0, line * lineHeight - editorScroll.clientHeight / 2);
   $("#find-count").textContent = `${state.findIndex + 1} / ${state.findMatches.length}`;
 }
 
 function replaceOne() {
+  updateFindMatches(false);
   if (state.findIndex < 0) stepFind(1);
   if (state.findIndex < 0) return;
-  const index = state.findMatches[state.findIndex];
-  const query = $("#find-input").value;
+  const match = state.findMatches[state.findIndex];
   const replacement = $("#replace-input").value;
-  sourceEditor.value = state.markdown.slice(0, index) + replacement + state.markdown.slice(index + query.length);
-  syncFromSource(false);
+  beginEditorHistory("replace", { force: true });
+  sourceEditor.value = replaceTextMatches(state.markdown, [match], replacement);
+  syncFromSource(!state.sourceMode);
   updateFindMatches();
+  const nextIndex = state.findMatches.findIndex(item => item.start >= match.start + replacement.length);
+  state.findIndex = nextIndex <= 0 ? -1 : nextIndex - 1;
   stepFind(1);
 }
 
 function replaceAll() {
-  const query = $("#find-input").value;
-  if (!query) return;
-  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  updateFindMatches(false);
   const count = state.findMatches.length;
-  sourceEditor.value = state.markdown.replace(new RegExp(escaped, "gi"), $("#replace-input").value);
-  syncFromSource(false);
+  if (!count) return;
+  beginEditorHistory("replace-all", { force: true });
+  sourceEditor.value = replaceTextMatches(state.markdown, state.findMatches, $("#replace-input").value);
+  syncFromSource(!state.sourceMode);
   updateFindMatches();
-  toast(`已替换 ${count} 处`);
+  toast(locale() === "en" ? `Replaced ${count} occurrences` : `已替换 ${count} 处`);
 }
 
 function openQuickOpen() {
@@ -5576,11 +5641,11 @@ function handleEditorShortcut(event) {
       exitEmptyQuoteOrSplit(block);
       return;
     }
-    const fence = atBlockEnd ? block.textContent?.match(/^(```|~~~)\s*(.*?)\s*$/) : null;
+    const fence = atBlockEnd ? readMarkdownFence(block.textContent || "") : null;
     if (fence && block.matches("p, div")) {
       event.preventDefault();
       const template = document.createElement("template");
-      template.innerHTML = markdownToHTML(`${block.textContent}\n${fence[1]}`);
+      template.innerHTML = markdownToHTML(`${block.textContent}\n${fence.marker}`);
       const mermaid = template.content.querySelector(".mermaid-diagram");
       if (mermaid) {
         const paragraph = document.createElement("p");

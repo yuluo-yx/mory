@@ -9,7 +9,6 @@ $Repository = Split-Path -Parent $PSScriptRoot
 $Version = (Get-Content (Join-Path $Repository "package.json") -Raw | ConvertFrom-Json).version
 $Project = Join-Path $Repository "cmd/mory-windows"
 $Destination = Join-Path $Repository "dist/windows"
-$WailsVersion = "v2.13.0"
 $PublicArchitecture = if ($Architecture -eq "amd64") { "x64" } else { "arm64" }
 
 New-Item -ItemType Directory -Force -Path $Destination | Out-Null
@@ -24,6 +23,7 @@ try {
     $env:GOOS = "windows"
     $env:GOARCH = $Architecture
     go build -trimpath -o (Join-Path $Project "build/cli/mory.exe") (Join-Path $Repository "cmd/mory")
+    if ($LASTEXITCODE -ne 0) { throw "Mory CLI build failed." }
 }
 finally {
     $env:GOOS = $PreviousGOOS
@@ -31,12 +31,15 @@ finally {
 }
 Push-Location $Project
 try {
+    $WailsVersion = go list -m -f '{{.Version}}' github.com/wailsapp/wails/v2
+    if ($LASTEXITCODE -ne 0 -or -not $WailsVersion) { throw "Unable to resolve the locked Wails version." }
     go run "github.com/wailsapp/wails/v2/cmd/wails@$WailsVersion" build `
         -platform "windows/$Architecture" `
         -webview2 embed `
         -skipbindings `
         -trimpath `
         -nsis
+    if ($LASTEXITCODE -ne 0) { throw "Wails packaging failed." }
 
     $Binary = Join-Path $Project "build/bin/Mory.exe"
     $Installer = Join-Path $Project "build/bin/Mory-$Architecture-installer.exe"

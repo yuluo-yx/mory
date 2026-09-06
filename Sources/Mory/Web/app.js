@@ -6,9 +6,12 @@ import {
   calendarMarkdown,
   calendarMonthDays,
   calendarRangeDayCount,
+  findTextMatches,
   formatFileSize,
   formatUpdatedAt,
   headingFoldVisibility,
+  isMarkdownFenceEnd,
+  mapMarkdownFences,
   localDateKey,
   mermaidColorThemes,
   mindMapHTML,
@@ -16,6 +19,8 @@ import {
   normalizeMermaidColorTheme,
   optimizeMarkdownTypography,
   parseCalendarSource,
+  readMarkdownFence,
+  replaceTextMatches,
   serializeCalendarDocument
 } from "./editor-features.js";
 
@@ -77,6 +82,8 @@ const state = {
   dirty: false,
   findMatches: [],
   findIndex: -1,
+  findSource: null,
+  findQuery: "",
   zoom: 1,
   titleTouched: false,
   documentTheme: "github",
@@ -321,11 +328,8 @@ function untitledName(sequence) {
 }
 
 function firstLevelHeading(markdown) {
-  let fence = "";
-  for (const line of String(markdown || "").replace(/\r\n?/g, "\n").split("\n")) {
-    const marker = line.match(/^\s*(```|~~~)/)?.[1] || "";
-    if (marker) { fence = fence ? (fence === marker ? "" : fence) : marker; continue; }
-    if (fence) continue;
+  const source = mapMarkdownFences(String(markdown || "").replace(/^\uFEFF/, ""), () => "\n");
+  for (const line of source.replace(/\r\n?/g, "\n").split("\n")) {
     const heading = line.match(/^#\s+(.+?)\s*#*\s*$/)?.[1]?.replace(/[*_`~]/g, "").trim();
     if (heading) return heading;
   }
@@ -384,6 +388,7 @@ function renderDocument(document, announce = false) {
   state.titleTouched = false;
   sourceEditor.value = state.markdown;
   write.innerHTML = markdownToHTML(state.markdown) || "<p><br></p>";
+  updateFindMatches();
   updateHeadingFoldControls(write);
   enhanceRawHTML(write);
   enhanceTables(write);
@@ -2254,8 +2259,10 @@ function closeFencedCodeAtCaret(block) {
     return false;
   }
   const text = (code.innerText || code.textContent || "").replaceAll(caretMarker, "").replace(/\n$/, "");
-  if (tail.toString() || !/(```|~~~)$/.test(text)) return false;
-  code.textContent = text.replace(/(```|~~~)$/, "").replace(/\n$/, "");
+  const lastLine = text.slice(text.lastIndexOf("\n") + 1);
+  const fence = { marker: block.dataset.fenceMarker || "```" };
+  if (tail.toString() || !isMarkdownFenceEnd(lastLine, fence)) return false;
+  code.textContent = text.slice(0, text.length - lastLine.length).replace(/\n$/, "");
   return exitCodeBlock(block);
 }
 
@@ -2394,7 +2401,7 @@ function scheduleMarkdownNormalization() {
   });
 }
 
-function syncFromSource(render = false) {
+function syncFromSource(render = false, changed = true) {
   state.markdown = sourceEditor.value;
   const document = activeDocument();
   if (document) document.markdown = state.markdown;
@@ -2408,10 +2415,11 @@ function syncFromSource(render = false) {
     highlightCodeBlocks(write);
     void renderMermaidDiagrams(write, state.documentTheme);
   }
-  markChanged();
+  if (changed) markChanged();
 }
 
 function markChanged() {
+  if ($("#find-panel").classList.contains("is-open")) updateFindMatches(false);
   state.dirty = true;
   const document = activeDocument();
   const becameDirty = document && !document.dirty;
@@ -3218,10 +3226,10 @@ function toggleSource(force) {
   hideHeadingFoldControl();
   closePathSuggestions();
   if (next) {
-    syncFromWrite();
+    // Input handlers already synchronize edits; viewing source must preserve its original formatting.
     sourceEditor.value = state.markdown;
   } else {
-    syncFromSource(true);
+    syncFromSource(true, false);
   }
   state.sourceMode = next;
   workspace.classList.toggle("source-mode", next);
@@ -3333,57 +3341,57 @@ function closeFind() {
   (state.sourceMode ? sourceEditor : write).focus();
 }
 
-function updateFindMatches() {
+function updateFindMatches(reset = true) {
   const query = $("#find-input").value;
-  state.findMatches = [];
+  if (!reset && state.findSource === state.markdown && state.findQuery === query) return;
+  state.findSource = state.markdown;
+  state.findQuery = query;
+  state.findMatches = findTextMatches(state.markdown, query);
   state.findIndex = -1;
-  if (query) {
-    const haystack = state.markdown.toLocaleLowerCase();
-    const needle = query.toLocaleLowerCase();
-    let start = 0;
-    while ((start = haystack.indexOf(needle, start)) >= 0) {
-      state.findMatches.push(start);
-      start += Math.max(needle.length, 1);
-    }
-  }
   $("#find-count").textContent = state.findMatches.length ? `0 / ${state.findMatches.length}` : "0 / 0";
 }
 
 function stepFind(direction = 1) {
+  updateFindMatches(false);
   if (!state.findMatches.length) return;
-  state.findIndex = (state.findIndex + direction + state.findMatches.length) % state.findMatches.length;
-  const index = state.findMatches[state.findIndex];
-  const length = $("#find-input").value.length;
   if (!state.sourceMode) toggleSource(true);
+  if (!state.findMatches.length) return;
+  state.findIndex = state.findIndex < 0
+    ? (direction < 0 ? state.findMatches.length - 1 : 0)
+    : (state.findIndex + direction + state.findMatches.length) % state.findMatches.length;
+  const { start, end } = state.findMatches[state.findIndex];
   sourceEditor.focus();
-  sourceEditor.setSelectionRange(index, index + length);
+  sourceEditor.setSelectionRange(start, end);
   const lineHeight = Number.parseFloat(getComputedStyle(sourceEditor).lineHeight);
-  const line = state.markdown.slice(0, index).split("\n").length;
+  const line = state.markdown.slice(0, start).split("\n").length;
   editorScroll.scrollTop = Math.max(0, line * lineHeight - editorScroll.clientHeight / 2);
   $("#find-count").textContent = `${state.findIndex + 1} / ${state.findMatches.length}`;
 }
 
 function replaceOne() {
+  updateFindMatches(false);
   if (state.findIndex < 0) stepFind(1);
   if (state.findIndex < 0) return;
-  const index = state.findMatches[state.findIndex];
-  const query = $("#find-input").value;
+  const match = state.findMatches[state.findIndex];
   const replacement = $("#replace-input").value;
-  sourceEditor.value = state.markdown.slice(0, index) + replacement + state.markdown.slice(index + query.length);
-  syncFromSource(false);
+  beginEditorHistory("replace", { force: true });
+  sourceEditor.value = replaceTextMatches(state.markdown, [match], replacement);
+  syncFromSource(!state.sourceMode);
   updateFindMatches();
+  const nextIndex = state.findMatches.findIndex(item => item.start >= match.start + replacement.length);
+  state.findIndex = nextIndex <= 0 ? -1 : nextIndex - 1;
   stepFind(1);
 }
 
 function replaceAll() {
-  const query = $("#find-input").value;
-  if (!query) return;
-  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  updateFindMatches(false);
   const count = state.findMatches.length;
-  sourceEditor.value = state.markdown.replace(new RegExp(escaped, "gi"), $("#replace-input").value);
-  syncFromSource(false);
+  if (!count) return;
+  beginEditorHistory("replace-all", { force: true });
+  sourceEditor.value = replaceTextMatches(state.markdown, state.findMatches, $("#replace-input").value);
+  syncFromSource(!state.sourceMode);
   updateFindMatches();
-  toast(`已替换 ${count} 处`);
+  toast(locale() === "en" ? `Replaced ${count} occurrences` : `已替换 ${count} 处`);
 }
 
 function openQuickOpen() {
@@ -4816,11 +4824,11 @@ function handleEditorShortcut(event) {
       exitEmptyQuoteOrSplit(block);
       return;
     }
-    const fence = atBlockEnd ? block.textContent?.match(/^(```|~~~)\s*(.*?)\s*$/) : null;
+    const fence = atBlockEnd ? readMarkdownFence(block.textContent || "") : null;
     if (fence && block.matches("p, div")) {
       event.preventDefault();
       const template = document.createElement("template");
-      template.innerHTML = markdownToHTML(`${block.textContent}\n${fence[1]}`);
+      template.innerHTML = markdownToHTML(`${block.textContent}\n${fence.marker}`);
       const mermaid = template.content.querySelector(".mermaid-diagram");
       if (mermaid) {
         const paragraph = document.createElement("p");

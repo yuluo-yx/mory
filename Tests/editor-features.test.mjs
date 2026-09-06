@@ -6,6 +6,7 @@ import {
   calendarMarkdown,
   calendarMonthDays,
   calendarRangeDayCount,
+  findTextMatches,
   formatFileSize,
   formatUpdatedAt,
   headingFoldVisibility,
@@ -15,8 +16,60 @@ import {
   mindMapHTML,
   normalizeCalendarDocument,
   normalizeMermaidColorTheme,
-  optimizeMarkdownTypography
+  optimizeMarkdownTypography,
+  replaceTextMatches
 } from "../Sources/Mory/Web/editor-features.js";
+
+test("literal search returns non-overlapping original source ranges", () => {
+  assert.deepEqual(findTextMatches("cat CAT cat", "cat"), [
+    { start: 0, end: 3 }, { start: 4, end: 7 }, { start: 8, end: 11 }
+  ]);
+  assert.deepEqual(findTextMatches("aaa", "aa"), [{ start: 0, end: 2 }]);
+  assert.deepEqual(findTextMatches("text", ""), []);
+  assert.deepEqual(findTextMatches("text", "absent"), []);
+});
+
+test("mind maps ignore headings inside long and unfinished code fences", () => {
+  const markdown = "# Roadmap\n````md\n```\n# Hidden\n```\n````\n## Visible\n~~~\n# Unfinished";
+  const tree = markdownHeadingTree(markdown, "Roadmap");
+  assert.deepEqual(tree.children.map(node => node.text), ["Visible"]);
+});
+
+test("typography preserves complete code fences including original line endings", () => {
+  for (const newline of ["\n", "\r\n", "\r"]) {
+    for (const close of [true, false]) {
+      const lines = ["````md", "```", "\u4E2D\u6587English", "```"];
+      if (close) lines.push("````");
+      const source = lines.join(newline);
+      assert.equal(optimizeMarkdownTypography(source, value => pangu.spacingText(value)), source);
+    }
+  }
+});
+
+test("literal search escapes every regular expression metacharacter", () => {
+  const query = ".*+?^${}()|[]\\";
+  assert.deepEqual(findTextMatches(`before ${query} after`, query), [{ start: 7, end: 7 + query.length }]);
+});
+
+test("Unicode search preserves UTF-16 offsets used by textarea selections", () => {
+  assert.deepEqual(findTextMatches("\u0130 \uD83D\uDE00 CAT", "cat"), [{ start: 5, end: 8 }]);
+  assert.deepEqual(findTextMatches("\u03A3 \u03C2 \u03C3", "\u03C3"), [
+    { start: 0, end: 1 }, { start: 2, end: 3 }, { start: 4, end: 5 }
+  ]);
+  assert.deepEqual(findTextMatches("\u4E2D\u6587 \u4E2D\u6587", "\u4E2D\u6587"), [
+    { start: 0, end: 2 }, { start: 3, end: 5 }
+  ]);
+});
+
+test("replacement preserves literal dollar tokens and unrelated text", () => {
+  const source = "before cat CAT after";
+  const matches = findTextMatches(source, "cat");
+  const replacement = "$& $$ $' $` $1";
+  assert.equal(replaceTextMatches(source, matches, replacement), `before ${replacement} ${replacement} after`);
+  assert.equal(replaceTextMatches(source, matches.slice(1), "fox"), "before cat fox after");
+  assert.equal(replaceTextMatches(source, matches, ""), "before   after");
+  assert.equal(replaceTextMatches(source, [], "fox"), source);
+});
 
 test("optimizes CJK typography without changing Markdown code or URLs", () => {
   const source = "# Mory\u7F16\u8F91\u5668\n\n**\u4E2D\u6587English** and `const value=1`\n\n[\u94FE\u63A5](https://example.com/a1)\n\n```go\nfmt.Println(\"\u4E2D\u6587English\")\n```";

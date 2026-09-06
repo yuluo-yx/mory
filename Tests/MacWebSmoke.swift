@@ -108,6 +108,47 @@ final class MacWebSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
           document.querySelector('#source-toggle')?.click();
           result.sourceMode = document.querySelector('.workspace')?.classList.contains('source-mode') || false;
           document.querySelector('#source-toggle')?.click();
+          window.Mory.loadMarkdown('cat CAT');
+          window.Mory.showFind();
+          const findInput = document.querySelector('#find-input');
+          findInput.value = 'cat';
+          findInput.dispatchEvent(new Event('input', { bubbles: true }));
+          document.querySelector('#replace-input').value = '$& $$';
+          document.querySelector('#replace-all').click();
+          result.literalPreviewReplacement = document.querySelector('#write').textContent.trim() === '$& $$ $& $$';
+          window.Mory.undo();
+          result.replacementUndo = window.Mory.getMarkdown() === 'cat CAT';
+          window.Mory.redo();
+          result.replacementRedo = document.querySelector('#write').textContent.trim() === '$& $$ $& $$';
+          window.Mory.toggleSource(true);
+          window.Mory.loadMarkdown('\\u0130 cat CAT');
+          findInput.dispatchEvent(new Event('input', { bubbles: true }));
+          findInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true }));
+          const sourceEditor = document.querySelector('#source-editor');
+          result.previousUnicodeMatch = sourceEditor.selectionStart === 6 && sourceEditor.selectionEnd === 9
+            && document.querySelector('#find-count').textContent === '2 / 2';
+          sourceEditor.value = 'prefix cat';
+          sourceEditor.dispatchEvent(new Event('input', { bubbles: true }));
+          document.querySelector('#replace-input').value = 'fox';
+          document.querySelector('#replace-one').click();
+          result.refreshedReplacement = window.Mory.getMarkdown() === 'prefix fox';
+          document.querySelector('#find-close').click();
+          window.Mory.toggleSource(false);
+          const nestedCode = ['```js', '', '', '# Example title', '```'].join('\\n');
+          const nestedMarkdown = '````markdown\\n' + nestedCode + '\\n````\\n\\n# Actual title';
+          window.Mory.loadMarkdown(nestedMarkdown);
+          result.nestedFence = document.querySelector('#write pre code')?.textContent === nestedCode
+            && document.querySelector('#document-title').value === 'Actual title';
+          document.querySelector('#write').dispatchEvent(new Event('input', { bubbles: true }));
+          result.codeWhitespace = window.Mory.getMarkdown() === nestedMarkdown;
+          const originalSource = 'A   paragraph\\n\\n\\nAnother paragraph\\n';
+          window.Mory.loadMarkdown(originalSource);
+          window.Mory.toggleSource(true);
+          window.Mory.toggleSource(false);
+          window.Mory.toggleSource(true);
+          result.cleanModeSwitch = window.Mory.getMarkdown() === originalSource
+            && !document.querySelector('#save-state').classList.contains('is-visible');
+          window.Mory.toggleSource(false);
           const statusToggle = document.querySelector('#status-toggle');
           statusToggle.checked = false;
           statusToggle.dispatchEvent(new Event('change', { bubbles: true }));
@@ -141,6 +182,14 @@ final class MacWebSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                   result["exportOpen"] as? Bool == true,
                   result["preferencesOpen"] as? Bool == true,
                   result["sourceMode"] as? Bool == true,
+                  result["literalPreviewReplacement"] as? Bool == true,
+                  result["replacementUndo"] as? Bool == true,
+                  result["replacementRedo"] as? Bool == true,
+                  result["previousUnicodeMatch"] as? Bool == true,
+                  result["refreshedReplacement"] as? Bool == true,
+                  result["nestedFence"] as? Bool == true,
+                  result["codeWhitespace"] as? Bool == true,
+                  result["cleanModeSwitch"] as? Bool == true,
                   result["statusbarHidden"] as? Bool == true,
                   result["folderTypographyCompensated"] as? Bool == true,
                   result["openDocuments"] as? Int == 3,

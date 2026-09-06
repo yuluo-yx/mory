@@ -1,3 +1,5 @@
+import { mapMarkdownFences } from "./editor-features.js";
+
 const markdownExtensions = [".md", ".markdown", ".mmd", ".mdown", ".mkd", ".txt", ".text"];
 
 function normalizeGraphPath(value) {
@@ -15,16 +17,14 @@ function withoutExtension(value) {
 }
 
 function graphTitle(document) {
-  const heading = String(document.markdown || "").match(/^#\s+(.+)$/m)?.[1]
+  const heading = mapMarkdownFences(String(document.markdown || "").replace(/^\uFEFF/, ""), () => "\n").match(/^#\s+(.+)$/m)?.[1]
     ?.replace(/[*_`~]/g, "").trim();
   const filename = withoutExtension(document.name || document.path || "未命名").split("/").pop();
   return heading || filename || "未命名";
 }
 
 function stripIgnoredMarkdown(markdown) {
-  return String(markdown || "")
-    .replace(/```[\s\S]*?```/g, "")
-    .replace(/~~~[\s\S]*?~~~/g, "")
+  return mapMarkdownFences(String(markdown || "").replace(/^\uFEFF/, ""), () => "\n")
     .replace(/`[^`\n]*`/g, "");
 }
 

@@ -43,7 +43,7 @@ function removeNamedImport(source, moduleName) {
 
 const markdownSource = removeNamedImport(await readFile(markdownPath, "utf8"), "editor-features.js")
   .replace(/^export\s+/gm, "");
-const knowledgeSource = (await readFile(knowledgePath, "utf8"))
+const knowledgeSource = removeNamedImport(await readFile(knowledgePath, "utf8"), "editor-features.js")
   .replace(/^export\s+/gm, "")
   .replace(/^\s*\{[^\n]+\};?\s*$/gm, "");
 const editorFeaturesSource = (await readFile(editorFeaturesPath, "utf8"))

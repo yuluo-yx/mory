@@ -1,11 +1,51 @@
+export function readMarkdownFence(line) {
+  const match = line.match(/^( {0,3})(`{3,}|~{3,})(.*)$/);
+  if (!match || (match[2][0] === "`" && match[3].includes("`"))) return null;
+  return { marker: match[2], info: match[3].trim(), indent: match[1].length };
+}
+
+export function isMarkdownFenceEnd(line, fence) {
+  const match = line.match(/^ {0,3}(`{3,}|~{3,})[\t ]*$/);
+  return Boolean(match && match[1][0] === fence.marker[0] && match[1].length >= fence.marker.length);
+}
+
+export function mapMarkdownFences(source, transform) {
+  const lines = String(source).split(/(\r\n|\r|\n)/);
+  const parts = [];
+  let fence = null;
+  let block = [];
+  for (let index = 0; index < lines.length; index += 2) {
+    const line = lines[index];
+    const text = line + (lines[index + 1] ?? "");
+    if (fence) {
+      block.push(text);
+      if (isMarkdownFenceEnd(line, fence)) {
+        parts.push(transform(block.join("")));
+        fence = null;
+        block = [];
+      }
+    } else {
+      fence = readMarkdownFence(line);
+      if (fence) block.push(text);
+      else parts.push(text);
+    }
+  }
+  // An unfinished fence consumes the remainder of the document.
+  if (fence) parts.push(transform(block.join("")));
+  return parts.join("");
+}
+
 function protectMarkdownSyntax(source) {
   const values = [];
   const token = value => {
     const index = values.push(value) - 1;
     return `\uE100${index}\uE101`;
   };
-  const protectedSource = String(source)
-    .replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, token)
+  const protectedSource = mapMarkdownFences(source, value => {
+    // Leave the final line ending outside the token to preserve the next block boundary.
+    const ending = value.match(/(?:\r\n|\r|\n)$/)?.[0] ?? "";
+    return token(ending ? value.slice(0, -ending.length) : value) + ending;
+  })
     .replace(/`[^`\n]*`/g, token)
     .replace(/(?<=\]\()[^)\s]+(?=(?:\s+["'][^"']*["'])?\))/g, token)
     .replace(/https?:\/\/[^\s)]+/g, token)
@@ -23,6 +63,27 @@ export function optimizeMarkdownTypography(markdown, spacingText) {
   if (typeof spacingText !== "function") throw new TypeError("A text-spacing function is required");
   const protectedMarkdown = protectMarkdownSyntax(String(markdown ?? ""));
   return protectedMarkdown.restore(spacingText(protectedMarkdown.source));
+}
+
+export function findTextMatches(source, query) {
+  if (!query) return [];
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Match the original text so Unicode case folding cannot shift source offsets.
+  return Array.from(source.matchAll(new RegExp(escaped, "giu")), match => ({
+    start: match.index,
+    end: match.index + match[0].length
+  }));
+}
+
+export function replaceTextMatches(source, matches, replacement) {
+  const parts = [];
+  let offset = 0;
+  for (const match of matches) {
+    parts.push(source.slice(offset, match.start), replacement);
+    offset = match.end;
+  }
+  parts.push(source.slice(offset));
+  return parts.join("");
 }
 
 export const calendarColors = ["red", "amber", "green", "blue", "violet", "gray"];
@@ -217,14 +278,8 @@ function plainHeadingText(value) {
 export function markdownHeadingTree(markdown, title = "Untitled") {
   const root = { text: String(title || "Untitled"), level: 0, children: [] };
   const stack = [{ level: 0, node: root }];
-  let fence = "";
-  for (const line of String(markdown ?? "").replace(/\r\n?/g, "\n").split("\n")) {
-    const fenceMatch = line.match(/^\s*(```|~~~)/);
-    if (fenceMatch) {
-      fence = fence ? (fence === fenceMatch[1] ? "" : fence) : fenceMatch[1];
-      continue;
-    }
-    if (fence) continue;
+  const source = mapMarkdownFences(String(markdown ?? "").replace(/^\uFEFF/, ""), () => "\n");
+  for (const line of source.replace(/\r\n?/g, "\n").split("\n")) {
     const heading = line.match(/^(#{1,6})\s+(.+?)\s*#*\s*$/);
     if (!heading) continue;
     const text = plainHeadingText(heading[2]);

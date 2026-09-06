@@ -1,4 +1,11 @@
 import assert from "node:assert/strict";
+
+test("code examples do not create graph titles or false backlinks", () => {
+  const source = "````md\n```\n# Example title\n[[hidden]]\n```\n````\n# Actual title\n[[visible]]\n~~~\n[[unfinished]]";
+  assert.deepEqual(documentReferences(source), [{ type: "wiki", target: "visible" }]);
+  const graph = buildKnowledgeGraph([{ name: "guide.md", markdown: source }]);
+  assert.equal(graph.nodes[0].title, "Actual title");
+});
 import test from "node:test";
 
 import { buildKnowledgeGraph, documentReferences } from "../Sources/Mory/Web/knowledge.js";

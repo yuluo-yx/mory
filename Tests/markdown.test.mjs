@@ -6,6 +6,24 @@ test("escapes HTML special characters", () => {
   assert.equal(escapeHTML('<script x="1">&'), "&lt;script x=&quot;1&quot;&gt;&amp;");
 });
 
+test("keeps shorter, mismatched, and suffixed fence markers inside code", () => {
+  const code = "```js\n# Example\n~~~\n````suffix\n    ````\n```";
+  assert.equal(markdownToHTML("````markdown\n" + code + "\n`````\n# Outside"),
+    '<pre data-language="markdown" data-fence-marker="````"><code>' + code + '</code></pre>\n<h1>Outside</h1>');
+});
+
+test("recognizes indented fences after paragraphs and preserves unclosed blocks", () => {
+  assert.equal(markdownToHTML("Intro\n  ~~~~txt\n  one\n two\n~~~~\nAfter"),
+    '<p>Intro</p>\n<pre data-language="txt" data-fence-marker="~~~~"><code>one\ntwo</code></pre>\n<p>After</p>');
+  assert.equal(markdownToHTML("````js\n```\n# Code"),
+    '<pre data-language="js" data-fence-marker="````"><code>```\n# Code</code></pre>');
+});
+
+test("word counts exclude tilde, nested, and unfinished fenced code", () => {
+  assert.equal(documentStats("Visible\n~~~~\nhidden words\n~~~\nmore hidden\n~~~~\nwords").words, 2);
+  assert.equal(documentStats("Visible\n```\nunfinished hidden words").words, 1);
+});
+
 test("renders headings, paragraphs, and inline formatting", () => {
   const html = markdownToHTML("# \u6807\u9898\n\n\u4E00\u6BB5 **\u7C97\u4F53**, *\u659C\u4F53*, ~~\u5220\u9664~~ \u4E0E `code`.");
   assert.match(html, /<h1>\u6807\u9898<\/h1>/);
@@ -74,13 +92,13 @@ test("preserves backslash-escaped Markdown punctuation as literal characters", (
 
 test("renders fenced code blocks while preserving literal characters", () => {
   const html = markdownToHTML("```js\nconst value = 1 < 2;\n```");
-  assert.equal(html, '<pre data-language="js"><code>const value = 1 &lt; 2;</code></pre>');
+  assert.equal(html, '<pre data-language="js" data-fence-marker="```"><code>const value = 1 &lt; 2;</code></pre>');
 });
 
 test("preserves optional code titles and attribute-style languages", () => {
   assert.equal(
     markdownToHTML('```go title="main.go"\nfmt.Println("hi")\n```'),
-    '<pre data-language="go" data-title="main.go"><code>fmt.Println(&quot;hi&quot;)</code></pre>'
+    '<pre data-language="go" data-title="main.go" data-fence-marker="```"><code>fmt.Println(&quot;hi&quot;)</code></pre>'
   );
   assert.match(markdownToHTML('``` {.ts title="\u670D\u52A1\u5165\u53E3"}\nstart()\n```'), /data-language="ts" data-title="\u670D\u52A1\u5165\u53E3"/);
   assert.match(markdownToHTML('```py title="bad\\q"\npass\n```'), /data-title="bad\\q"/);
@@ -111,8 +129,8 @@ test("renders valid calendar fences as non-editable calendar blocks", () => {
 });
 
 test("keeps invalid calendar fences editable as ordinary code", () => {
-  assert.equal(markdownToHTML("```calendar\n{bad json}\n```"), '<pre data-language="calendar"><code>{bad json}</code></pre>');
-  assert.match(markdownToHTML('```calendar\n{"version":2,"month":"2026-08"}\n```'), /<pre data-language="calendar">/);
+  assert.equal(markdownToHTML("```calendar\n{bad json}\n```"), '<pre data-language="calendar" data-fence-marker="```"><code>{bad json}</code></pre>');
+  assert.match(markdownToHTML('```calendar\n{"version":2,"month":"2026-08"}\n```'), /<pre data-language="calendar"/);
 });
 
 test("renders blockquotes, horizontal rules, and mixed lists", () => {
@@ -130,7 +148,7 @@ test("renders tables and fills missing cells", () => {
 });
 
 test("renders an unclosed code fence through the end of the document", () => {
-  assert.equal(markdownToHTML("~~~txt\nhello"), '<pre data-language="txt"><code>hello</code></pre>');
+  assert.equal(markdownToHTML("~~~txt\nhello"), '<pre data-language="txt" data-fence-marker="~~~"><code>hello</code></pre>');
 });
 
 test("counts CJK words, Latin words, characters, and lines", () => {
@@ -193,6 +211,24 @@ class FakeElement {
 }
 
 const element = (tag, children = [], attributes = {}) => new FakeElement(tag, children, attributes);
+
+test("serializes code with safe fences and preserves consecutive blank lines", () => {
+  globalThis.Node = { TEXT_NODE: 3, ELEMENT_NODE: 1 };
+  const code = "```js\n\n\nconst value = 1;\n```";
+  const root = element("article", [element("pre", [code], { dataset: { language: "markdown" } })]);
+  const markdown = editorToMarkdown(root);
+  assert.equal(markdown, "````markdown\n" + code + "\n````");
+  assert.equal(markdownToHTML(markdown), '<pre data-language="markdown" data-fence-marker="````"><code>' + code + '</code></pre>');
+});
+
+test("serializes backticks in code titles with a safe tilde fence", () => {
+  globalThis.Node = { TEXT_NODE: 3, ELEMENT_NODE: 1 };
+  const code = "~~~\nexample";
+  const root = element("article", [element("pre", [code], { dataset: { language: "txt", title: "`example`" } })]);
+  const markdown = editorToMarkdown(root);
+  assert.equal(markdown, '~~~~txt title="`example`"\n' + code + '\n~~~~');
+  assert.match(markdownToHTML(markdown), /data-title="`example`"/);
+});
 
 test("serializes editor DOM into Markdown", () => {
   globalThis.Node = { TEXT_NODE: 3, ELEMENT_NODE: 1 };

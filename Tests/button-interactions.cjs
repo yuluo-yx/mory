@@ -378,6 +378,141 @@ app.whenReady().then(async () => {
     await click(window, "#source-toggle");
     await expect(window, "preview mode can be restored", "!document.querySelector('.workspace').classList.contains('source-mode')");
 
+    const nestedFenceCode = "```js\n\n\n# Example title\n[[hidden]]\n```";
+    const nestedFenceMarkdown = "````markdown\n" + nestedFenceCode + "\n````\n\n# Actual title";
+    await inspect(window, `window.Mory.loadMarkdown(${JSON.stringify(nestedFenceMarkdown)})`);
+    await expect(window, "nested code examples preserve content and the real document title",
+      `document.querySelector('#write pre code')?.textContent === ${JSON.stringify(nestedFenceCode)} && document.querySelector('#document-title').value === 'Actual title'`);
+    await inspect(window, "document.querySelector('#write').dispatchEvent(new Event('input', { bubbles: true }))");
+    await expect(window, "saving rendered code preserves long fences and internal blank lines",
+      `window.Mory.getMarkdown() === ${JSON.stringify(nestedFenceMarkdown)}`);
+    await inspect(window, "window.Mory.loadMarkdown('A   paragraph\\n\\n\\nAnother paragraph\\n'); window.Mory.toggleSource(true); window.Mory.toggleSource(false); window.Mory.toggleSource(true)");
+    await expect(window, "switching editor modes preserves source formatting and the saved state",
+      "window.Mory.getMarkdown() === 'A   paragraph\\n\\n\\nAnother paragraph\\n' && !document.querySelector('#save-state').classList.contains('is-visible')");
+    await inspect(window, "window.Mory.toggleSource(false)");
+
+    const findResults = await inspect(window, `(() => {
+      const results = [];
+      const input = (selector, value) => {
+        const element = document.querySelector(selector);
+        element.value = value;
+        element.dispatchEvent(new Event('input', { bubbles: true }));
+      };
+      const click = selector => document.querySelector(selector).click();
+      const prepare = (markdown, query, replacement = '', source = true) => {
+        window.Mory.toggleSource(source);
+        window.Mory.loadMarkdown(markdown);
+        window.Mory.showFind();
+        input('#find-input', query);
+        input('#replace-input', replacement);
+      };
+      const check = (label, callback) => {
+        try {
+          if (!callback()) throw new Error('Unexpected editor state');
+          results.push({ label, passed: true });
+        } catch (error) {
+          results.push({ label, passed: false, error: String(error) });
+        }
+      };
+      const editor = document.querySelector('#source-editor');
+      const count = () => document.querySelector('#find-count').textContent;
+      check('first previous match starts at the final occurrence and wraps', () => {
+        prepare('cat cat cat', 'cat');
+        click('#find-prev');
+        if (editor.selectionStart !== 8 || count() !== '3 / 3') return false;
+        click('#find-next');
+        return editor.selectionStart === 0 && count() === '1 / 3';
+      });
+      check('Unicode case conversion does not shift source offsets', () => {
+        prepare('\u0130 cat CAT', 'cat');
+        click('#find-next');
+        click('#replace-one');
+        return editor.value === '\u0130  CAT' && editor.selectionStart === 3;
+      });
+      check('editing refreshes match positions before replacing', () => {
+        prepare('cat dog', 'cat', 'fox');
+        click('#find-next');
+        input('#source-editor', 'prefix cat dog');
+        if (count() !== '0 / 1') return false;
+        click('#replace-one');
+        return editor.value === 'prefix fox dog';
+      });
+      check('switching documents clears the previous search selection', () => {
+        prepare('cat dog', 'cat', 'fox');
+        click('#find-next');
+        window.Mory.newDocument();
+        window.Mory.loadMarkdown('keep cat');
+        click('#replace-one');
+        return editor.value === 'keep fox';
+      });
+      check('replace all preserves literal dollar replacement tokens', () => {
+        prepare('cat CAT', 'cat', '$& $$');
+        click('#replace-all');
+        return editor.value === '$& $$ $& $$';
+      });
+      check('replace all updates the visible preview', () => {
+        prepare('cat CAT', 'cat', 'fox', false);
+        click('#replace-all');
+        return window.Mory.getMarkdown() === 'fox fox'
+          && document.querySelector('#write').textContent.trim() === 'fox fox'
+          && !document.querySelector('.workspace').classList.contains('source-mode');
+      });
+      check('single replacement is undoable and redoable', () => {
+        prepare('cat dog', 'cat', 'fox');
+        click('#replace-one');
+        window.Mory.undo();
+        if (editor.value !== 'cat dog') return false;
+        window.Mory.redo();
+        return editor.value === 'fox dog';
+      });
+      check('replace all is one undo step in preview mode', () => {
+        prepare('cat CAT', 'cat', 'fox', false);
+        click('#replace-all');
+        window.Mory.undo();
+        if (window.Mory.getMarkdown() !== 'cat CAT') return false;
+        window.Mory.redo();
+        return window.Mory.getMarkdown() === 'fox fox';
+      });
+      check('single replacement advances beyond inserted search text', () => {
+        prepare('cat cat', 'cat', 'catfish');
+        click('#replace-one');
+        return editor.value === 'catfish cat' && editor.selectionStart === 8;
+      });
+      check('replacing absent text leaves a clean document unchanged', () => {
+        prepare('keep this', 'missing', 'replacement');
+        click('#replace-all');
+        return editor.value === 'keep this'
+          && !document.querySelector('#save-state').classList.contains('is-visible');
+      });
+      check('replacement counts follow the selected interface language', () => {
+        const language = document.querySelector('#language-select');
+        const previousLanguage = language.value;
+        try {
+          language.value = 'en';
+          language.dispatchEvent(new Event('change', { bubbles: true }));
+          prepare('cat CAT', 'cat', 'fox');
+          click('#replace-all');
+          if (document.querySelector('#toast').textContent !== 'Replaced 2 occurrences') return false;
+          language.value = 'zh-CN';
+          language.dispatchEvent(new Event('change', { bubbles: true }));
+          prepare('cat CAT', 'cat', 'fox');
+          click('#replace-all');
+          return document.querySelector('#toast').textContent === '\u5DF2\u66FF\u6362 2 \u5904';
+        } finally {
+          language.value = previousLanguage;
+          language.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
+      click('#find-close');
+      window.Mory.toggleSource(false);
+      return results;
+    })()`);
+    for (const result of findResults) {
+      process.stdout.write('[find] ' + JSON.stringify(result) + '\n');
+      if (result.passed) interactionCount += 1;
+    }
+    if (findResults.some(result => !result.passed)) throw new Error('Find and replace regressions failed');
+
     await inspect(window, `(() => {
       window.Mory.didSave({ path: '/virtual/article.md', name: 'article.md', assets: { '\u6587\u7AE0/image.svg': 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjwvc3ZnPg==' } });
       const write = document.querySelector('#write');
@@ -782,6 +917,35 @@ app.whenReady().then(async () => {
     await window.webContents.insertText("```");
     await wait(80);
     await expect(window, "multiline code stays in one fence and returns to text after closing", "document.querySelectorAll('#write > pre').length === 1 && document.querySelector('#write > pre code')?.textContent === 'fmt.Println(\"hi\")\\nfmt.Println(\"bye\")' && !document.querySelector('#write > pre code')?.textContent.includes('```') && document.querySelector('#write > pre + p') !== null");
+
+    for (const marker of ["````", "~~~~"]) {
+      await inspect(window, `(() => {
+        window.Mory.loadMarkdown('');
+        const paragraph = document.querySelector('#write p');
+        const range = document.createRange();
+        range.selectNodeContents(paragraph);
+        range.collapse(false);
+        getSelection().removeAllRanges();
+        getSelection().addRange(range);
+        document.querySelector('#write').focus();
+      })()`);
+      await window.webContents.insertText(marker + 'markdown');
+      window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Enter" });
+      window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Enter" });
+      await wait(80);
+      await window.webContents.insertText('prefix' + marker);
+      await insertParagraph(window);
+      await window.webContents.insertText(marker.slice(1));
+      await wait(80);
+      const expectedCode = 'prefix' + marker + '\n' + marker.slice(1);
+      await expect(window, "live long fences preserve marker text and shorter closing lines",
+        `document.querySelector('#write pre')?.dataset.language === 'markdown' && document.querySelector('#write pre code')?.innerText === ${JSON.stringify(expectedCode)} && window.Mory.getMarkdown().includes(${JSON.stringify(expectedCode)})`);
+      await insertParagraph(window);
+      await window.webContents.insertText(marker);
+      await wait(80);
+      await expect(window, "live long fences close only on a complete matching line",
+        `document.querySelector('#write pre code')?.textContent === ${JSON.stringify(expectedCode)} && document.querySelector('#write > pre + p')?.contains(getSelection().anchorNode)`);
+    }
 
     await inspect(window, `(() => {
       window.Mory.loadMarkdown('');

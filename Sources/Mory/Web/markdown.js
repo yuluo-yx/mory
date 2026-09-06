@@ -1,4 +1,4 @@
-import { normalizeMermaidColorTheme, parseCalendarSource, serializeCalendarDocument } from "./editor-features.js";
+import { isMarkdownFenceEnd, mapMarkdownFences, normalizeMermaidColorTheme, parseCalendarSource, readMarkdownFence, serializeCalendarDocument } from "./editor-features.js";
 
 const htmlBlockTags = "address|article|aside|blockquote|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hr|html|legend|li|main|menu|nav|ol|p|pre|search|section|summary|table|tbody|td|tfoot|th|thead|tr|ul";
 const htmlBlockStart = new RegExp(`^ {0,3}(?:<\/?(?:${htmlBlockTags})(?:\\s|/?>)|<!--|<\\?|<![A-Z]|<!\\[CDATA\\[)`, "i");
@@ -130,6 +130,14 @@ function mermaidFenceTheme(value) {
   return theme === "auto" ? "" : ` theme=${theme}`;
 }
 
+function serializeCodeFence(source, info) {
+  const character = info.includes("`") ? "~" : "`";
+  const runs = source.match(character === "`" ? /`+/g : /~+/g) ?? [];
+  const length = runs.reduce((longest, run) => Math.max(longest, run.length + 1), 3);
+  const marker = character.repeat(length);
+  return `${marker}${info}\n${source}\n${marker}`;
+}
+
 export function markdownToHTML(markdown) {
   // A UTF-8 BOM is valid only at the start; remove it before parsing the first Markdown block.
   const lines = String(markdown ?? "").replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n").split("\n");
@@ -140,16 +148,18 @@ export function markdownToHTML(markdown) {
     const line = lines[index];
     if (!line.trim()) { index += 1; continue; }
 
-    const fence = line.match(/^\s*(```|~~~)\s*(.*?)\s*$/);
+    const fence = readMarkdownFence(line);
     if (fence) {
-      const marker = fence[1];
-      const { language, title, theme } = parseFenceInfo(fence[2]);
+      const { language, title, theme } = parseFenceInfo(fence.info);
       const code = [];
       index += 1;
-      while (index < lines.length && !new RegExp(`^\\s*${marker}`).test(lines[index])) code.push(lines[index++]);
+      while (index < lines.length && !isMarkdownFenceEnd(lines[index], fence)) {
+        code.push(lines[index++].replace(new RegExp(`^ {0,${fence.indent}}`), ""));
+      }
       if (index < lines.length) index += 1;
       const rawSource = code.join("\n");
       const source = escapeHTML(rawSource);
+      const fenceAttribute = ` data-fence-marker="${fence.marker}"`;
       if (language.toLocaleLowerCase() === "mermaid") {
         html.push(`<div class="mermaid-diagram" data-mermaid-source="${source}" data-mermaid-theme="${normalizeMermaidColorTheme(theme)}" data-mermaid-state="pending" contenteditable="false"></div>`);
       } else if (language.toLocaleLowerCase() === "calendar") {
@@ -157,11 +167,11 @@ export function markdownToHTML(markdown) {
         if (calendar) {
           html.push(`<div class="calendar-block" data-calendar-source="${escapeHTML(serializeCalendarDocument(calendar))}" contenteditable="false"></div>`);
         } else {
-          html.push(`<pre data-language="calendar"><code>${source}</code></pre>`);
+          html.push(`<pre data-language="calendar"${fenceAttribute}><code>${source}</code></pre>`);
         }
       } else {
         const titleAttribute = title ? ` data-title="${escapeHTML(title)}"` : "";
-        html.push(`<pre data-language="${escapeHTML(language)}"${titleAttribute}><code>${source}</code></pre>`);
+        html.push(`<pre data-language="${escapeHTML(language)}"${titleAttribute}${fenceAttribute}><code>${source}</code></pre>`);
       }
       continue;
     }
@@ -228,7 +238,7 @@ export function markdownToHTML(markdown) {
 
     const paragraph = [line];
     index += 1;
-    while (index < lines.length && lines[index].trim() && !blockStart.test(lines[index]) && !htmlBlockStart.test(lines[index]) && !(index + 1 < lines.length && isTableSeparator(lines[index + 1]))) {
+    while (index < lines.length && lines[index].trim() && !blockStart.test(lines[index]) && !readMarkdownFence(lines[index]) && !htmlBlockStart.test(lines[index]) && !(index + 1 < lines.length && isTableSeparator(lines[index + 1]))) {
       paragraph.push(lines[index++]);
     }
     html.push(`<p>${inlineMarkdown(paragraph.join("\n")).replaceAll("\n", " ")}</p>`);
@@ -293,12 +303,12 @@ export function editorToMarkdown(root, { escapeText = true } = {}) {
     }
     if (element.tagName === "DIV" && classNames.includes("mermaid-diagram")) {
       const source = element.dataset.mermaidSource ?? "";
-      blocks.push(`\`\`\`mermaid${mermaidFenceTheme(element.dataset.mermaidTheme)}\n${source}\n\`\`\``);
+      blocks.push(serializeCodeFence(source, `mermaid${mermaidFenceTheme(element.dataset.mermaidTheme)}`));
       continue;
     }
     if (element.tagName === "DIV" && classNames.includes("calendar-block")) {
       const calendar = parseCalendarSource(element.dataset.calendarSource ?? "");
-      if (calendar) blocks.push(`\`\`\`calendar\n${serializeCalendarDocument(calendar)}\n\`\`\``);
+      if (calendar) blocks.push(serializeCodeFence(serializeCalendarDocument(calendar), "calendar"));
       continue;
     }
     const content = [...element.childNodes].map(child => inlineNodeToMarkdown(child, escapeText)).join("").trim();
@@ -328,20 +338,19 @@ export function editorToMarkdown(root, { escapeText = true } = {}) {
         const language = element.dataset.language ?? "";
         const title = fenceTitle(element.dataset.title ?? "");
         const code = element.innerText.replaceAll("\u200b", "").replace(/\n$/, "");
-        blocks.push(`\`\`\`${language}${title}\n${code}\n\`\`\``); break;
+        blocks.push(serializeCodeFence(code, `${language}${title}`)); break;
       }
       case "TABLE": blocks.push(tableToMarkdown(element, escapeText)); break;
       case "HR": blocks.push("---"); break;
       default: if (content) blocks.push(content);
     }
   }
-  return blocks.join("\n\n").replace(/\n{3,}/g, "\n\n").trimEnd();
+  return blocks.join("\n\n").trimEnd();
 }
 
 export function documentStats(markdown) {
   const value = String(markdown ?? "");
-  const plain = value
-    .replace(/```[\s\S]*?```/g, " ")
+  const plain = mapMarkdownFences(value.replace(/^\uFEFF/, ""), () => "\n")
     .replace(/<[^>]*>/g, " ")
     .replace(/!?(?:\[([^\]]*)\])\([^)]*\)/g, "$1")
     .replace(/[#>*_~`|\-[\]]/g, " ");

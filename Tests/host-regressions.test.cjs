@@ -5,6 +5,14 @@ const test = require("node:test");
 
 const root = path.join(__dirname, "..");
 
+test("Windows packaging resolves the Wails CLI from the application's locked module", () => {
+  const script = fs.readFileSync(path.join(root, "scripts", "package-windows-wails.ps1"), "utf8");
+  assert.doesNotMatch(script, /\$WailsVersion\s*=\s*"v[\d.]+"/);
+  assert.match(script, /go list -m -f/);
+  assert.match(script, /github\.com\/wailsapp\/wails\/v2/);
+  assert.match(script, /\$LASTEXITCODE/);
+});
+
 test("the classic web bundle removes local module imports", () => {
   const bundle = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "app.bundle.js"), "utf8");
   assert.doesNotMatch(bundle, /^import\s/m);
@@ -320,7 +328,7 @@ test("the macOS installer uses a branded drag-to-Applications layout", () => {
   assert.equal(background.readUInt32BE(20), 512);
 });
 
-test("desktop release metadata stays aligned at version 0.4.2", () => {
+test("desktop release metadata stays aligned with the package version", () => {
   const packageMetadata = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
   const lockMetadata = JSON.parse(fs.readFileSync(path.join(root, "package-lock.json"), "utf8"));
   const windowsMetadata = JSON.parse(fs.readFileSync(path.join(root, "cmd", "mory-windows", "wails.json"), "utf8"));
@@ -328,14 +336,15 @@ test("desktop release metadata stays aligned at version 0.4.2", () => {
   const macHost = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
   const windowsHost = fs.readFileSync(path.join(root, "cmd", "mory-windows", "main_windows.go"), "utf8");
 
-  assert.equal(packageMetadata.version, "0.4.2");
-  assert.equal(lockMetadata.version, "0.4.2");
-  assert.equal(lockMetadata.packages[""].version, "0.4.2");
-  assert.equal(windowsMetadata.info.productVersion, "0.4.2");
-  assert.match(macMetadata, /CFBundleShortVersionString<\/key><string>0\.4\.2<\/string>/);
-  assert.match(macMetadata, /CFBundleVersion<\/key><string>6<\/string>/);
-  assert.match(macHost, /\?\? "0\.4\.2"/);
-  assert.match(windowsHost, /const appVersion = "0\.4\.2"/);
+  const version = packageMetadata.version;
+  assert.match(version, /^\d+\.\d+\.\d+$/);
+  assert.equal(lockMetadata.version, version);
+  assert.equal(lockMetadata.packages[""].version, version);
+  assert.equal(windowsMetadata.info.productVersion, version);
+  assert.equal(macMetadata.match(/CFBundleShortVersionString<\/key>\s*<string>([^<]+)<\/string>/)?.[1], version);
+  assert.match(macMetadata, /CFBundleVersion<\/key><string>[1-9]\d*<\/string>/);
+  assert.ok(macHost.includes(`?? "${version}"`));
+  assert.ok(windowsHost.includes(`const appVersion = "${version}"`));
 });
 
 test("release CI uses the module toolchain and can update an existing release", () => {
