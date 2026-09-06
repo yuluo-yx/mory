@@ -30,6 +30,7 @@ on run arguments
             open
             update without registering applications
             delay 2
+            close
         end tell
     end tell
 end run

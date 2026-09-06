@@ -21,6 +21,7 @@
 ### Packaging
 
 - Consume the complete disk-mount output before selecting the macOS device, preventing premature pipe closure from failing DMG packaging.
+- Close the DMG's Finder window before unmounting, retry transient busy-device errors, and retain diagnostics and staging files if unmounting fails.
 - Resolve the Windows Wails packaging CLI from the version locked by the application. Abort packaging when a native command fails instead of reusing old artifacts.
 - Keep npm, its lock file, macOS, and Windows version metadata consistent with an automated regression check.
 

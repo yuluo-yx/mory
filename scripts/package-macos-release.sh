@@ -39,9 +39,29 @@ MOUNT_NAME="$(basename "$MOUNT_DIR")"
 RW_DMG_PATH="$STAGING_ROOT/${ARTIFACT_BASE}-rw.dmg"
 ATTACHED_DEVICE=""
 
+detach_image() {
+  local device="$1"
+  local attempt status
+  for attempt in {1..5}; do
+    if hdiutil detach "$device"; then
+      return 0
+    else
+      status=$?
+    fi
+    if [[ "$status" -ne 16 || "$attempt" -eq 5 ]]; then
+      return "$status"
+    fi
+    echo "Disk image is busy; retrying detach ($attempt/5): $device" >&2
+    sleep 2
+  done
+}
+
 cleanup() {
   if [[ -n "$ATTACHED_DEVICE" ]]; then
-    hdiutil detach "$ATTACHED_DEVICE" -quiet || true
+    if ! detach_image "$ATTACHED_DEVICE"; then
+      echo "Keeping mounted staging directory for inspection: $STAGING_ROOT" >&2
+      return
+    fi
   fi
   rm -R "$STAGING_ROOT"
 }
@@ -74,6 +94,7 @@ hdiutil create \
   -format UDRW \
   "$RW_DMG_PATH"
 
+echo "Attaching writable DMG: $RW_DMG_PATH"
 ATTACHED_DEVICE="$(
   hdiutil attach \
     -readwrite \
@@ -89,6 +110,7 @@ if [[ -z "$ATTACHED_DEVICE" ]]; then
   exit 1
 fi
 
+echo "Configuring Finder layout: $MOUNT_DIR"
 osascript "$DMG_LAYOUT_SCRIPT" "$MOUNT_NAME" "$MOUNT_DIR"
 sync
 
@@ -108,7 +130,8 @@ if [[ -d "$MOUNT_DIR/.fseventsd" ]]; then
   rm -R "$MOUNT_DIR/.fseventsd"
 fi
 
-hdiutil detach "$ATTACHED_DEVICE" -quiet
+echo "Detaching writable DMG: $ATTACHED_DEVICE"
+detach_image "$ATTACHED_DEVICE"
 ATTACHED_DEVICE=""
 
 hdiutil convert \

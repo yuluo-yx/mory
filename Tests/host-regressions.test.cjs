@@ -7,6 +7,36 @@ const { spawnSync } = require("node:child_process");
 
 const root = path.join(__dirname, "..");
 
+test("DMG unmount retries only busy devices and preserves terminal failures", { skip: process.platform !== "darwin" }, () => {
+  const script = fs.readFileSync(path.join(root, "scripts", "package-macos-release.sh"), "utf8");
+  const detachFunction = script.match(/^detach_image\(\) \{[\s\S]*?^\}/m)?.[0];
+  assert.ok(detachFunction, "The DMG script must handle busy unmounts");
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "mory-dmg-detach-"));
+  try {
+    fs.writeFileSync(path.join(temporary, "hdiutil"), `#!/usr/bin/env node
+const fs = require('node:fs');
+const attempt = Number(fs.existsSync(process.env.COUNTER) ? fs.readFileSync(process.env.COUNTER, 'utf8') : 0) + 1;
+fs.writeFileSync(process.env.COUNTER, String(attempt));
+if (process.argv.slice(2).join(' ') !== 'detach /dev/disk42') process.exit(99);
+process.exit(process.env.SCENARIO === 'permanent' ? 22 : process.env.SCENARIO === 'busy' && attempt >= 3 ? 0 : 16);
+`, { mode: 0o755 });
+    fs.writeFileSync(path.join(temporary, "sleep"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    for (const [scenario, status, attempts] of [["busy", 0, 3], ["permanent", 22, 1], ["exhausted", 16, 5]]) {
+      const counter = path.join(temporary, scenario);
+      const result = spawnSync("bash", ["-euo", "pipefail", "-c", `${detachFunction}\ndetach_image /dev/disk42`], {
+        encoding: "utf8", timeout: 10000,
+        env: { ...process.env, PATH: temporary + path.delimiter + process.env.PATH, COUNTER: counter, SCENARIO: scenario }
+      });
+      assert.equal(result.status, status, result.stderr);
+      assert.equal(Number(fs.readFileSync(counter, "utf8")), attempts);
+    }
+    assert.doesNotMatch(script, /hdiutil detach[^\n]*-quiet/);
+    assert.match(script, /if ! detach_image/);
+  } finally {
+    fs.rmSync(temporary, { recursive: true, force: true });
+  }
+});
+
 test("DMG mounting consumes all hdiutil output before selecting its device", { skip: process.platform !== "darwin" }, () => {
   const script = fs.readFileSync(path.join(root, "scripts", "package-macos-release.sh"), "utf8");
   const capture = script.match(/ATTACHED_DEVICE="\$\([\s\S]*?\n\)"/)?.[0];
