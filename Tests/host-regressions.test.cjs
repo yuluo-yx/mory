@@ -2,8 +2,39 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
+const os = require("node:os");
+const { spawnSync } = require("node:child_process");
 
 const root = path.join(__dirname, "..");
+
+test("DMG mounting consumes all hdiutil output before selecting its device", { skip: process.platform !== "darwin" }, () => {
+  const script = fs.readFileSync(path.join(root, "scripts", "package-macos-release.sh"), "utf8");
+  const capture = script.match(/ATTACHED_DEVICE="\$\([\s\S]*?\n\)"/)?.[0];
+  assert.ok(capture, "The DMG script must capture the attached device");
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "mory-dmg-pipe-"));
+  try {
+    const fakeHdiutil = path.join(temporary, "hdiutil");
+    fs.writeFileSync(fakeHdiutil, `#!/usr/bin/env node
+const fs = require('node:fs');
+try {
+  fs.writeSync(1, '/dev/disk42 Apple_partition_scheme\\n');
+  for (let index = 0; index < 2048; index += 1) fs.writeSync(1, 'Additional mount output '.repeat(256) + '\\n');
+  fs.writeSync(1, '/dev/disk42s1 Apple_HFS /Volumes/Mory\\n');
+} catch (error) {
+  if (error.code === 'EPIPE') process.exit(16);
+  throw error;
+}
+`, { mode: 0o755 });
+    const result = spawnSync("bash", ["-euo", "pipefail", "-c", `${capture}\nprintf '%s' "$ATTACHED_DEVICE"`], {
+      encoding: "utf8",
+      env: { ...process.env, PATH: temporary + path.delimiter + process.env.PATH, MOUNT_DIR: temporary, RW_DMG_PATH: path.join(temporary, "fixture.dmg") }
+    });
+    assert.equal(result.status, 0, result.stderr || "The mount output pipe must stay open until hdiutil exits");
+    assert.equal(result.stdout, "/dev/disk42");
+  } finally {
+    fs.rmSync(temporary, { recursive: true, force: true });
+  }
+});
 
 test("Windows packaging resolves the Wails CLI from the application's locked module", () => {
   const script = fs.readFileSync(path.join(root, "scripts", "package-windows-wails.ps1"), "utf8");

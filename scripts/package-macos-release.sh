@@ -81,7 +81,7 @@ ATTACHED_DEVICE="$(
     -noautoopen \
     -mountpoint "$MOUNT_DIR" \
     "$RW_DMG_PATH" |
-    awk '/^\/dev\// { print $1; exit }'
+    awk '/^\/dev\// && !device { device = $1 } END { print device }'
 )"
 
 if [[ -z "$ATTACHED_DEVICE" ]]; then
