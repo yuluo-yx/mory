@@ -43,25 +43,28 @@ function mapMarkdownFences(source, transform) {
 
 function protectMarkdownSyntax(source) {
   const values = [];
+  let prefix = "\uE100";
+  while (source.includes(prefix)) prefix += "\uE100";
+  const tokenPattern = new RegExp(`${prefix}(\\d+)\uE101`, "g");
+  const restore = value => String(value).replace(tokenPattern, (match, index) => values[Number(index)] ?? match);
   const token = value => {
-    const index = values.push(value) - 1;
-    return `\uE100${index}\uE101`;
+    // Flatten earlier tokens before protecting enclosing syntax such as HTML tags.
+    const index = values.push(restore(value)) - 1;
+    return `${prefix}${index}\uE101`;
   };
   const protectedSource = mapMarkdownFences(source, value => {
     // Leave the final line ending outside the token to preserve the next block boundary.
     const ending = value.match(/(?:\r\n|\r|\n)$/)?.[0] ?? "";
     return token(ending ? value.slice(0, -ending.length) : value) + ending;
   })
-    .replace(/`[^`\n]*`/g, token)
+    .replace(/(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g, token)
     .replace(/(?<=\]\()[^)\s]+(?=(?:\s+["'][^"']*["'])?\))/g, token)
     .replace(/https?:\/\/[^\s)]+/g, token)
     .replace(/<[^>\n]+>/g, token)
     .replace(/\\[!-/:-@[-`{-~]|\*\*|__|~~/g, token);
   return {
     source: protectedSource,
-    restore(value) {
-      return String(value).replace(/\uE100(\d+)\uE101/g, (_, index) => values[Number(index)] ?? "");
-    }
+    restore
   };
 }
 
@@ -1409,7 +1412,8 @@ function editorHistory(document = activeDocument()) {
 function currentEditorSnapshot() {
   const root = state.sourceMode ? sourceEditor : write;
   return {
-    markdown: state.sourceMode ? sourceEditor.value : editorToMarkdown(write),
+    // Input handlers keep the source current; serializing the preview loses original syntax.
+    markdown: state.sourceMode ? sourceEditor.value : state.markdown,
     caret: state.sourceMode ? sourceEditor.selectionStart : editorCaretOffset(write)
   };
 }
@@ -4059,6 +4063,10 @@ function toggleSource(force) {
 }
 
 function execute(command) {
+  if (command === "typography") {
+    optimizeActiveDocumentTypography();
+    return;
+  }
   if (state.sourceMode) toggleSource(false);
   write.focus();
   beginEditorHistory(`command-${command}`, { force: true });
@@ -4085,9 +4093,6 @@ function execute(command) {
   } else if (command === "calendar") {
     openCalendarEditor();
     return;
-  } else if (command === "typography") {
-    optimizeActiveDocumentTypography();
-    return;
   }
   syncFromWrite();
 }
@@ -4095,12 +4100,13 @@ function execute(command) {
 function optimizeActiveDocumentTypography() {
   const document = activeDocument();
   if (!document) return;
-  const current = state.sourceMode ? sourceEditor.value : editorToMarkdown(write);
+  const current = state.sourceMode ? sourceEditor.value : state.markdown;
   const next = optimizeMarkdownTypography(current, value => globalThis.pangu.spacingText(value));
   if (next === current) {
     toast(localized("当前文稿无需优化"));
     return;
   }
+  beginEditorHistory("command-typography", { force: true });
   document.markdown = next;
   document.dirty = true;
   renderDocument(document);

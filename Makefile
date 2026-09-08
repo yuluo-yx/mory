@@ -63,6 +63,7 @@ test-macos:
 	$(NPM) run test:mac-drag
 	$(NPM) run test:mac-workspace-watcher
 	$(NPM) run test:mac-menu-localization
+	$(NPM) run test:mac-recent-documents
 	$(NPM) run test:mac-launch-request
 
 package-macos: verify
@@ -73,7 +74,10 @@ package-macos: verify
 	$(NPM) run test:mac-graph
 	$(NPM) run test:mac-drag
 	$(NPM) run test:mac-workspace-watcher
+	$(NPM) run test:mac-menu-localization
+	$(NPM) run test:mac-recent-documents
 	$(NPM) run test:mac-launch-request
+	$(NPM) run test:mac-cli
 	$(NPM) run dist:mac
 
 package-windows-x64: verify

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.5.1 - 2026-09-08
+
+### Editor fixes
+
+- Preserve HTML attributes containing URLs during typography optimization instead of leaking internal placeholders into the Markdown document.
+- Preserve literal private-use characters and code spans with embedded backticks or line breaks while spacing surrounding prose.
+- Keep the current editing mode and original Markdown syntax when optimizing typography. Preserve exact undo history and avoid adding an undo step when no changes are needed.
+
+### Command line
+
+- Reject export destinations that are directories, symbolic links (including dangling links), or hard links to the source document, even with `--force`.
+- Accept `--format=jpg` as an alias for JPEG export and document quoted paths, the `--` separator, and PowerPoint export.
+- Cover output collisions, explicit replacement, Chinese and spaced filenames, format normalization, and invalid flags through real Cobra command execution tests.
+
+### Migration and rollback
+
+No migration is required; replace the application directly. Existing Markdown files and workspace settings remain compatible. CLI users exporting through an output symlink must select a regular destination instead.
+
+To roll back, reinstall 0.5.0 without deleting documents or application settings. Keep copies of documents before using typography optimization in the older release. Published tags must not be moved or reused.
+
 ## 0.5.0 - 2026-09-06
 
 ### Editor fixes

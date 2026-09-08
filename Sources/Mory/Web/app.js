@@ -592,7 +592,8 @@ function editorHistory(document = activeDocument()) {
 function currentEditorSnapshot() {
   const root = state.sourceMode ? sourceEditor : write;
   return {
-    markdown: state.sourceMode ? sourceEditor.value : editorToMarkdown(write),
+    // Input handlers keep the source current; serializing the preview loses original syntax.
+    markdown: state.sourceMode ? sourceEditor.value : state.markdown,
     caret: state.sourceMode ? sourceEditor.selectionStart : editorCaretOffset(write)
   };
 }
@@ -3242,6 +3243,10 @@ function toggleSource(force) {
 }
 
 function execute(command) {
+  if (command === "typography") {
+    optimizeActiveDocumentTypography();
+    return;
+  }
   if (state.sourceMode) toggleSource(false);
   write.focus();
   beginEditorHistory(`command-${command}`, { force: true });
@@ -3268,9 +3273,6 @@ function execute(command) {
   } else if (command === "calendar") {
     openCalendarEditor();
     return;
-  } else if (command === "typography") {
-    optimizeActiveDocumentTypography();
-    return;
   }
   syncFromWrite();
 }
@@ -3278,12 +3280,13 @@ function execute(command) {
 function optimizeActiveDocumentTypography() {
   const document = activeDocument();
   if (!document) return;
-  const current = state.sourceMode ? sourceEditor.value : editorToMarkdown(write);
+  const current = state.sourceMode ? sourceEditor.value : state.markdown;
   const next = optimizeMarkdownTypography(current, value => globalThis.pangu.spacingText(value));
   if (next === current) {
     toast(localized("当前文稿无需优化"));
     return;
   }
+  beginEditorHistory("command-typography", { force: true });
   document.markdown = next;
   document.dirty = true;
   renderDocument(document);

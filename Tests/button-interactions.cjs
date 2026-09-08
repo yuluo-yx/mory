@@ -1339,6 +1339,30 @@ app.whenReady().then(async () => {
     await inspect(window, "window.Mory.exportDocument({ format: 'mindmap' }).then(html => { window.__mindMapHTML = html; })");
     await expect(window, "mind-map export produces a standalone heading map", "window.__mindMapHTML.startsWith('<!doctype html>') && window.__mindMapHTML.includes('<svg') && window.__mindMapHTML.includes('Mory') && !window.__mindMapHTML.includes('<script')");
 
+    const typographySource = '# Mory\u7F16\u8F91\u5668\n\n<a href="https://example.com/guide" title="Guide">Link</a>\n\n``\u4E2D\u6587English`example``\n\nLiteral \uE1000\uE101';
+    const typographyExpected = typographySource.replace('Mory\u7F16\u8F91\u5668', 'Mory \u7F16\u8F91\u5668');
+    await inspect(window, `window.Mory.loadMarkdown(${JSON.stringify(typographySource)}); window.Mory.toggleSource(true);`);
+    await click(window, "#toolbar [data-command='typography']");
+    await expect(window, "source typography preserves HTML URLs, code delimiters, and private-use text", `window.Mory.getMarkdown() === ${JSON.stringify(typographyExpected)}`);
+    await click(window, "#toolbar [data-command='typography']");
+    await expect(window, "repeated typography leaves the corrected source unchanged", `window.Mory.getMarkdown() === ${JSON.stringify(typographyExpected)}`);
+    await expect(window, "typography keeps source mode active", "document.querySelector('.workspace').classList.contains('source-mode')");
+    await inspect(window, "window.Mory.undo()");
+    await expect(window, "typography undo restores the original source", `window.Mory.getMarkdown() === ${JSON.stringify(typographySource)}`);
+    await inspect(window, "window.Mory.redo()");
+    await expect(window, "typography redo restores the optimized source", `window.Mory.getMarkdown() === ${JSON.stringify(typographyExpected)}`);
+    await inspect(window, "window.Mory.toggleSource(false)");
+    await inspect(window, `window.Mory.loadMarkdown(${JSON.stringify(typographySource)})`);
+    await click(window, "#toolbar [data-command='typography']");
+    await inspect(window, "window.Mory.toggleSource(true)");
+    await expect(window, "preview typography preserves original Markdown syntax", `window.Mory.getMarkdown() === ${JSON.stringify(typographyExpected)}`);
+    await inspect(window, "window.Mory.toggleSource(false)");
+    await inspect(window, "window.Mory.undo(); window.Mory.toggleSource(true)");
+    await expect(window, "preview typography undo preserves original syntax", `window.Mory.getMarkdown() === ${JSON.stringify(typographySource)}`);
+    await inspect(window, "window.Mory.toggleSource(false); window.Mory.redo(); window.Mory.toggleSource(true)");
+    await expect(window, "preview typography redo preserves optimized syntax", `window.Mory.getMarkdown() === ${JSON.stringify(typographyExpected)}`);
+    await inspect(window, "window.Mory.toggleSource(false)");
+
     await inspect(window, `(() => {
       window.Mory.loadMarkdown(${JSON.stringify("```go\nfunc main() {\n  fmt.Println(\"hello\")\n}\n```\n\n\u6B63\u6587")});
       const editor = document.querySelector('#write');

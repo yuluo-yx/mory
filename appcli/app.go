@@ -74,6 +74,9 @@ func ResolveExport(source, format, outputDirectory string, overwrite bool) (Expo
 		return ExportRequest{}, err
 	}
 	format = strings.ToLower(strings.TrimSpace(format))
+	if format == "jpg" {
+		format = "jpeg"
+	}
 	extension, ok := exportExtensions[format]
 	if !ok {
 		return ExportRequest{}, fmt.Errorf("unsupported export format %q; use html, pdf, png, jpeg, or pptx", format)
@@ -91,12 +94,22 @@ func ResolveExport(source, format, outputDirectory string, overwrite bool) (Expo
 	}
 	name := pathologize.Clean(strings.TrimSuffix(filepath.Base(source), filepath.Ext(source)) + extension)
 	destination := filepath.Join(directory, name)
-	if !overwrite {
-		if _, err := os.Stat(destination); err == nil {
-			return ExportRequest{}, fmt.Errorf("output already exists: %s (use --force to replace it)", destination)
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return ExportRequest{}, fmt.Errorf("inspect output %s: %w", destination, err)
+	if info, err := os.Lstat(destination); err == nil {
+		if !info.Mode().IsRegular() {
+			return ExportRequest{}, fmt.Errorf("output is not a regular file: %s", destination)
 		}
+		sourceInfo, err := os.Stat(source)
+		if err != nil {
+			return ExportRequest{}, fmt.Errorf("inspect source %s: %w", source, err)
+		}
+		if os.SameFile(sourceInfo, info) {
+			return ExportRequest{}, fmt.Errorf("output refers to the source document: %s", destination)
+		}
+		if !overwrite {
+			return ExportRequest{}, fmt.Errorf("output already exists: %s (use --force to replace it)", destination)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return ExportRequest{}, fmt.Errorf("inspect output %s: %w", destination, err)
 	}
 	return ExportRequest{Source: source, Destination: destination, Format: format}, nil
 }

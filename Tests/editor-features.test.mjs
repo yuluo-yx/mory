@@ -46,6 +46,44 @@ test("typography preserves complete code fences including original line endings"
   }
 });
 
+test("typography preserves nested HTML attributes and literal private-use characters", () => {
+  const fixtures = [
+    '<a href="https://example.com/guide" title="Guide">Link</a>',
+    '<img src="https://example.com/image.png" alt="Image" width="100">',
+    '<span data-link="https://example.com" class="note">Label</span>',
+    "literal \uE1000\uE101 and \uE100999\uE101",
+    "\uE100\uE1000\uE101 **bold** `code`",
+    '```html\n<a href="https://example.com" title="Guide">Link</a>\n```'
+  ];
+  for (const source of fixtures) {
+    assert.equal(optimizeMarkdownTypography(source, value => value), source);
+    assert.equal(optimizeMarkdownTypography(source, value => pangu.spacingText(value)), source);
+  }
+});
+
+test("typography preserves code spans with embedded backticks and line endings", () => {
+  for (const newline of ["\n", "\r\n", "\r"]) {
+    for (const code of [
+      "``\u4E2D\u6587English`example``",
+      "```\u4E2D\u6587English``example`end```",
+      `\`\u4E2D\u6587English${newline}example\``
+    ]) {
+      const source = `\u4E2D\u6587English ${code} \u4E2D\u6587English`;
+      const expected = `\u4E2D\u6587 English ${code} \u4E2D\u6587 English`;
+      assert.equal(optimizeMarkdownTypography(source, value => pangu.spacingText(value)), expected);
+    }
+  }
+});
+
+test("typography remains lossless and idempotent across a long mixed document", () => {
+  const rows = Array.from({ length: 1000 }, (_, index) => `\u4E2D\u6587English ${index}\n<a href="https://example.com/${index}" title="Page">Link</a>\n\n`);
+  const source = rows.join("");
+  const expected = source.replaceAll("\u4E2D\u6587English", "\u4E2D\u6587 English");
+  const result = optimizeMarkdownTypography(source, value => pangu.spacingText(value));
+  assert.equal(result, expected);
+  assert.equal(optimizeMarkdownTypography(result, value => pangu.spacingText(value)), expected);
+});
+
 test("literal search escapes every regular expression metacharacter", () => {
   const query = ".*+?^${}()|[]\\";
   assert.deepEqual(findTextMatches(`before ${query} after`, query), [{ start: 7, end: 7 + query.length }]);

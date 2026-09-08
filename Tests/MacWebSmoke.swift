@@ -148,6 +148,30 @@ final class MacWebSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
           window.Mory.toggleSource(true);
           result.cleanModeSwitch = window.Mory.getMarkdown() === originalSource
             && !document.querySelector('#save-state').classList.contains('is-visible');
+          const typographySource = 'Mory\\u7F16\\u8F91\\u5668\\n\\n<a href="https://example.com/guide" title="Guide">Link</a>\\n\\n``\\u4E2D\\u6587English`example``\\n\\nLiteral \\uE1000\\uE101';
+          const typographyExpected = typographySource.replace('Mory\\u7F16\\u8F91\\u5668', 'Mory \\u7F16\\u8F91\\u5668');
+          window.Mory.loadMarkdown(typographySource);
+          document.querySelector('#toolbar [data-command="typography"]').click();
+          result.typographySource = window.Mory.getMarkdown() === typographyExpected
+            && document.querySelector('.workspace').classList.contains('source-mode');
+          document.querySelector('#toolbar [data-command="typography"]').click();
+          window.Mory.undo();
+          result.typographyUndo = window.Mory.getMarkdown() === typographySource;
+          window.Mory.redo();
+          result.typographyRedo = window.Mory.getMarkdown() === typographyExpected;
+          window.Mory.toggleSource(false);
+          window.Mory.loadMarkdown(typographySource);
+          document.querySelector('#toolbar [data-command="typography"]').click();
+          window.Mory.toggleSource(true);
+          result.typographyPreview = window.Mory.getMarkdown() === typographyExpected;
+          window.Mory.toggleSource(false);
+          window.Mory.undo();
+          window.Mory.toggleSource(true);
+          result.typographyPreviewUndo = window.Mory.getMarkdown() === typographySource;
+          window.Mory.toggleSource(false);
+          window.Mory.redo();
+          window.Mory.toggleSource(true);
+          result.typographyPreviewRedo = window.Mory.getMarkdown() === typographyExpected;
           window.Mory.toggleSource(false);
           const statusToggle = document.querySelector('#status-toggle');
           statusToggle.checked = false;
@@ -190,6 +214,12 @@ final class MacWebSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                   result["nestedFence"] as? Bool == true,
                   result["codeWhitespace"] as? Bool == true,
                   result["cleanModeSwitch"] as? Bool == true,
+                  result["typographySource"] as? Bool == true,
+                  result["typographyUndo"] as? Bool == true,
+                  result["typographyRedo"] as? Bool == true,
+                  result["typographyPreview"] as? Bool == true,
+                  result["typographyPreviewUndo"] as? Bool == true,
+                  result["typographyPreviewRedo"] as? Bool == true,
                   result["statusbarHidden"] as? Bool == true,
                   result["folderTypographyCompensated"] as? Bool == true,
                   result["openDocuments"] as? Int == 3,
