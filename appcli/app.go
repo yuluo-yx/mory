@@ -32,6 +32,7 @@ type ExportRequest struct {
 	Source      string
 	Destination string
 	Format      string
+	Overwrite   bool
 }
 
 // DesktopRequest is the private launch contract accepted by the native application hosts.
@@ -94,24 +95,31 @@ func ResolveExport(source, format, outputDirectory string, overwrite bool) (Expo
 	}
 	name := pathologize.Clean(strings.TrimSuffix(filepath.Base(source), filepath.Ext(source)) + extension)
 	destination := filepath.Join(directory, name)
+	if err := inspectExportDestination(source, destination, overwrite); err != nil {
+		return ExportRequest{}, err
+	}
+	return ExportRequest{Source: source, Destination: destination, Format: format, Overwrite: overwrite}, nil
+}
+
+func inspectExportDestination(source, destination string, overwrite bool) error {
 	if info, err := os.Lstat(destination); err == nil {
 		if !info.Mode().IsRegular() {
-			return ExportRequest{}, fmt.Errorf("output is not a regular file: %s", destination)
+			return fmt.Errorf("output is not a regular file: %s", destination)
 		}
 		sourceInfo, err := os.Stat(source)
 		if err != nil {
-			return ExportRequest{}, fmt.Errorf("inspect source %s: %w", source, err)
+			return fmt.Errorf("inspect source %s: %w", source, err)
 		}
 		if os.SameFile(sourceInfo, info) {
-			return ExportRequest{}, fmt.Errorf("output refers to the source document: %s", destination)
+			return fmt.Errorf("output refers to the source document: %s", destination)
 		}
 		if !overwrite {
-			return ExportRequest{}, fmt.Errorf("output already exists: %s (use --force to replace it)", destination)
+			return fmt.Errorf("output already exists: %s (use --force to replace it): %w", destination, os.ErrExist)
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return ExportRequest{}, fmt.Errorf("inspect output %s: %w", destination, err)
+		return fmt.Errorf("inspect output %s: %w", destination, err)
 	}
-	return ExportRequest{Source: source, Destination: destination, Format: format}, nil
+	return nil
 }
 
 // ParseDesktopRequest validates file-association launches and private CLI export arguments.
@@ -168,5 +176,5 @@ func (client Client) Open(ctx context.Context, document string) error {
 
 // Export starts a hidden desktop host, waits for rendering, and writes the requested output.
 func (client Client) Export(ctx context.Context, request ExportRequest) error {
-	return client.export(ctx, request)
+	return renderExport(ctx, request, client.export)
 }

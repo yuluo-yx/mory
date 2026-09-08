@@ -17,7 +17,8 @@ import {
   normalizeCalendarDocument,
   normalizeMermaidColorTheme,
   optimizeMarkdownTypography,
-  replaceTextMatches
+  replaceTextMatches,
+  rebaseSavedAssetPaths
 } from "../Sources/Mory/Web/editor-features.js";
 
 test("literal search returns non-overlapping original source ranges", () => {
@@ -107,6 +108,14 @@ test("replacement preserves literal dollar tokens and unrelated text", () => {
   assert.equal(replaceTextMatches(source, matches.slice(1), "fox"), "before cat fox after");
   assert.equal(replaceTextMatches(source, matches, ""), "before   after");
   assert.equal(replaceTextMatches(source, [], "fox"), source);
+});
+
+test("saved asset relocation preserves newer prose and unrelated paths", () => {
+  const source = 'New edits ![image](draft/image.png) [other](other/file.md) ![second](draft/second.png)';
+  assert.equal(rebaseSavedAssetPaths(source, { 'draft/': 'saved/' }), 'New edits ![image](saved/image.png) [other](other/file.md) ![second](saved/second.png)');
+  assert.equal(rebaseSavedAssetPaths(source), source);
+  assert.equal(rebaseSavedAssetPaths(source, null), source);
+  assert.equal(rebaseSavedAssetPaths(source, { '': 'bad', 'draft/': 'draft/', 'other/': null }), source);
 });
 
 test("optimizes CJK typography without changing Markdown code or URLs", () => {

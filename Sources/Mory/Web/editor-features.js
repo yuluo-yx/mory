@@ -89,6 +89,14 @@ export function replaceTextMatches(source, matches, replacement) {
   return parts.join("");
 }
 
+export function rebaseSavedAssetPaths(markdown, changes = {}) {
+  let result = String(markdown);
+  for (const [from, to] of Object.entries(changes ?? {})) {
+    if (from && typeof to === "string" && from !== to) result = result.replaceAll(`](${from}`, `](${to}`);
+  }
+  return result;
+}
+
 export const calendarColors = ["red", "amber", "green", "blue", "violet", "gray"];
 export const mermaidColorThemes = ["auto", "ocean", "forest", "sunset", "mono"];
 

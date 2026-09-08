@@ -106,6 +106,8 @@ Existing output files are preserved by default. Pass `--force` to replace the de
 
 `--force` only accepts regular output files; directories, symbolic links (including broken links), and hard links to the source document are rejected. `--format=jpg` is an alias for `--format=jpeg`; both produce a `.jpg` file. PowerPoint export uses `--format=pptx` and requires the Slidev export environment described by the application.
 
+Exports are rendered beside the destination and published after successful completion. A failed, cancelled, empty, or incomplete render leaves the previous output intact. Without `--force`, a file created by another export while rendering also prevents replacement.
+
 Quote paths containing spaces and use `--` before a document name that begins with a dash:
 
 ```bash
@@ -115,3 +117,5 @@ mory export --format=jpg --path="./Export folder" -- "-draft.md"
 On macOS, copy the release `*-cli` artifact to a directory on `PATH`, for example `/usr/local/bin/mory`. On Windows, rename the matching `Mory-CLI-<version>-<arch>.exe` artifact to `mory.exe`, place it on `PATH`, and keep the Mory application installed. The CLI also ships inside `Mory.app/Contents/Resources/bin/mory` for managed deployments.
 
 After `npm run build:mac`, run `npm run test:mac-cli` to verify the packaged client against the native renderer. The smoke test covers HTML, PDF, PNG, JPG, output collisions, replacement, source preservation, and filenames containing spaces or starting with a dash. `make package-macos` includes this check before generating release archives.
+
+Run `npm run test:lifecycle` for Electron save and editor lifecycle scenarios, and `npm run test:mac-lifecycle` for the native macOS save contracts and WebKit equivalents. These cases cover typing or switching tabs during saving, closing a document before completion, reopening unsaved text, Save As image copies, delayed image imports, partial failures, and undo. Save As retains the original note's image directory and refuses to merge into an existing destination image directory; select a different name or location when this conflict is reported.

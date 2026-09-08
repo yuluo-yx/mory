@@ -548,12 +548,9 @@ async function relocateDocumentAssets({ root, markdown, oldPath, oldName, newPat
   } catch {
     return markdown;
   }
-  try {
-    await fs.rename(oldDirectory, newDirectory);
-  } catch (error) {
-    if (error.code !== "EEXIST" && error.code !== "EXDEV" && error.code !== "ENOTEMPTY") throw error;
-    await fs.cp(oldDirectory, newDirectory, { recursive: true, force: false, errorOnExist: false });
-  }
+  // Save As must preserve the original document's assets and never merge conflicting folders.
+  await fs.mkdir(newDirectory);
+  await fs.cp(oldDirectory, newDirectory, { recursive: true, force: false, errorOnExist: true });
   return String(markdown).split(`](${oldBase}/`).join(`](${newBase}/`);
 }
 

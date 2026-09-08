@@ -12,6 +12,8 @@ let mainWindow;
 let currentFilePath = null;
 let currentMarkdown = "";
 let currentDocumentName = "未命名.md";
+let currentDocumentId = "";
+let pendingSave = Promise.resolve();
 let editorReady = false;
 let pendingDocument = null;
 let pendingLaunchPath = null;
@@ -181,9 +183,9 @@ async function getMarkdown() {
   return typeof markdown === "string" ? markdown : currentMarkdown;
 }
 
-function suggestedDocumentName(markdown) {
+function suggestedDocumentName(markdown, name = currentDocumentName) {
   const heading = String(markdown || "").match(/^#\s+(.+?)\s*#*\s*$/m)?.[1]?.replace(/[*_`~]/g, "").trim();
-  const fallback = /^未命名(?: \d+)?\.md$/i.test(currentDocumentName) ? currentDocumentName.replace(/\.md$/i, "") : path.basename(currentDocumentName, path.extname(currentDocumentName));
+  const fallback = /^未命名(?: \d+)?\.md$/i.test(name) ? name.replace(/\.md$/i, "") : path.basename(name, path.extname(name));
   return `${sanitizeSegment(heading || fallback || "未命名")}.md`;
 }
 
@@ -197,32 +199,61 @@ async function availableDocumentPath(root, filename) {
   }
 }
 
-async function writeDocument(filePath, sourceMarkdown) {
+async function getDocumentSnapshot() {
+  const documentId = currentDocumentId;
+  const root = workspaceManager.activeRoot();
+  const snapshot = await runEditor(`window.Mory.getDocumentSnapshot(${JSON.stringify(documentId)})`);
+  if (!snapshot) throw new Error("The document was closed before saving");
+  return { ...snapshot, root };
+}
+
+async function writeDocument(filePath, snapshot) {
+  const previousSave = pendingSave;
+  let finishSave;
+  pendingSave = new Promise(resolve => { finishSave = resolve; });
   try {
-    let markdown = typeof sourceMarkdown === "string" ? sourceMarkdown : await getMarkdown();
+    snapshot ||= await getDocumentSnapshot();
+    await previousSave;
+    let markdown = snapshot.markdown;
     markdown = await relocateDocumentAssets({
-      root: workspaceManager.activeRoot(), markdown, oldPath: currentFilePath, oldName: currentDocumentName, newPath: filePath
+      root: snapshot.root, markdown, oldPath: snapshot.path, oldName: snapshot.name, newPath: filePath
     });
     await fs.writeFile(filePath, markdown, "utf8");
-    currentMarkdown = markdown;
-    currentFilePath = filePath;
-    currentDocumentName = path.basename(filePath);
-    setWindowTitle(path.basename(filePath));
-    const assets = await loadDocumentAssets(filePath, markdown, workspaceManager.activeRoot());
-    await sendJSON("window.Mory.didSave", { path: filePath, name: path.basename(filePath), markdown, assets });
+    if (currentDocumentId === snapshot.documentId && currentMarkdown === snapshot.markdown) {
+      currentMarkdown = markdown;
+      currentFilePath = filePath;
+      currentDocumentName = path.basename(filePath);
+      setWindowTitle(path.basename(filePath));
+    }
+    const assets = await loadDocumentAssets(filePath, markdown, snapshot.root);
+    const assetPathChanges = markdown === snapshot.markdown ? {} : {
+      [sanitizeSegment(path.basename(snapshot.name, path.extname(snapshot.name))) + '/']: sanitizeSegment(path.basename(filePath, path.extname(filePath))) + '/'
+    };
+    await sendJSON("window.Mory.didSave", { documentId: snapshot.documentId, sourceMarkdown: snapshot.markdown, assetPathChanges, path: filePath, name: path.basename(filePath), markdown, assets });
     await refreshWorkspace();
     noteRecentDocument(filePath);
   } catch (error) {
     await dialog.showMessageBox(mainWindow, { type: "error", title: "Mory", message: "无法保存文件", detail: error.message });
+  } finally {
+    await previousSave;
+    finishSave();
   }
 }
 
-async function saveAs() {
+async function saveAs(snapshot) {
+  snapshot ||= await getDocumentSnapshot();
   const result = await dialog.showSaveDialog(mainWindow, {
-    defaultPath: currentFilePath || path.join(workspaceManager.activeRoot(), currentDocumentName),
+    defaultPath: snapshot.path || path.join(snapshot.root, snapshot.name),
     filters: [{ name: "Markdown", extensions: ["md"] }]
   });
-  if (!result.canceled && result.filePath) await writeDocument(result.filePath);
+  if (!result.canceled && result.filePath) await writeDocument(result.filePath, snapshot);
+}
+
+async function runSaveAction(action) {
+  try { await action(); }
+  catch (error) {
+    await dialog.showMessageBox(mainWindow, { type: "error", title: "Mory", message: interfaceLocale === "en" ? "Unable to save file" : "无法保存文件", detail: error.message });
+  }
 }
 
 async function refreshWorkspace() {
@@ -394,8 +425,9 @@ async function handleWorkspaceRequest(method, args = {}) {
 }
 
 async function saveDocument() {
-  if (currentFilePath) await writeDocument(currentFilePath);
-  else if (workspaceManager?.active()?.isImplicit === true) await saveAs();
+  const snapshot = await getDocumentSnapshot();
+  if (snapshot.path) await writeDocument(snapshot.path, snapshot);
+  else if (workspaceManager?.active()?.isImplicit === true) await saveAs(snapshot);
   else {
     const english = interfaceLocale === "en";
     const choice = await dialog.showMessageBox(mainWindow, {
@@ -409,9 +441,8 @@ async function saveDocument() {
       noLink: true
     });
     if (choice.response === 0) {
-      const markdown = await getMarkdown();
-      await writeDocument(await availableDocumentPath(workspaceManager.activeRoot(), suggestedDocumentName(markdown)), markdown);
-    } else if (choice.response === 1) await saveAs();
+      await writeDocument(await availableDocumentPath(snapshot.root, suggestedDocumentName(snapshot.markdown, snapshot.name)), snapshot);
+    } else if (choice.response === 1) await saveAs(snapshot);
   }
 }
 
@@ -483,6 +514,7 @@ async function exportRendered(options = {}) {
 }
 
 function newDocument() {
+  currentDocumentId = "";
   currentFilePath = null;
   currentMarkdown = "";
   currentDocumentName = "未命名.md";
@@ -517,8 +549,8 @@ function buildMenu() {
               ]
         },
         { type: "separator" },
-        { label: "保存", accelerator: "CmdOrCtrl+S", click: saveDocument },
-        { label: "另存为…", accelerator: "CmdOrCtrl+Shift+S", click: saveAs },
+        { label: "保存", accelerator: "CmdOrCtrl+S", click: () => runSaveAction(saveDocument) },
+        { label: "另存为…", accelerator: "CmdOrCtrl+Shift+S", click: () => runSaveAction(saveAs) },
         { type: "separator" },
         {
           label: "导出",
@@ -613,10 +645,13 @@ ipcMain.on("mory:message", async (_event, payload) => {
       pendingDocument = null;
     }
   } else if (payload.type === "changed") {
+    if (currentDocumentId && payload.documentId && payload.documentId !== currentDocumentId) return;
+    currentDocumentId = payload.documentId || currentDocumentId;
     currentMarkdown = typeof payload.markdown === "string" ? payload.markdown : currentMarkdown;
     currentDocumentName = typeof payload.name === "string" ? payload.name : currentDocumentName;
     setWindowTitle(currentFilePath ? path.basename(currentFilePath) : currentDocumentName.replace(/\.md$/i, ""), true);
   } else if (payload.type === "documentSelected") {
+    currentDocumentId = payload.documentId || "";
     currentFilePath = typeof payload.path === "string" && payload.path ? payload.path : null;
     currentMarkdown = typeof payload.markdown === "string" ? payload.markdown : "";
     currentDocumentName = typeof payload.name === "string" && payload.name ? payload.name : "未命名.md";

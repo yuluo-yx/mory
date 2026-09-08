@@ -6,7 +6,25 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"golang.org/x/sys/windows"
 )
+
+func publishExport(source, destination string, overwrite bool) error {
+	from, err := windows.UTF16PtrFromString(source)
+	if err != nil {
+		return err
+	}
+	to, err := windows.UTF16PtrFromString(destination)
+	if err != nil {
+		return err
+	}
+	var flags uint32
+	if overwrite {
+		flags = windows.MOVEFILE_REPLACE_EXISTING
+	}
+	return windows.MoveFileEx(from, to, flags)
+}
 
 func (client Client) open(ctx context.Context, document string) error {
 	executable, err := client.appExecutable()

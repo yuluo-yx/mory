@@ -224,6 +224,7 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     private var currentFileURL: URL?
     private var currentMarkdown = ""
     private var currentDocumentName = "未命名.md"
+    private var currentDocumentID = ""
     private var workspaceManager: WorkspaceManager!
     private var workspaceWatcher: WorkspaceWatcher!
     private var themeManager: ThemeManager!
@@ -551,6 +552,7 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     }
 
     @objc private func newDocument() {
+        currentDocumentID = ""
         currentFileURL = nil
         currentMarkdown = ""
         currentDocumentName = "未命名.md"
@@ -616,11 +618,15 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     }
 
     @objc private func saveDocument() {
-        if let url = currentFileURL {
-            writeDocument(to: url)
+        fetchSaveSnapshot { [weak self] snapshot in self?.saveCapturedDocument(snapshot) }
+    }
+
+    private func saveCapturedDocument(_ snapshot: DocumentSaveSnapshot) {
+        if let url = snapshot.sourceURL {
+            persistDocument(snapshot: snapshot, to: url)
             return
         }
-        guard workspaceManager != nil, workspaceManager.active.isImplicit != true else { saveDocumentAs(); return }
+        guard workspaceManager != nil, workspaceManager.active.isImplicit != true else { saveCapturedDocumentAs(snapshot); return }
         let english = interfaceLocale == "en"
         let alert = NSAlert()
         alert.alertStyle = .informational
@@ -631,48 +637,48 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         alert.addButton(withTitle: english ? "Cancel" : "取消")
         switch alert.runModal() {
         case .alertFirstButtonReturn:
-            fetchMarkdown { [weak self] markdown in
-                guard let self else { return }
-                do {
-                    let url = try availableDocumentURL(markdown: markdown)
-                    persistDocument(markdown: markdown, to: url)
-                } catch {
-                    presentError("无法保存文件：\(error.localizedDescription)")
-                }
+            do {
+                let url = try availableDocumentURL(markdown: snapshot.markdown, name: snapshot.name, root: snapshot.rootURL)
+                persistDocument(snapshot: snapshot, to: url)
+            } catch {
+                presentError("无法保存文件：\(error.localizedDescription)")
             }
         case .alertSecondButtonReturn:
-            saveDocumentAs()
+            saveCapturedDocumentAs(snapshot)
         default:
             return
         }
     }
 
     @objc private func saveDocumentAs() {
+        fetchSaveSnapshot { [weak self] snapshot in self?.saveCapturedDocumentAs(snapshot) }
+    }
+
+    private func saveCapturedDocumentAs(_ snapshot: DocumentSaveSnapshot) {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText]
-        panel.nameFieldStringValue = currentFileURL?.lastPathComponent ?? currentDocumentName
-        if currentFileURL == nil { panel.directoryURL = workspaceManager.activeRoot }
+        panel.nameFieldStringValue = snapshot.name
+        panel.directoryURL = snapshot.sourceURL?.deletingLastPathComponent() ?? snapshot.rootURL
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        writeDocument(to: url)
+        persistDocument(snapshot: snapshot, to: url)
     }
 
-    private func writeDocument(to url: URL) {
-        fetchMarkdown { [weak self] markdown in
-            self?.persistDocument(markdown: markdown, to: url)
-        }
-    }
-
-    private func persistDocument(markdown: String, to url: URL) {
+    private func persistDocument(snapshot: DocumentSaveSnapshot, to url: URL) {
         do {
-            let updatedMarkdown = try workspaceManager.relocateAssets(markdown: markdown, oldURL: currentFileURL, oldName: currentDocumentName, newURL: url)
+            let updatedMarkdown = try workspaceManager.relocateAssets(markdown: snapshot.markdown, oldURL: snapshot.sourceURL, oldName: snapshot.name, newURL: url, rootURL: snapshot.rootURL)
             try updatedMarkdown.write(to: url, atomically: true, encoding: .utf8)
-            currentMarkdown = updatedMarkdown
-            currentFileURL = url
-            currentDocumentName = url.lastPathComponent
-            window.representedURL = url
-            window.title = url.lastPathComponent
-            window.isDocumentEdited = false
+            if currentDocumentID == snapshot.documentID && currentMarkdown == snapshot.markdown {
+                currentMarkdown = updatedMarkdown
+                currentFileURL = url
+                currentDocumentName = url.lastPathComponent
+                window.representedURL = url
+                window.title = url.lastPathComponent
+                window.isDocumentEdited = false
+            }
             sendJSON(function: "window.Mory.didSave", value: [
+                "documentId": snapshot.documentID,
+                "sourceMarkdown": snapshot.markdown,
+                "assetPathChanges": updatedMarkdown == snapshot.markdown ? [:] : workspaceManager.savedAssetPathChanges(oldName: snapshot.name, newURL: url),
                 "path": url.path,
                 "name": url.lastPathComponent,
                 "markdown": updatedMarkdown,
@@ -684,13 +690,13 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         }
     }
 
-    private func availableDocumentURL(markdown: String) throws -> URL {
+    private func availableDocumentURL(markdown: String, name: String, root: URL) throws -> URL {
         let expression = try NSRegularExpression(pattern: #"(?m)^#\s+(.+?)\s*#*\s*$"#)
         let source = markdown as NSString
         let heading = expression.firstMatch(in: markdown, range: NSRange(location: 0, length: source.length))
             .flatMap { $0.range(at: 1).location == NSNotFound ? nil : source.substring(with: $0.range(at: 1)) }
             .map { $0.replacingOccurrences(of: #"[*_`~]"#, with: "", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines) }
-        let fallback = URL(fileURLWithPath: currentDocumentName).deletingPathExtension().lastPathComponent
+        let fallback = URL(fileURLWithPath: name).deletingPathExtension().lastPathComponent
         let candidateName = heading.flatMap { $0.isEmpty ? nil : $0 } ?? fallback
         let withoutControlCharacters = candidateName.unicodeScalars
             .filter { !CharacterSet.controlCharacters.contains($0) }
@@ -700,7 +706,7 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         let safeBase = base.isEmpty ? "未命名" : base
         for serial in 1...Int.max {
             let name = serial == 1 ? "\(safeBase).md" : "\(safeBase) \(serial).md"
-            let candidate = workspaceManager.activeRoot.appendingPathComponent(name)
+            let candidate = root.appendingPathComponent(name)
             if !FileManager.default.fileExists(atPath: candidate.path) { return candidate }
         }
         throw workspaceError("无法生成可用的文稿文件名。")
@@ -867,10 +873,18 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         sendJSON(function: "window.Mory.openDocument", value: document)
     }
 
-    private func fetchMarkdown(completion: @escaping (String) -> Void) {
-        webView.evaluateJavaScript("window.Mory.getMarkdown()") { [weak self] value, _ in
-            let markdown = value as? String ?? self?.currentMarkdown ?? ""
-            completion(markdown)
+    private func fetchSaveSnapshot(completion: @escaping (DocumentSaveSnapshot) -> Void) {
+        let documentID = currentDocumentID
+        let root = workspaceManager.activeRoot
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let value = try await webView.callAsyncJavaScript("return window.Mory.getDocumentSnapshot(documentId)", arguments: ["documentId": documentID], in: nil, contentWorld: .page)
+                guard let dictionary = value as? [String: Any], let snapshot = DocumentSaveSnapshot(dictionary: dictionary, rootURL: root) else { return }
+                completion(snapshot)
+            } catch {
+                presentError(error.localizedDescription)
+            }
         }
     }
 
@@ -1101,10 +1115,15 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
             }
             startCLIExportIfNeeded()
         case "changed":
+            if let id = payload["documentId"] as? String, !id.isEmpty {
+                guard currentDocumentID.isEmpty || id == currentDocumentID else { return }
+                currentDocumentID = id
+            }
             currentMarkdown = payload["markdown"] as? String ?? currentMarkdown
             currentDocumentName = payload["name"] as? String ?? currentDocumentName
             window.isDocumentEdited = true
         case "documentSelected":
+            currentDocumentID = payload["documentId"] as? String ?? ""
             if let path = payload["path"] as? String, !path.isEmpty {
                 currentFileURL = URL(fileURLWithPath: path)
                 window.representedURL = currentFileURL

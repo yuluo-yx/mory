@@ -121,11 +121,15 @@ final class WorkspaceManager: @unchecked Sendable {
     private(set) var workspaces: [WorkspaceConfig] = []
     private(set) var activeId = ""
 
-    init() throws {
-        let applicationSupport = try fileManager.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-        supportRoot = applicationSupport.appendingPathComponent("Mory", isDirectory: true)
-        configURL = supportRoot.appendingPathComponent("workspaces.json")
-        cacheRoot = supportRoot.appendingPathComponent("workspaces", isDirectory: true)
+    init(supportRoot: URL? = nil) throws {
+        if let supportRoot {
+            self.supportRoot = supportRoot
+        } else {
+            let applicationSupport = try fileManager.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+            self.supportRoot = applicationSupport.appendingPathComponent("Mory", isDirectory: true)
+        }
+        configURL = self.supportRoot.appendingPathComponent("workspaces.json")
+        cacheRoot = self.supportRoot.appendingPathComponent("workspaces", isDirectory: true)
         try fileManager.createDirectory(at: cacheRoot, withIntermediateDirectories: true)
         try load()
     }
@@ -524,32 +528,23 @@ final class WorkspaceManager: @unchecked Sendable {
         return ["relative": "\(documentBase)/\(filename)", "dataURL": "data:\(mime);base64,\(data.base64EncodedString())"]
     }
 
-    func relocateAssets(markdown: String, oldURL: URL?, oldName: String, newURL: URL) throws -> String {
+    func relocateAssets(markdown: String, oldURL: URL?, oldName: String, newURL: URL, rootURL: URL? = nil) throws -> String {
         let oldBase = sanitize(URL(fileURLWithPath: oldName).deletingPathExtension().lastPathComponent)
         let newBase = sanitize(newURL.deletingPathExtension().lastPathComponent)
-        let oldParent = oldURL?.deletingLastPathComponent() ?? activeRoot
+        let oldParent = oldURL?.deletingLastPathComponent() ?? rootURL ?? activeRoot
         if oldBase == newBase && oldParent.standardizedFileURL == newURL.deletingLastPathComponent().standardizedFileURL { return markdown }
         let source = oldParent.appendingPathComponent(oldBase, isDirectory: true)
         let destination = newURL.deletingLastPathComponent().appendingPathComponent(newBase, isDirectory: true)
         guard fileManager.fileExists(atPath: source.path) else { return markdown }
-        if !fileManager.fileExists(atPath: destination.path) {
-            do { try fileManager.moveItem(at: source, to: destination) }
-            catch {
-                try fileManager.copyItem(at: source, to: destination)
-            }
-        } else if let enumerator = fileManager.enumerator(at: source, includingPropertiesForKeys: [.isRegularFileKey]) {
-            for case let file as URL in enumerator {
-                let values = try file.resourceValues(forKeys: [.isRegularFileKey])
-                guard values.isRegularFile == true else { continue }
-                let relative = file.path.replacingOccurrences(of: source.path + "/", with: "")
-                let target = destination.appendingPathComponent(relative)
-                if !fileManager.fileExists(atPath: target.path) {
-                    try fileManager.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
-                    try fileManager.copyItem(at: file, to: target)
-                }
-            }
-        }
+        // Copying preserves the original note and refuses a conflicting destination directory.
+        try fileManager.copyItem(at: source, to: destination)
         return markdown.replacingOccurrences(of: "](\(oldBase)/", with: "](\(newBase)/")
+    }
+
+    func savedAssetPathChanges(oldName: String, newURL: URL) -> [String: String] {
+        let oldBase = sanitize(URL(fileURLWithPath: oldName).deletingPathExtension().lastPathComponent)
+        let newBase = sanitize(newURL.deletingPathExtension().lastPathComponent)
+        return [oldBase + "/": newBase + "/"]
     }
 
     func assets(for documentURL: URL, markdown: String) -> [String: String] {
