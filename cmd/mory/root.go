@@ -60,7 +60,7 @@ func newExportCommand(appPath *string, clientFor func(string) desktopClient) *co
 			return err
 		},
 	}
-	command.Flags().StringVar(&format, "format", "pdf", "output format: html, pdf, png, jpeg, or pptx")
+	command.Flags().StringVar(&format, "format", "pdf", "output format: html, pdf, png, jpeg (jpg), or pptx")
 	command.Flags().StringVar(&outputDirectory, "path", ".", "output directory")
 	command.Flags().BoolVarP(&force, "force", "f", false, "replace an existing output file")
 	return command

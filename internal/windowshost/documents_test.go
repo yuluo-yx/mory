@@ -309,6 +309,18 @@ func TestRelocateDocumentAssetsOnSaveAs(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, "\u65B0\u540D", "image.png")); err != nil {
 		t.Fatalf("image was not migrated: %v", err)
 	}
+	if data, err := os.ReadFile(filepath.Join(root, "\u65E7\u540D", "image.png")); err != nil || string(data) != "image" {
+		t.Fatalf("Save As removed original assets: %q, %v", data, err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "\u65B0\u540D", "image.png"), []byte("unrelated"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := relocateDocumentAssets(root, "![cover](\u65E7\u540D/image.png)", oldPath, "\u65E7\u540D.md", newPath); err == nil {
+		t.Fatal("Save As accepted a conflicting asset directory")
+	}
+	if data, err := os.ReadFile(filepath.Join(root, "\u65B0\u540D", "image.png")); err != nil || string(data) != "unrelated" {
+		t.Fatalf("destination assets changed: %q, %v", data, err)
+	}
 }
 
 func writeAt(t *testing.T, path, content string, timestamp time.Time) {

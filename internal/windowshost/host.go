@@ -57,22 +57,24 @@ type Platform interface {
 
 // Host implements the stable protocol between the frontend and the Windows WebView2 host.
 type Host struct {
-	mu              sync.RWMutex
-	platform        Platform
-	workspaces      *workspaceManager
-	themes          *themeManager
-	ctx             context.Context
-	cancel          context.CancelFunc
-	currentPath     string
-	currentMarkdown string
-	currentName     string
-	locale          string
-	exporting       bool
-	startupPath     string
-	startupExport   *StartupExport
-	startupComplete func(error)
-	watchRoot       string
-	watchSignature  string
+	mu                sync.RWMutex
+	saveMu            sync.Mutex
+	platform          Platform
+	workspaces        *workspaceManager
+	themes            *themeManager
+	ctx               context.Context
+	cancel            context.CancelFunc
+	currentPath       string
+	currentMarkdown   string
+	currentName       string
+	currentDocumentID string
+	locale            string
+	exporting         bool
+	startupPath       string
+	startupExport     *StartupExport
+	startupComplete   func(error)
+	watchRoot         string
+	watchSignature    string
 }
 
 // New creates the Windows host core. Call Start before processing frontend requests.
@@ -145,6 +147,13 @@ func (host *Host) Send(payload map[string]any) error {
 		return nil
 	case "changed":
 		host.mu.Lock()
+		if id := stringValue(payload, "documentId"); id != "" {
+			if host.currentDocumentID != "" && id != host.currentDocumentID {
+				host.mu.Unlock()
+				return nil
+			}
+			host.currentDocumentID = id
+		}
 		if markdown, ok := payload["markdown"].(string); ok {
 			host.currentMarkdown = markdown
 		}
@@ -479,6 +488,7 @@ func (host *Host) OpenFolder() error {
 // NewDocument clears the active host path and asks the frontend to create a standalone draft.
 func (host *Host) NewDocument() {
 	host.mu.Lock()
+	host.currentDocumentID = ""
 	host.currentPath = ""
 	host.currentMarkdown = ""
 	host.currentName = "未命名.md"
@@ -489,12 +499,13 @@ func (host *Host) NewDocument() {
 
 // Save writes an existing note or asks where a new workspace draft should be stored.
 func (host *Host) Save() error {
-	host.mu.RLock()
-	path, markdown, name := host.currentPath, host.currentMarkdown, host.currentName
-	host.mu.RUnlock()
+	host.saveMu.Lock()
+	defer host.saveMu.Unlock()
+	snapshot := host.saveSnapshot()
+	path, markdown, name := snapshot.Path, snapshot.Markdown, snapshot.Name
 	if path == "" {
 		if host.workspaces.active().IsImplicit {
-			return host.SaveAs()
+			return host.saveAs(snapshot)
 		}
 		destination, err := host.platform.ChooseDraftSaveDestination(host.workspaces.active().Name)
 		if err != nil {
@@ -502,60 +513,87 @@ func (host *Host) Save() error {
 		}
 		switch destination {
 		case "workspace":
-			path = availableDocumentPath(host.workspaces.activeRoot(), suggestedDocumentName(markdown, name))
+			path = availableDocumentPath(snapshot.Root, suggestedDocumentName(markdown, name))
 		case "elsewhere":
-			return host.SaveAs()
+			return host.saveAs(snapshot)
 		default:
 			return nil
 		}
 	}
-	return host.writeDocument(path, markdown)
+	return host.writeDocument(path, snapshot)
 }
 
 // SaveAs displays the system Save As dialog.
 func (host *Host) SaveAs() error {
+	host.saveMu.Lock()
+	defer host.saveMu.Unlock()
+	return host.saveAs(host.saveSnapshot())
+}
+
+type documentSaveSnapshot struct {
+	DocumentID string
+	Path       string
+	Name       string
+	Markdown   string
+	Root       string
+}
+
+func (host *Host) saveSnapshot() documentSaveSnapshot {
 	host.mu.RLock()
-	path, markdown, name := host.currentPath, host.currentMarkdown, host.currentName
-	host.mu.RUnlock()
+	defer host.mu.RUnlock()
+	return documentSaveSnapshot{DocumentID: host.currentDocumentID, Path: host.currentPath, Name: host.currentName, Markdown: host.currentMarkdown, Root: host.workspaces.activeRoot()}
+}
+
+func (host *Host) saveAs(snapshot documentSaveSnapshot) error {
+	path, markdown, name := snapshot.Path, snapshot.Markdown, snapshot.Name
 	if path == "" {
-		path = filepath.Join(host.workspaces.activeRoot(), suggestedDocumentName(markdown, name))
+		path = filepath.Join(snapshot.Root, suggestedDocumentName(markdown, name))
 	}
 	chosen, err := host.platform.ChooseSavePath(path, []string{"md"})
 	if err != nil || chosen == "" {
 		return err
 	}
-	return host.writeDocument(chosen, markdown)
+	return host.writeDocument(chosen, snapshot)
 }
 
 // Evaluate invokes a public frontend command for menu actions and keyboard shortcuts.
 func (host *Host) Evaluate(script string) { host.platform.Evaluate(script) }
 
-func (host *Host) writeDocument(path, markdown string) error {
-	host.mu.RLock()
-	oldPath, oldName := host.currentPath, host.currentName
-	host.mu.RUnlock()
+func (host *Host) writeDocument(path string, snapshot documentSaveSnapshot) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("创建文稿目录：%w", err)
 	}
-	var err error
-	markdown, err = relocateDocumentAssets(host.workspaces.activeRoot(), markdown, oldPath, oldName, path)
+	markdown, err := relocateDocumentAssets(snapshot.Root, snapshot.Markdown, snapshot.Path, snapshot.Name, path)
 	if err != nil {
 		return err
 	}
 	if err := os.WriteFile(path, []byte(markdown), 0o644); err != nil {
 		return fmt.Errorf("保存文稿：%w", err)
 	}
-	document, err := loadDocument(host.workspaces.activeRoot(), path)
+	document, err := loadDocument(snapshot.Root, path)
 	if err != nil {
 		return err
 	}
 	host.mu.Lock()
-	host.currentPath = path
-	host.currentName = filepath.Base(path)
-	host.currentMarkdown = markdown
+	unchanged := host.currentDocumentID == snapshot.DocumentID && host.currentPath == snapshot.Path && host.currentMarkdown == snapshot.Markdown
+	if unchanged {
+		host.currentPath = path
+		host.currentName = filepath.Base(path)
+		host.currentMarkdown = markdown
+	}
 	host.mu.Unlock()
-	host.platform.SetTitle(filepath.Base(path) + " — Mory")
-	host.evaluate("window.Mory.didSave", document)
+	if unchanged {
+		host.platform.SetTitle(filepath.Base(path) + " — Mory")
+	}
+	assetPathChanges := map[string]string{}
+	if markdown != snapshot.Markdown {
+		assetPathChanges[sanitizeSegment(strings.TrimSuffix(snapshot.Name, filepath.Ext(snapshot.Name)))+"/"] = sanitizeSegment(strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))) + "/"
+	}
+	host.evaluate("window.Mory.didSave", map[string]any{
+		"documentId": snapshot.DocumentID, "sourceMarkdown": snapshot.Markdown,
+		"assetPathChanges": assetPathChanges,
+		"path":             document.Path, "name": document.Name, "markdown": document.Markdown, "assets": document.Assets,
+	})
 	return host.refreshWorkspace()
 }
 
@@ -606,6 +644,7 @@ func (host *Host) deleteWorkspaceEntry(path, name string) (any, error) {
 
 func (host *Host) selectDocument(payload map[string]any) {
 	host.mu.Lock()
+	host.currentDocumentID = stringValue(payload, "documentId")
 	host.currentPath = stringValue(payload, "path")
 	host.currentMarkdown = stringValue(payload, "markdown")
 	host.currentName = stringValue(payload, "name")

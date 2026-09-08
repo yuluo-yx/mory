@@ -43,25 +43,28 @@ function mapMarkdownFences(source, transform) {
 
 function protectMarkdownSyntax(source) {
   const values = [];
+  let prefix = "\uE100";
+  while (source.includes(prefix)) prefix += "\uE100";
+  const tokenPattern = new RegExp(`${prefix}(\\d+)\uE101`, "g");
+  const restore = value => String(value).replace(tokenPattern, (match, index) => values[Number(index)] ?? match);
   const token = value => {
-    const index = values.push(value) - 1;
-    return `\uE100${index}\uE101`;
+    // Flatten earlier tokens before protecting enclosing syntax such as HTML tags.
+    const index = values.push(restore(value)) - 1;
+    return `${prefix}${index}\uE101`;
   };
   const protectedSource = mapMarkdownFences(source, value => {
     // Leave the final line ending outside the token to preserve the next block boundary.
     const ending = value.match(/(?:\r\n|\r|\n)$/)?.[0] ?? "";
     return token(ending ? value.slice(0, -ending.length) : value) + ending;
   })
-    .replace(/`[^`\n]*`/g, token)
+    .replace(/(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g, token)
     .replace(/(?<=\]\()[^)\s]+(?=(?:\s+["'][^"']*["'])?\))/g, token)
     .replace(/https?:\/\/[^\s)]+/g, token)
     .replace(/<[^>\n]+>/g, token)
     .replace(/\\[!-/:-@[-`{-~]|\*\*|__|~~/g, token);
   return {
     source: protectedSource,
-    restore(value) {
-      return String(value).replace(/\uE100(\d+)\uE101/g, (_, index) => values[Number(index)] ?? "");
-    }
+    restore
   };
 }
 
@@ -90,6 +93,14 @@ function replaceTextMatches(source, matches, replacement) {
   }
   parts.push(source.slice(offset));
   return parts.join("");
+}
+
+function rebaseSavedAssetPaths(markdown, changes = {}) {
+  let result = String(markdown);
+  for (const [from, to] of Object.entries(changes ?? {})) {
+    if (from && typeof to === "string" && from !== to) result = result.replaceAll(`](${from}`, `](${to}`);
+  }
+  return result;
 }
 
 const calendarColors = ["red", "amber", "green", "blue", "violet", "gray"];
@@ -1168,6 +1179,17 @@ function documentHostName(document) {
   return document?.path ? (document.name || localized("未命名.md")) : documentDisplayName(document);
 }
 
+function documentSnapshot(documentId) {
+  const document = documentId ? state.documents.find(item => item.id === documentId) : activeDocument();
+  if (!document) return null;
+  return {
+    documentId: document.id,
+    path: document.path || "",
+    name: documentHostName(document),
+    markdown: document === activeDocument() && state.sourceMode ? sourceEditor.value : document.markdown
+  };
+}
+
 function enhanceRawHTML(root, { interactive = true } = {}) {
   const purifier = globalThis.DOMPurify;
   root.querySelectorAll(".mory-raw-html-placeholder").forEach(placeholder => {
@@ -1297,6 +1319,10 @@ function openDocument(payload = {}) {
   const workspaceFile = state.files.find(file => file.path === path);
   const createdAt = Number(payload.createdAt ?? workspaceFile?.createdAt ?? Date.now());
   let document = path ? state.documents.find(item => item.path === path) : null;
+  if (document?.dirty) {
+    activateDocument(document.id, { announce: true, notifyHost: true });
+    return;
+  }
   if (document) {
     document.name = name;
     document.markdown = markdown;
@@ -1409,17 +1435,18 @@ function editorHistory(document = activeDocument()) {
 function currentEditorSnapshot() {
   const root = state.sourceMode ? sourceEditor : write;
   return {
-    markdown: state.sourceMode ? sourceEditor.value : editorToMarkdown(write),
+    // Input handlers keep the source current; serializing the preview loses original syntax.
+    markdown: state.sourceMode ? sourceEditor.value : state.markdown,
     caret: state.sourceMode ? sourceEditor.selectionStart : editorCaretOffset(write)
   };
 }
 
-function beginEditorHistory(group = "structural", { force = false } = {}) {
-  const history = editorHistory();
+function beginEditorHistory(group = "structural", { force = false, document = activeDocument() } = {}) {
+  const history = editorHistory(document);
   if (!history) return;
   const now = performance.now();
   const coalesced = !force && group && history.group === group && now - history.time <= editorHistoryGroupWindow;
-  const snapshot = currentEditorSnapshot();
+  const snapshot = document === activeDocument() ? currentEditorSnapshot() : { markdown: document.markdown, caret: null };
   if (!coalesced && history.undo.at(-1)?.markdown !== snapshot.markdown) {
     history.undo.push(snapshot);
     if (history.undo.length > editorHistoryLimit) history.undo.shift();
@@ -3248,17 +3275,12 @@ function markChanged() {
   $("#save-state").textContent = localized("未保存");
   $("#save-state").classList.add("is-visible");
   clearTimeout(changeTimer);
+  // Send the content before a native Save command can observe a stale debounced snapshot.
+  bridge({ type: "changed", ...documentSnapshot(document?.id) });
   changeTimer = setTimeout(() => {
     updateDerivedState();
     rebuildWorkspaceKnowledge();
     localStorage.setItem("mory.draft", state.markdown);
-    bridge({
-      type: "changed",
-      documentId: document?.id || "",
-      name: documentHostName(document),
-      path: document?.path || "",
-      markdown: state.markdown
-    });
   }, 180);
 }
 
@@ -4059,6 +4081,10 @@ function toggleSource(force) {
 }
 
 function execute(command) {
+  if (command === "typography") {
+    optimizeActiveDocumentTypography();
+    return;
+  }
   if (state.sourceMode) toggleSource(false);
   write.focus();
   beginEditorHistory(`command-${command}`, { force: true });
@@ -4085,9 +4111,6 @@ function execute(command) {
   } else if (command === "calendar") {
     openCalendarEditor();
     return;
-  } else if (command === "typography") {
-    optimizeActiveDocumentTypography();
-    return;
   }
   syncFromWrite();
 }
@@ -4095,12 +4118,13 @@ function execute(command) {
 function optimizeActiveDocumentTypography() {
   const document = activeDocument();
   if (!document) return;
-  const current = state.sourceMode ? sourceEditor.value : editorToMarkdown(write);
+  const current = state.sourceMode ? sourceEditor.value : state.markdown;
   const next = optimizeMarkdownTypography(current, value => globalThis.pangu.spacingText(value));
   if (next === current) {
     toast(localized("当前文稿无需优化"));
     return;
   }
+  beginEditorHistory("command-typography", { force: true });
   document.markdown = next;
   document.dirty = true;
   renderDocument(document);
@@ -5778,31 +5802,75 @@ function fileAsBase64(file) {
 async function importImages(files) {
   const activeDoc = activeDocument();
   if (!activeDoc) return;
-  beginEditorHistory("import-image", { force: true });
   const selection = window.getSelection();
   const savedRange = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
-  const markdown = [];
+  const imported = [];
+  const failures = [];
+  const archiveImage = async (file, data) => {
+    while (state.documents.includes(activeDoc)) {
+      const origin = documentSnapshot(activeDoc.id);
+      const result = await hostRequest("importImage", {
+        documentPath: origin.path,
+        documentName: origin.name,
+        name: file.name || "图片",
+        mime: file.type,
+        data
+      });
+      const latest = documentSnapshot(activeDoc.id);
+      if (!latest) return null;
+      if (latest.path === origin.path && latest.name === origin.name) return { file, data, result, origin };
+    }
+    return null;
+  };
   for (const file of files) {
-    const result = await hostRequest("importImage", {
-      documentPath: activeDoc.path || "",
-      documentName: documentHostName(activeDoc),
-      name: file.name || "图片",
-      mime: file.type,
-      data: await fileAsBase64(file)
-    });
+    try {
+      const item = await archiveImage(file, await fileAsBase64(file));
+      if (!item) return;
+      imported.push(item);
+    } catch (error) { failures.push(error.message); }
+  }
+  // Save As may complete after an earlier image in the batch was archived.
+  for (let index = 0; index < imported.length;) {
+    const latest = documentSnapshot(activeDoc.id);
+    if (!latest) return;
+    const item = imported[index];
+    if (latest.path === item.origin.path && latest.name === item.origin.name) { index += 1; continue; }
+    try {
+      const replacement = await archiveImage(item.file, item.data);
+      if (!replacement) return;
+      imported[index] = replacement;
+      index = 0;
+    } catch (error) { failures.push(error.message); imported.splice(index, 1); }
+  }
+  if (!state.documents.includes(activeDoc)) return;
+  const markdown = imported.map(({ file, result }) => {
     activeDoc.assets ||= {};
     activeDoc.assets[result.relative] = result.dataURL;
     const alt = (file.name || "图片").replace(/\.[^.]+$/, "").replaceAll("]", "");
-    markdown.push(`![${alt}](${result.relative})`);
+    return `![${alt}](${result.relative})`;
+  });
+  if (markdown.length) {
+    beginEditorHistory("import-image", { force: true, document: activeDoc });
+    if (activeDoc === activeDocument() && !state.sourceMode && savedRange && write.contains(savedRange.commonAncestorContainer)) {
+      selection?.removeAllRanges();
+      selection?.addRange(savedRange);
+      document.execCommand("insertText", false, markdown.join("\n\n"));
+      renderMarkdownDocumentAtCaret();
+      syncFromWrite();
+    } else {
+      activeDoc.markdown += (activeDoc.markdown ? "\n\n" : "") + markdown.join("\n\n");
+      activeDoc.dirty = true;
+      if (activeDoc === activeDocument()) {
+        renderDocument(activeDoc);
+        markChanged();
+      } else {
+        renderFiles();
+        rebuildWorkspaceKnowledge();
+      }
+    }
+    toast(`已归档 ${markdown.length} 张图片`);
   }
-  if (savedRange && write.contains(savedRange.commonAncestorContainer)) {
-    selection?.removeAllRanges();
-    selection?.addRange(savedRange);
-  }
-  document.execCommand("insertText", false, markdown.join("\n\n"));
-  renderMarkdownDocumentAtCaret();
-  syncFromWrite();
-  toast(`已归档 ${files.length} 张图片`);
+  if (failures.length) throw new Error(failures.join("; "));
 }
 
 $("#toolbar").addEventListener("mouseover", event => {
@@ -6332,8 +6400,14 @@ window.Mory = {
   newDocument: () => createUntitledDocument(),
   newFolder: () => toggleNewFolderForm(true),
   closeDocument,
-  normalizeMarkdown: renderMarkdownDocumentAtCaret,
-  getMarkdown: () => state.sourceMode ? sourceEditor.value : editorToMarkdown(write),
+  normalizeMarkdown: () => {
+    if (state.sourceMode) return false;
+    renderMarkdownDocumentAtCaret();
+    syncFromWrite();
+    return true;
+  },
+  getMarkdown: () => state.sourceMode ? sourceEditor.value : state.markdown,
+  getDocumentSnapshot: documentSnapshot,
   setFiles: setWorkspaceFiles,
   setWorkspaceSnapshot,
   setWorkspaceDocuments: documents => {
@@ -6345,27 +6419,40 @@ window.Mory = {
   setCustomThemes: registerCustomThemes,
   fontAvailable,
   didSave: payload => {
-    const document = activeDocument();
+    const document = payload?.documentId
+      ? state.documents.find(item => item.id === payload.documentId)
+      : activeDocument();
+    if (!document) return;
+    const current = documentSnapshot(document.id).markdown;
+    const newerEdits = typeof payload?.sourceMarkdown === "string" && current !== payload.sourceMarkdown;
     if (document) {
       const previousOrderKey = fileEntryKey(document);
       document.path = typeof payload?.path === "string" ? payload.path : document.path;
       document.name = String(payload?.name || document.name);
-      document.markdown = typeof payload?.markdown === "string" ? payload.markdown : (state.sourceMode ? sourceEditor.value : editorToMarkdown(write));
+      document.markdown = newerEdits ? rebaseSavedAssetPaths(current, payload.assetPathChanges) : (typeof payload?.markdown === "string" ? payload.markdown : current);
+      if (payload.assetPathChanges && document.editorHistory) {
+        for (const snapshot of [...document.editorHistory.undo, ...document.editorHistory.redo]) {
+          snapshot.markdown = rebaseSavedAssetPaths(snapshot.markdown, payload.assetPathChanges);
+        }
+      }
       if (payload?.assets && typeof payload.assets === "object") document.assets = payload.assets;
-      document.dirty = false;
-      state.documents = state.documents.filter(item => item === document || !document.path || item.path !== document.path);
+      document.dirty = newerEdits;
+      state.documents = state.documents.filter(item => item === document || item.dirty || item === activeDocument() || !document.path || item.path !== document.path);
       const orderIndex = state.manualFileOrder.indexOf(previousOrderKey);
       if (orderIndex >= 0) {
         state.manualFileOrder[orderIndex] = fileEntryKey(document);
         localStorage.setItem("mory.fileOrder", JSON.stringify(state.manualFileOrder));
       }
     }
-    state.dirty = false;
     rebuildWorkspaceKnowledge();
-    if (document && typeof payload?.markdown === "string" && payload.markdown !== state.markdown) renderDocument(document);
+    if (document === activeDocument()) {
+      state.dirty = document.dirty;
+      if (document.markdown !== state.markdown) renderDocument(document);
+      $("#save-state").textContent = localized(newerEdits ? "未保存" : "已保存");
+      $("#save-state").classList.toggle("is-visible", newerEdits);
+      notifyDocumentSelected(document);
+    }
     renderFiles();
-    $("#save-state").textContent = localized("已保存");
-    setTimeout(() => $("#save-state").classList.remove("is-visible"), 900);
     toast(localized("已保存"));
   },
   exportStarted: format => toast(locale() === "en" ? `Exporting ${String(format).toUpperCase()}…` : `正在导出 ${String(format).toUpperCase()}…`, 5000),

@@ -132,6 +132,22 @@ test("renames the image directory when a draft is saved under a document name", 
   assert.equal(await fs.readFile(path.join(root, "\u6B63\u5F0F\u6587\u7AE0", "\u56FE.png"), "utf8"), "image");
 });
 
+test("Save As preserves original image assets and refuses conflicting destination assets", async t => {
+  const root = await fixture(t);
+  const oldPath = path.join(root, "original.md");
+  const newPath = path.join(root, "copy.md");
+  await fs.mkdir(path.join(root, "original"));
+  await fs.writeFile(path.join(root, "original", "image.png"), "source image");
+  const markdown = await relocateDocumentAssets({ root, oldPath, oldName: "original.md", newPath, markdown: "![cover](original/image.png)" });
+  assert.equal(markdown, "![cover](copy/image.png)");
+  assert.equal(await fs.readFile(path.join(root, "original", "image.png"), "utf8"), "source image");
+  assert.equal(await fs.readFile(path.join(root, "copy", "image.png"), "utf8"), "source image");
+  await fs.writeFile(path.join(root, "copy", "image.png"), "unrelated destination image");
+  await assert.rejects(relocateDocumentAssets({ root, oldPath, oldName: "original.md", newPath, markdown: "![cover](original/image.png)" }));
+  assert.equal(await fs.readFile(path.join(root, "copy", "image.png"), "utf8"), "unrelated destination image");
+  assert.equal(await fs.readFile(path.join(root, "original", "image.png"), "utf8"), "source image");
+});
+
 test("lists documents recursively while ignoring non-documents in asset folders", async t => {
   const root = await fixture(t);
   await fs.mkdir(path.join(root, "\u4E13\u9898", "\u6587\u7AE0"), { recursive: true });

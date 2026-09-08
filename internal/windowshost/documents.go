@@ -467,10 +467,12 @@ func relocateDocumentAssets(root, markdown, oldPath, oldName, newPath string) (s
 	if err := os.MkdirAll(filepath.Dir(newDirectory), 0o755); err != nil {
 		return "", fmt.Errorf("创建新图片目录：%w", err)
 	}
-	if err := os.Rename(oldDirectory, newDirectory); err != nil {
-		if copyErr := copyDirectory(oldDirectory, newDirectory); copyErr != nil {
-			return "", fmt.Errorf("迁移文稿图片：%w", errors.Join(err, copyErr))
-		}
+	// Copy instead of moving assets so the original note remains usable after Save As.
+	if err := os.Mkdir(newDirectory, 0o755); err != nil {
+		return "", fmt.Errorf("prepare saved document assets: %w", err)
+	}
+	if err := os.CopyFS(newDirectory, os.DirFS(oldDirectory)); err != nil {
+		return "", fmt.Errorf("copy saved document assets: %w", err)
 	}
 	return strings.ReplaceAll(markdown, "]("+oldBase+"/", "]("+newBase+"/"), nil
 }

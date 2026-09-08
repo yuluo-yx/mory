@@ -7,7 +7,16 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/sys/unix"
 )
+
+func publishExport(source, destination string, overwrite bool) error {
+	if overwrite {
+		return os.Rename(source, destination)
+	}
+	return unix.RenamexNp(source, destination, unix.RENAME_EXCL)
+}
 
 func (client Client) open(ctx context.Context, document string) error {
 	application := client.AppPath

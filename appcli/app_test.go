@@ -1,8 +1,10 @@
 package appcli
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -29,6 +31,45 @@ func TestResolveExport(t *testing.T) {
 	}
 	if _, err := ResolveExport(source, "pdf", root, true); err != nil {
 		t.Fatalf("force export should accept an existing output: %v", err)
+	}
+}
+
+func TestResolveExportRejectsNonRegularDestinations(t *testing.T) {
+	for _, kind := range []string{"directory", "symlink", "dangling symlink", "source hard link"} {
+		t.Run(kind, func(t *testing.T) {
+			root := t.TempDir()
+			source := filepath.Join(root, "guide.md")
+			destination := filepath.Join(root, "guide.pdf")
+			if err := os.WriteFile(source, []byte("# Original"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			var err error
+			switch kind {
+			case "directory":
+				err = os.Mkdir(destination, 0o755)
+			case "symlink":
+				err = os.Symlink(source, destination)
+			case "dangling symlink":
+				err = os.Symlink(filepath.Join(root, "missing"), destination)
+			case "source hard link":
+				err = os.Link(source, destination)
+			}
+			if err != nil {
+				if runtime.GOOS == "windows" && errors.Is(err, os.ErrPermission) && (kind == "symlink" || kind == "dangling symlink") {
+					t.Skip("Creating symbolic links requires Windows Developer Mode or elevated privileges")
+				}
+				t.Fatal(err)
+			}
+			for _, force := range []bool{false, true} {
+				if _, err := ResolveExport(source, "pdf", root, force); err == nil {
+					t.Errorf("accepted %s with force=%v", kind, force)
+				}
+			}
+			data, err := os.ReadFile(source)
+			if err != nil || string(data) != "# Original" {
+				t.Fatalf("source changed: %q, %v", data, err)
+			}
+		})
 	}
 }
 

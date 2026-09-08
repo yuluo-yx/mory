@@ -37,25 +37,28 @@ export function mapMarkdownFences(source, transform) {
 
 function protectMarkdownSyntax(source) {
   const values = [];
+  let prefix = "\uE100";
+  while (source.includes(prefix)) prefix += "\uE100";
+  const tokenPattern = new RegExp(`${prefix}(\\d+)\uE101`, "g");
+  const restore = value => String(value).replace(tokenPattern, (match, index) => values[Number(index)] ?? match);
   const token = value => {
-    const index = values.push(value) - 1;
-    return `\uE100${index}\uE101`;
+    // Flatten earlier tokens before protecting enclosing syntax such as HTML tags.
+    const index = values.push(restore(value)) - 1;
+    return `${prefix}${index}\uE101`;
   };
   const protectedSource = mapMarkdownFences(source, value => {
     // Leave the final line ending outside the token to preserve the next block boundary.
     const ending = value.match(/(?:\r\n|\r|\n)$/)?.[0] ?? "";
     return token(ending ? value.slice(0, -ending.length) : value) + ending;
   })
-    .replace(/`[^`\n]*`/g, token)
+    .replace(/(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g, token)
     .replace(/(?<=\]\()[^)\s]+(?=(?:\s+["'][^"']*["'])?\))/g, token)
     .replace(/https?:\/\/[^\s)]+/g, token)
     .replace(/<[^>\n]+>/g, token)
     .replace(/\\[!-/:-@[-`{-~]|\*\*|__|~~/g, token);
   return {
     source: protectedSource,
-    restore(value) {
-      return String(value).replace(/\uE100(\d+)\uE101/g, (_, index) => values[Number(index)] ?? "");
-    }
+    restore
   };
 }
 
@@ -84,6 +87,14 @@ export function replaceTextMatches(source, matches, replacement) {
   }
   parts.push(source.slice(offset));
   return parts.join("");
+}
+
+export function rebaseSavedAssetPaths(markdown, changes = {}) {
+  let result = String(markdown);
+  for (const [from, to] of Object.entries(changes ?? {})) {
+    if (from && typeof to === "string" && from !== to) result = result.replaceAll(`](${from}`, `](${to}`);
+  }
+  return result;
 }
 
 export const calendarColors = ["red", "amber", "green", "blue", "violet", "gray"];

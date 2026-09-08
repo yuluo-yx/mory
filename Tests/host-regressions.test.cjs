@@ -186,10 +186,10 @@ test("desktop hosts ask where new drafts should be saved", () => {
   const windows = fs.readFileSync(path.join(root, "internal", "windowshost", "host.go"), "utf8");
   assert.match(electron, /Where would you like to save this new document\?/);
   assert.match(electron, /Current Workspace/);
-  assert.match(electron, /availableDocumentPath\(workspaceManager\.activeRoot\(\), suggestedDocumentName\(markdown\)\)/);
-  assert.match(macOS, /workspaceManager\.active\.isImplicit != true else \{ saveDocumentAs\(\); return \}/);
+  assert.match(electron, /availableDocumentPath\(snapshot\.root, suggestedDocumentName\(snapshot\.markdown, snapshot\.name\)\)/);
+  assert.match(macOS, /workspaceManager\.active\.isImplicit != true else \{ saveCapturedDocumentAs\(snapshot\); return \}/);
   assert.match(macOS, /alert\.addButton\(withTitle: english \? "Current Workspace"/);
-  assert.match(macOS, /availableDocumentURL\(markdown: markdown\)/);
+  assert.match(macOS, /availableDocumentURL\(markdown: snapshot\.markdown, name: snapshot\.name, root: snapshot\.rootURL\)/);
   assert.match(windows, /ChooseDraftSaveDestination/);
   assert.match(windows, /case "workspace":/);
 });
@@ -215,7 +215,7 @@ test("both desktop hosts provide document actions, image previews, and theme-fol
   assert.match(web, /showFileContextMenu/);
   assert.match(web, /previewDocumentImage/);
   assert.match(web, /firstLevelHeading/);
-  assert.match(web, /documentName: documentHostName\(activeDoc\)/);
+  assert.match(web, /documentName: origin\.name/);
 });
 
 test("desktop hosts copy absolute and relative workspace paths through native clipboards", () => {

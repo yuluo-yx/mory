@@ -16,6 +16,7 @@ type fakePlatform struct {
 	chosenDirectory  string
 	chosenFile       string
 	savePath         string
+	onChooseSavePath func()
 	draftDestination string
 	draftPrompts     int
 	confirmed        bool
@@ -39,7 +40,67 @@ func (platform *fakePlatform) ChooseFile(string, []string) (string, error) {
 	return platform.chosenFile, nil
 }
 func (platform *fakePlatform) ChooseSavePath(string, []string) (string, error) {
+	if platform.onChooseSavePath != nil {
+		platform.onChooseSavePath()
+	}
 	return platform.savePath, nil
+}
+
+func TestSaveAsCapturesDocumentBeforePickerAndPreservesNewerState(t *testing.T) {
+	for _, scenario := range []string{"switch document", "continue typing", "stale changed event"} {
+		t.Run(scenario, func(t *testing.T) {
+			root := t.TempDir()
+			platform := &fakePlatform{savePath: filepath.Join(root, "saved.md")}
+			host := New(platform, t.TempDir(), root)
+			if err := host.Start(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			defer host.Stop()
+			original := map[string]any{"type": "documentSelected", "documentId": "first", "name": "first.md", "markdown": "snapshot", "path": filepath.Join(root, "first.md")}
+			if err := host.Send(original); err != nil {
+				t.Fatal(err)
+			}
+			platform.onChooseSavePath = func() {
+				if scenario == "continue typing" {
+					if err := host.Send(map[string]any{"type": "changed", "documentId": "first", "markdown": "newer text"}); err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					if err := host.Send(map[string]any{"type": "documentSelected", "documentId": "second", "path": filepath.Join(root, "second.md"), "name": "second.md", "markdown": "second document"}); err != nil {
+						t.Fatal(err)
+					}
+					if scenario == "stale changed event" {
+						if err := host.Send(map[string]any{"type": "changed", "documentId": "first", "markdown": "stale text"}); err != nil {
+							t.Fatal(err)
+						}
+					}
+				}
+			}
+			if err := host.SaveAs(); err != nil {
+				t.Fatal(err)
+			}
+			data, err := os.ReadFile(platform.savePath)
+			if err != nil || string(data) != "snapshot" {
+				t.Fatalf("saved content = %q, %v", data, err)
+			}
+			host.mu.RLock()
+			id, markdown := host.currentDocumentID, host.currentMarkdown
+			host.mu.RUnlock()
+			if scenario == "continue typing" {
+				if id != "first" || markdown != "newer text" {
+					t.Fatalf("newer edit lost: %q, %q", id, markdown)
+				}
+			} else if id != "second" || markdown != "second document" {
+				t.Fatalf("active document changed: %q, %q", id, markdown)
+			}
+			platform.mu.Lock()
+			scripts := strings.Join(platform.scripts, "\n")
+			platform.mu.Unlock()
+			if !strings.Contains(scripts, `"documentId":"first"`) || !strings.Contains(scripts, `"sourceMarkdown":"snapshot"`) {
+				t.Fatalf("save completion omitted its identity: %s", scripts)
+			}
+		})
+	}
 }
 func (platform *fakePlatform) ChooseDraftSaveDestination(string) (string, error) {
 	platform.draftPrompts++
