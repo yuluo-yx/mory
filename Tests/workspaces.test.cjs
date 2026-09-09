@@ -148,6 +148,21 @@ test("Save As preserves original image assets and refuses conflicting destinatio
   assert.equal(await fs.readFile(path.join(root, "original", "image.png"), "utf8"), "source image");
 });
 
+test("Save As copies nested assets and refuses an existing empty destination directory", async t => {
+  const root = await fixture(t);
+  const oldPath = path.join(root, "original.md");
+  const newPath = path.join(root, "copy.md");
+  await fs.mkdir(path.join(root, "original", "nested"), { recursive: true });
+  await fs.writeFile(path.join(root, "original", "nested", "image.png"), "nested image");
+  const options = { root, oldPath, oldName: "original.md", newPath, markdown: "![cover](original/nested/image.png)" };
+  assert.equal(await relocateDocumentAssets(options), "![cover](copy/nested/image.png)");
+  assert.equal(await fs.readFile(path.join(root, "copy", "nested", "image.png"), "utf8"), "nested image");
+  assert.equal(await fs.readFile(path.join(root, "original", "nested", "image.png"), "utf8"), "nested image");
+  await fs.mkdir(path.join(root, "occupied"));
+  await assert.rejects(relocateDocumentAssets({ ...options, newPath: path.join(root, "occupied.md") }), { code: "EEXIST" });
+  assert.deepEqual(await fs.readdir(path.join(root, "occupied")), []);
+});
+
 test("lists documents recursively while ignoring non-documents in asset folders", async t => {
   const root = await fixture(t);
   await fs.mkdir(path.join(root, "\u4E13\u9898", "\u6587\u7AE0"), { recursive: true });

@@ -550,7 +550,10 @@ async function relocateDocumentAssets({ root, markdown, oldPath, oldName, newPat
   }
   // Save As must preserve the original document's assets and never merge conflicting folders.
   await fs.mkdir(newDirectory);
-  await fs.cp(oldDirectory, newDirectory, { recursive: true, force: false, errorOnExist: true });
+  // Copy children into the reserved directory; strict cp rejects an existing destination root.
+  for (const entry of await fs.readdir(oldDirectory)) {
+    await fs.cp(path.join(oldDirectory, entry), path.join(newDirectory, entry), { recursive: true, force: false, errorOnExist: true });
+  }
   return String(markdown).split(`](${oldBase}/`).join(`](${newBase}/`);
 }
 
