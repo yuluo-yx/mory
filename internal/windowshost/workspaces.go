@@ -51,8 +51,9 @@ type PublicWorkspace struct {
 
 // WorkspaceState is the stable data contract consumed by the frontend workspace switcher.
 type WorkspaceState struct {
-	ActiveID   string            `json:"activeId"`
-	Workspaces []PublicWorkspace `json:"workspaces"`
+	ActiveID            string            `json:"activeId"`
+	HasWorkspaceRecords bool              `json:"hasWorkspaceRecords"`
+	Workspaces          []PublicWorkspace `json:"workspaces"`
 }
 
 type workspaceFile struct {
@@ -62,13 +63,15 @@ type workspaceFile struct {
 }
 
 type workspaceManager struct {
-	mu          sync.RWMutex
-	configPath  string
-	cacheRoot   string
-	defaultRoot string
-	activeID    string
-	workspaces  []Workspace
-	newBackend  func(storage.Config) (storage.Backend, error)
+	mu                  sync.RWMutex
+	configPath          string
+	cacheRoot           string
+	defaultRoot         string
+	activeID            string
+	isOpen              bool
+	hasWorkspaceRecords bool
+	workspaces          []Workspace
+	newBackend          func(storage.Config) (storage.Backend, error)
 }
 
 func newWorkspaceManager(userDataPath, defaultRoot string) *workspaceManager {
@@ -93,11 +96,15 @@ func (manager *workspaceManager) initialize() error {
 			return fmt.Errorf("解析工作区配置：%w", decodeErr)
 		}
 		manager.workspaces = stored.Workspaces
+		manager.hasWorkspaceRecords = len(stored.Workspaces) > 0
 		manager.activeID = stored.ActiveID
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("读取工作区配置：%w", err)
 	}
 	if len(manager.workspaces) == 0 {
+		if err := os.MkdirAll(manager.defaultRoot, 0o755); err != nil {
+			return err
+		}
 		id, idErr := randomID()
 		if idErr != nil {
 			return idErr
@@ -115,17 +122,19 @@ func (manager *workspaceManager) initialize() error {
 	if manager.indexLocked(manager.activeID) < 0 {
 		manager.activeID = manager.workspaces[0].ID
 	}
-	return os.MkdirAll(manager.activeRootLocked(), 0o755)
+	return nil
 }
 
 func (manager *workspaceManager) state() WorkspaceState {
 	manager.mu.RLock()
 	defer manager.mu.RUnlock()
-	result := WorkspaceState{ActiveID: manager.activeID, Workspaces: make([]PublicWorkspace, 0, len(manager.workspaces))}
-	for _, workspace := range manager.workspaces {
-		result.Workspaces = append(result.Workspaces, manager.publicLocked(workspace))
-	}
-	return result
+	return manager.stateLocked()
+}
+
+func (manager *workspaceManager) opened() bool {
+	manager.mu.RLock()
+	defer manager.mu.RUnlock()
+	return manager.isOpen
 }
 
 func (manager *workspaceManager) active() Workspace {
@@ -143,6 +152,14 @@ func (manager *workspaceManager) activeRoot() string {
 func (manager *workspaceManager) save(input Workspace) (WorkspaceState, error) {
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
+	if input.ID == "" && input.Provider == "local" {
+		for _, existing := range manager.workspaces {
+			if existing.Provider == "local" && filepath.Clean(existing.LocalPath) == filepath.Clean(input.LocalPath) {
+				input.ID = existing.ID
+				break
+			}
+		}
+	}
 	index := manager.indexLocked(input.ID)
 	var existing Workspace
 	if index >= 0 {
@@ -189,6 +206,7 @@ func (manager *workspaceManager) save(input Workspace) (WorkspaceState, error) {
 	if err := os.MkdirAll(manager.rootLocked(input), 0o755); err != nil {
 		return WorkspaceState{}, fmt.Errorf("创建工作目录：%w", err)
 	}
+	manager.isOpen = true
 	if err := manager.persistLocked(); err != nil {
 		return WorkspaceState{}, err
 	}
@@ -202,10 +220,17 @@ func (manager *workspaceManager) activate(id string) (WorkspaceState, error) {
 	if index < 0 {
 		return WorkspaceState{}, errors.New("工作区不存在")
 	}
-	manager.activeID = id
-	if err := os.MkdirAll(manager.rootLocked(manager.workspaces[index]), 0o755); err != nil {
-		return WorkspaceState{}, fmt.Errorf("创建工作目录：%w", err)
+	workspace := manager.workspaces[index]
+	if workspace.Provider == "local" {
+		info, err := os.Stat(manager.rootLocked(workspace))
+		if err != nil || !info.IsDir() {
+			return WorkspaceState{}, errors.New("Workspace directory is unavailable")
+		}
+	} else if err := os.MkdirAll(manager.rootLocked(workspace), 0o755); err != nil {
+		return WorkspaceState{}, err
 	}
+	manager.activeID = id
+	manager.isOpen = true
 	if err := manager.persistLocked(); err != nil {
 		return WorkspaceState{}, err
 	}
@@ -267,6 +292,9 @@ func (manager *workspaceManager) indexLocked(id string) int {
 }
 
 func (manager *workspaceManager) activeRootLocked() string {
+	if !manager.isOpen {
+		return manager.defaultRoot
+	}
 	return manager.rootLocked(manager.workspaces[manager.activeIndexLocked()])
 }
 
@@ -290,7 +318,10 @@ func (manager *workspaceManager) publicLocked(workspace Workspace) PublicWorkspa
 }
 
 func (manager *workspaceManager) stateLocked() WorkspaceState {
-	state := WorkspaceState{ActiveID: manager.activeID, Workspaces: make([]PublicWorkspace, 0, len(manager.workspaces))}
+	state := WorkspaceState{HasWorkspaceRecords: manager.hasWorkspaceRecords, Workspaces: make([]PublicWorkspace, 0, len(manager.workspaces))}
+	if manager.isOpen {
+		state.ActiveID = manager.activeID
+	}
 	for _, workspace := range manager.workspaces {
 		state.Workspaces = append(state.Workspaces, manager.publicLocked(workspace))
 	}

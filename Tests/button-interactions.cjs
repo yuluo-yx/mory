@@ -207,6 +207,7 @@ app.whenReady().then(async () => {
       return true;
     })()`);
 
+    await inspect(window, `window.Mory.setWorkspaceSnapshot({state:{activeId:'folder-test',workspaces:[{id:'folder-test',name:'Folder test',provider:'local',localPath:'/workspace'}]},files:[]})`);
     await click(window, "#new-folder-button");
     await expect(window, "new-folder action reveals the inline path input", "!document.querySelector('#new-folder-form').hidden && document.activeElement === document.querySelector('#new-folder-input')");
     await window.webContents.insertText("\u8D44\u6599/\u9879\u76EE A");
@@ -263,7 +264,7 @@ app.whenReady().then(async () => {
       files: [{ name: '\u5B50\u76EE\u5F55/\u7B2C\u4E8C\u7BC7.md', path: '/opened/\u5B50\u76EE\u5F55/\u7B2C\u4E8C\u7BC7.md', createdAt: 20 }, { name: '\u7B2C\u4E00\u7BC7.md', path: '/opened/\u7B2C\u4E00\u7BC7.md', createdAt: 10, images: [{ name: '\u5C01\u9762.svg', path: '/opened/\u7B2C\u4E00\u7BC7/\u5C01\u9762.svg', relative: '\u7B2C\u4E00\u7BC7/\u5C01\u9762.svg' }] }],
       directories: [{ name: '\u5B50\u76EE\u5F55', path: '/opened/\u5B50\u76EE\u5F55', createdAt: 5 }]
     })`);
-    await expect(window, "a non-empty workspace removes the placeholder and opens the first sorted document", "document.querySelector('#folder-name').textContent === '\u5DF2\u6253\u5F00\u76EE\u5F55' && [...document.querySelectorAll('#file-list .file-name')].map(item => item.textContent).join('|') === '\u7B2C\u4E00\u7BC7.md|\u7B2C\u4E8C\u7BC7.md' && window.__autoOpenedWorkspacePath === '/opened/\u7B2C\u4E00\u7BC7.md'");
+    await expect(window, "a first workspace visit lists files without automatically opening one", "document.querySelector('#folder-name').textContent === '\u5DF2\u6253\u5F00\u76EE\u5F55' && [...document.querySelectorAll('#file-list .file-item[data-path]')].filter(item => item.dataset.path).length === 2 && !window.__autoOpenedWorkspacePath && window.Mory.getMarkdown() === ''");
     await inspect(window, `window.Mory.openDocument({ name: '\u7B2C\u4E00\u7BC7.md', path: '/opened/\u7B2C\u4E00\u7BC7.md', markdown: '# \u7B2C\u4E00\u7BC7' })`);
     await expect(window, "the first sorted workspace document becomes active", "document.querySelector('.file-item.is-active .file-name').textContent === '\u7B2C\u4E00\u7BC7.md' && document.querySelector('#write h1').textContent === '\u7B2C\u4E00\u7BC7'");
     await inspect(window, "window.Mory.newDocument()");
@@ -357,9 +358,9 @@ app.whenReady().then(async () => {
       state: { activeId: 'workspace-opened', workspaces: [{ id: 'workspace-opened', name: '\u5DF2\u6253\u5F00\u76EE\u5F55', provider: 'local', localPath: '/opened' }] },
       files: [{ name: '\u7B2C\u4E00\u7BC7.md', path: '/opened/\u7B2C\u4E00\u7BC7.md', createdAt: 10 }]
     })`);
-    await expect(window, "deleting the active document on disk removes it from the list", "[...document.querySelectorAll('#file-list .file-name')].map(item => item.textContent).join('|') === '\u7B2C\u4E00\u7BC7.md' && window.__autoOpenedWorkspacePath === '/opened/\u7B2C\u4E00\u7BC7.md'");
+    await expect(window, "deleting a document on disk removes its path from the list", "[...document.querySelectorAll('#file-list .file-item[data-path]')].filter(item => item.dataset.path).every(item => item.dataset.path === '/opened/\u7B2C\u4E00\u7BC7.md')");
     await inspect(window, `window.Mory.openDocument({ name: '\u7B2C\u4E00\u7BC7.md', path: '/opened/\u7B2C\u4E00\u7BC7.md', markdown: '# \u7B2C\u4E00\u7BC7' })`);
-    await expect(window, "deleting the active document selects the first sorted document", "document.querySelector('.file-item.is-active .file-name').textContent === '\u7B2C\u4E00\u7BC7.md' && document.querySelector('#write h1').textContent === '\u7B2C\u4E00\u7BC7'");
+    await expect(window, "the remaining document can be explicitly opened", "document.querySelector('.file-item.is-active .file-name').textContent === '\u7B2C\u4E00\u7BC7.md' && document.querySelector('#write h1').textContent === '\u7B2C\u4E00\u7BC7'");
     await inspect(window, `(() => {
       const ids = [...document.querySelectorAll('#file-list .file-item[data-path^="/opened/"][data-document-id]')].map(item => item.dataset.documentId);
       ids.forEach(id => window.Mory.closeDocument(id));

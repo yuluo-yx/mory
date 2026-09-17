@@ -190,7 +190,7 @@ func TestHostBridgesReadyOpenChangeLocaleAndExport(t *testing.T) {
 	platform.mu.Lock()
 	defer platform.mu.Unlock()
 	joined := strings.Join(platform.scripts, "\n")
-	if !strings.Contains(joined, "window.Mory.setWorkspaceSnapshot") || !strings.Contains(joined, "window.Mory.openDocument") {
+	if !strings.Contains(joined, "window.Mory.initializeSession") || !strings.Contains(joined, "window.Mory.openDocument") || strings.Contains(joined, "window.Mory.setWorkspaceSnapshot") {
 		t.Fatalf("incomplete renderer calls: %s", joined)
 	}
 	if len(platform.locales) != 1 || platform.locales[0] != "en" {
@@ -579,6 +579,7 @@ func TestHostWatcherRefreshesAfterExternalChange(t *testing.T) {
 	if err := host.Send(map[string]any{"type": "ready"}); err != nil {
 		t.Fatal(err)
 	}
+	if err := host.OpenExternalFolder(root); err != nil { t.Fatal(err) }
 	platform.mu.Lock()
 	before := len(platform.scripts)
 	platform.mu.Unlock()

@@ -86,6 +86,14 @@ dist\windows\Mory-Portable-<版本>-<架构>.exe
 make windows-build-x64 windows-build-arm64
 ```
 
+## Startup and workspaces
+
+Launching Mory starts a blank document without reopening the previous workspace. The introduction appears only on first use when no workspace records exist; use **Help > User Guide** to open it again. Opening a Markdown file replaces the untouched startup page.
+
+Use **File > Recent Workspaces** to reopen a workspace. Mory remembers its last visited document; a first visit or a missing last document starts blank. Missing workspace folders produce an error instead of being recreated. Removing an entry or clearing this menu does not delete workspace settings or files.
+
+Unsaved documents remain open when switching workspaces and are recovered beside the new blank document after restarting. Save recovered notes normally to remove their recovery buffers. Existing workspace settings remain compatible, and legacy draft recovery migrates automatically. Before rolling back to an older app, save recovered documents to disk.
+
 ## Command line
 
 Release packages include a Go-based `mory` client. It delegates rendering to the installed native app, so CLI exports use the same Markdown engine, themes, Mermaid renderer, and syntax highlighting as the editor.

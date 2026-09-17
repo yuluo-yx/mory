@@ -33,16 +33,35 @@ final class MacTypingSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegat
         webView.navigationDelegate = self
         window = NSWindow(contentRect: webView.frame, styleMask: [.borderless], backing: .buffered, defer: false)
         window.contentView = webView
+        // Animation-frame normalization must run as it does in a visible editor window.
+        window.alphaValue = 0.01
+        window.orderFront(nil)
         window.makeFirstResponder(webView)
 
         let defaultPath = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
             .appendingPathComponent("Sources/Mory/Web/index.html").path
         let source = URL(fileURLWithPath: ProcessInfo.processInfo.environment["MORY_WEB_INDEX"] ?? defaultPath)
         webView.loadFileURL(source, allowingReadAccessTo: source.deletingLastPathComponent())
+        DispatchQueue.main.asyncAfter(deadline: .now() + 60) { self.finish(failure: "Typing smoke timed out") }
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        focusEmptyEditor { [weak self] in
+        Task { @MainActor in
+            do {
+                let source = try String(contentsOfFile: "Tests/heading-input-cases.js", encoding: .utf8)
+                let value = try await webView.callAsyncJavaScript(source + "\nreturn await runHeadingInputCases()", arguments: [:], in: nil, contentWorld: .page)
+                guard let result = value as? [String: Any], let failures = result["failures"] as? [[String: Any]], failures.isEmpty else {
+                    finish(failure: "Heading input failed: \(String(describing: value))")
+                    return
+                }
+                print("macOS heading input passed: \((result["passed"] as? [String] ?? []).count) scenarios")
+                testNativeTyping()
+            } catch { finish(failure: error.localizedDescription) }
+        }
+    }
+
+    private func testNativeTyping() {
+        focusEmptyEditor(unwrapped: true) { [weak self] in
             guard let self else { return }
 
             var actions: [() -> Void] = []
@@ -58,11 +77,13 @@ final class MacTypingSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegat
         }
     }
 
-    private func focusEmptyEditor(completion: @escaping () -> Void) {
+    private func focusEmptyEditor(unwrapped: Bool = false, completion: @escaping () -> Void) {
         let script = """
         (() => {
           window.Mory.loadMarkdown('');
-          const paragraph = document.querySelector('#write p');
+          const editor = document.querySelector('#write');
+          if (\(unwrapped)) editor.replaceChildren();
+          const paragraph = editor.firstElementChild || editor;
           const range = document.createRange();
           range.setStart(paragraph, 0);
           range.collapse(true);

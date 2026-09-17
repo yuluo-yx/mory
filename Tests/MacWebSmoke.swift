@@ -43,6 +43,7 @@ final class MacWebSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             forMainFrameOnly: true
         ))
         let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
         configuration.userContentController = controller
         webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 1180, height: 790), configuration: configuration)
         webView.navigationDelegate = self
@@ -71,6 +72,7 @@ final class MacWebSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         }
         let script = """
         (() => {
+          window.Mory.initializeSession();
           const result = { mory: typeof window.Mory, heading: document.querySelector('#write h1')?.textContent || '' };
           result.mermaid = typeof window.mermaid;
           result.highlight = window.hljs?.versionString || '';

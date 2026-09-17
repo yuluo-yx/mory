@@ -72,7 +72,7 @@ func TestWorkspaceManagerActivationAndRemoval(t *testing.T) {
 	if err := manager.initialize(); err != nil {
 		t.Fatal(err)
 	}
-	first := manager.state().ActiveID
+	first := manager.state().Workspaces[0].ID
 	secondRoot := filepath.Join(t.TempDir(), "second")
 	state, err := manager.save(Workspace{Config: storage.Config{Name: "Second", Provider: storage.ProviderLocal}, LocalPath: secondRoot})
 	if err != nil {
@@ -115,8 +115,8 @@ func TestWorkspaceManagerReloadsPersistedConfiguration(t *testing.T) {
 	if err := second.initialize(); err != nil {
 		t.Fatal(err)
 	}
-	if second.state().ActiveID != first.state().ActiveID {
-		t.Fatal("active workspace was not restored after restart")
+	if second.state().ActiveID != "" || !second.state().HasWorkspaceRecords || second.opened() {
+		t.Fatal("restart should retain workspace records without activating a workspace")
 	}
 
 	if err := os.WriteFile(filepath.Join(data, "broken.json"), []byte("{"), 0o600); err != nil {
@@ -126,6 +126,51 @@ func TestWorkspaceManagerReloadsPersistedConfiguration(t *testing.T) {
 	broken.configPath = filepath.Join(data, "broken.json")
 	if err := broken.initialize(); err == nil {
 		t.Fatal("corrupt configuration should return an error")
+	}
+}
+
+func TestWorkspaceHistoryDoesNotRecreateMissingDirectories(t *testing.T) {
+	t.Parallel()
+	data, root := t.TempDir(), filepath.Join(t.TempDir(), "default")
+	manager := newWorkspaceManager(data, root)
+	if err := manager.initialize(); err != nil {
+		t.Fatal(err)
+	}
+	if manager.opened() || manager.state().HasWorkspaceRecords {
+		t.Fatal("first launch should start without an active workspace or history")
+	}
+	chosen := filepath.Join(t.TempDir(), "chosen")
+	input := Workspace{Config: storage.Config{Name: "Chosen", Provider: storage.ProviderLocal}, LocalPath: chosen}
+	state, err := manager.save(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := state.ActiveID
+	state, err = manager.save(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.ActiveID != id || len(state.Workspaces) != 2 {
+		t.Fatal("opening the same directory duplicated history")
+	}
+	if err := os.Remove(chosen); err != nil {
+		t.Fatal(err)
+	}
+	restarted := newWorkspaceManager(data, root)
+	if err := restarted.initialize(); err != nil {
+		t.Fatal(err)
+	}
+	if restarted.opened() || restarted.state().ActiveID != "" || !restarted.state().HasWorkspaceRecords {
+		t.Fatal("restart must retain history without opening it")
+	}
+	if _, err := restarted.activate(id); err == nil {
+		t.Fatal("a missing directory must fail to open")
+	}
+	if _, err := os.Stat(chosen); !os.IsNotExist(err) {
+		t.Fatalf("missing workspace was recreated: %v", err)
+	}
+	if restarted.opened() {
+		t.Fatal("failed activation changed the current session")
 	}
 }
 

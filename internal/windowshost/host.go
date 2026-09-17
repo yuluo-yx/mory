@@ -34,6 +34,13 @@ type StartupExport struct {
 	Destination string
 }
 
+// RecentWorkspace is a redacted entry displayed by the native workspace menu.
+type RecentWorkspace struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
 // Platform isolates Wails runtime services so host behavior can be tested on other platforms.
 type Platform interface {
 	ChooseDirectory(defaultDirectory string) (string, error)
@@ -126,9 +133,9 @@ func (host *Host) Send(payload map[string]any) error {
 		startupPath := host.startupPath
 		startupExport := host.startupExport
 		host.mu.RUnlock()
-		if startupExport == nil {
+		host.evaluate("window.Mory.initializeSession", host.workspaces.state())
+		if host.workspaces.opened() {
 			if err := host.refreshWorkspace(); err != nil {
-				host.completeStartup(err)
 				return err
 			}
 		}
@@ -143,6 +150,15 @@ func (host *Host) Send(payload map[string]any) error {
 				"format": startupExport.Format, "theme": "current", "paper": "A4",
 				"width": 900, "background": true, "destination": startupExport.Destination,
 			})
+		}
+		return nil
+	case "recentWorkspaces":
+		var entries []RecentWorkspace
+		if err := decodeValue(payload["entries"], &entries); err != nil {
+			return err
+		}
+		if platform, ok := host.platform.(interface{ SetRecentWorkspaces([]RecentWorkspace) }); ok {
+			platform.SetRecentWorkspaces(entries)
 		}
 		return nil
 	case "changed":
@@ -504,7 +520,7 @@ func (host *Host) Save() error {
 	snapshot := host.saveSnapshot()
 	path, markdown, name := snapshot.Path, snapshot.Markdown, snapshot.Name
 	if path == "" {
-		if host.workspaces.active().IsImplicit {
+		if !host.workspaces.opened() || host.workspaces.active().IsImplicit {
 			return host.saveAs(snapshot)
 		}
 		destination, err := host.platform.ChooseDraftSaveDestination(host.workspaces.active().Name)
@@ -661,6 +677,9 @@ func (host *Host) selectDocument(payload map[string]any) {
 }
 
 func (host *Host) refreshWorkspace() error {
+	if !host.workspaces.opened() {
+		return nil
+	}
 	root := host.workspaces.activeRoot()
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return fmt.Errorf("创建工作目录：%w", err)

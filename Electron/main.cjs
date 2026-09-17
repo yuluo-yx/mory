@@ -18,6 +18,7 @@ let editorReady = false;
 let pendingDocument = null;
 let pendingLaunchPath = null;
 let workspaceManager;
+let recentWorkspaces = [];
 let themeManager;
 let interfaceLocale = "zh-CN";
 const workspaceWatcher = createWorkspaceWatcher({
@@ -257,6 +258,7 @@ async function runSaveAction(action) {
 }
 
 async function refreshWorkspace() {
+  if (!workspaceManager.isOpen) return;
   const root = workspaceManager.activeRoot();
   await fs.mkdir(root, { recursive: true });
   workspaceWatcher.start(root);
@@ -427,7 +429,7 @@ async function handleWorkspaceRequest(method, args = {}) {
 async function saveDocument() {
   const snapshot = await getDocumentSnapshot();
   if (snapshot.path) await writeDocument(snapshot.path, snapshot);
-  else if (workspaceManager?.active()?.isImplicit === true) await saveAs(snapshot);
+  else if (!workspaceManager?.isOpen || workspaceManager?.active()?.isImplicit === true) await saveAs(snapshot);
   else {
     const english = interfaceLocale === "en";
     const choice = await dialog.showMessageBox(mainWindow, {
@@ -523,7 +525,7 @@ function newDocument() {
 }
 
 function buildMenu() {
-  const recent = recentDocuments();
+  const recent = recentDocuments().filter(filePath => !nativeFS.statSync(filePath).isDirectory());
   const template = [
     {
       label: "文件",
@@ -532,6 +534,14 @@ function buildMenu() {
         { label: "新建目录", accelerator: "CmdOrCtrl+Shift+N", click: () => runEditor("window.Mory.newFolder()") },
         { label: "打开…", accelerator: "CmdOrCtrl+O", click: openDocument },
         { label: "打开文件夹…", accelerator: "CmdOrCtrl+Shift+O", click: openFolder },
+        { label: interfaceLocale === "en" ? "Recent Workspaces" : "最近打开的工作区", submenu: [
+          ...recentWorkspaces.map(item => ({ label: `${item.name} — ${item.path}`, click: () => sendJSON("window.Mory.openRecentWorkspace", item.id) })),
+          ...(recentWorkspaces.length ? [
+            { type: "separator" },
+            { label: "清除菜单", click: () => runEditor("window.Mory.clearRecentWorkspaces()") },
+            { label: interfaceLocale === "en" ? "Remove an Entry…" : "移除一条记录…", submenu: recentWorkspaces.map(item => ({ label: `${item.name} — ${item.path}`, click: () => sendJSON("window.Mory.removeRecentWorkspace", item.id) })) }
+          ] : [{ label: "无最近项目", enabled: false }])
+        ] },
         {
           label: "最近打开",
           submenu: recent.length === 0
@@ -605,6 +615,7 @@ function buildMenu() {
     {
       label: "帮助",
       submenu: [
+        { label: interfaceLocale === "en" ? "User Guide" : "使用介绍", click: () => runEditor("window.Mory.showIntroduction()") },
         { label: "关于 Mory", click: () => dialog.showMessageBox(mainWindow, { title: "关于 Mory", message: `Mory ${app.getVersion()}`, detail: "一个跨平台、专注的 Markdown 编辑器。" }) },
         { label: "偏好设置", accelerator: "CmdOrCtrl+,", click: () => runEditor("window.Mory.togglePreferences()") }
       ]
@@ -639,11 +650,15 @@ ipcMain.on("mory:message", async (_event, payload) => {
   if (!payload || typeof payload.type !== "string") return;
   if (payload.type === "ready") {
     editorReady = true;
-    await refreshWorkspace();
+    await sendJSON("window.Mory.initializeSession", workspaceManager.state());
+    if (workspaceManager.isOpen) await refreshWorkspace();
     if (pendingDocument !== null) {
       await sendJSON("window.Mory.openDocument", pendingDocument);
       pendingDocument = null;
     }
+  } else if (payload.type === "recentWorkspaces") {
+    recentWorkspaces = Array.isArray(payload.entries) ? payload.entries : [];
+    buildMenu();
   } else if (payload.type === "changed") {
     if (currentDocumentId && payload.documentId && payload.documentId !== currentDocumentId) return;
     currentDocumentId = payload.documentId || currentDocumentId;

@@ -6,6 +6,7 @@ import WebKit
 final class MacDocumentLifecycleSmoke: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
     private var webView: WKWebView!
     private var window: NSWindow!
+    private var startupPhase = 0
 
     static func main() {
         do { try verifyHostUtilities() }
@@ -26,8 +27,29 @@ final class MacDocumentLifecycleSmoke: NSObject, WKNavigationDelegate, WKScriptM
         try manager.createDirectory(at: support, withIntermediateDirectories: true)
         let active = root.appendingPathComponent("active", isDirectory: true)
         let config = ["id": "test", "name": "Test", "provider": "local", "localPath": active.path]
-        try JSONSerialization.data(withJSONObject: ["activeId": "test", "workspaces": [config]]).write(to: support.appendingPathComponent("workspaces.json"))
+        try JSONSerialization.data(withJSONObject: ["version": 1, "activeId": "test", "workspaces": [config]]).write(to: support.appendingPathComponent("workspaces.json"))
         let workspace = try WorkspaceManager(supportRoot: support)
+        guard !workspace.isOpen, workspace.hasWorkspaceRecords, workspace.state()["activeId"] as? String == "",
+              !manager.fileExists(atPath: active.path) else {
+            throw workspaceError("Startup reopened or recreated the previous workspace")
+        }
+        var missingRejected = false
+        do { _ = try workspace.activate("test") } catch { missingRejected = true }
+        guard missingRejected, !workspace.isOpen, !manager.fileExists(atPath: active.path) else {
+            throw workspaceError("Opening missing history must not create a replacement directory")
+        }
+        try manager.createDirectory(at: active, withIntermediateDirectories: true)
+        _ = try workspace.activate("test")
+        _ = try workspace.save(["name": "Renamed", "provider": "local", "localPath": active.path])
+        guard workspace.isOpen, workspace.activeRoot == active,
+              (workspace.state()["workspaces"] as? [[String: Any]])?.count == 1 else {
+            throw workspaceError("Opening the same directory duplicated its workspace record")
+        }
+        let restarted = try WorkspaceManager(supportRoot: support)
+        guard !restarted.isOpen, restarted.hasWorkspaceRecords else {
+            throw workspaceError("Restart activated a remembered workspace")
+        }
+        print("macOS workspace contracts passed: closed startup, missing folder, explicit activation, deduplication, restart")
         let original = root.appendingPathComponent("original", isDirectory: true)
         let destination = root.appendingPathComponent("output/copy.md")
         try manager.createDirectory(at: original, withIntermediateDirectories: true)
@@ -62,6 +84,7 @@ final class MacDocumentLifecycleSmoke: NSObject, WKNavigationDelegate, WKScriptM
 
     private func start() {
         let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
         configuration.userContentController.add(self, name: "mory")
         webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 1180, height: 790), configuration: configuration)
         webView.navigationDelegate = self
@@ -77,15 +100,57 @@ final class MacDocumentLifecycleSmoke: NSObject, WKNavigationDelegate, WKScriptM
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         Task { @MainActor in
             do {
+                if startupPhase > 0 {
+                    try await verifyStartupPhase()
+                    return
+                }
                 let source = try String(contentsOfFile: "Tests/document-lifecycle-cases.js", encoding: .utf8)
-                let value = try await webView.callAsyncJavaScript(source + "\nreturn await runDocumentLifecycleCases()", arguments: [:], in: nil, contentWorld: .page)
+                let value = try await webView.callAsyncJavaScript("window.Mory.initializeSession();\n" + source + "\nreturn await runDocumentLifecycleCases()", arguments: [:], in: nil, contentWorld: .page)
                 guard let result = value as? [String: Any], let failures = result["failures"] as? [[String: Any]], failures.isEmpty else {
                     finish("Document lifecycle failed: \(String(describing: value))")
                 }
                 print("macOS document lifecycle passed: \((result["passed"] as? [String] ?? []).count) scenarios")
-                Darwin.exit(0)
+                _ = try await webView.evaluateJavaScript("localStorage.clear()")
+                startupPhase = 1
+                webView.reload()
             } catch { finish(error.localizedDescription) }
         }
+    }
+
+    private func verifyStartupPhase() async throws {
+        let script: String
+        switch startupPhase {
+        case 1:
+            script = "window.Mory.initializeSession(); return window.Mory.getMarkdown().includes('Mory')"
+        case 2:
+            script = """
+            window.Mory.initializeSession();
+            if (window.Mory.getMarkdown() !== '') return false;
+            window.Mory.toggleSource(true);
+            const source = document.querySelector('#source-editor');
+            source.value = 'Native recovered notes';
+            source.dispatchEvent(new InputEvent('input', {bubbles:true,inputType:'insertText'}));
+            return JSON.parse(localStorage.getItem('mory.recovery'))[0].markdown === source.value;
+            """
+        case 3:
+            script = """
+            window.Mory.initializeSession();
+            const documents = [...document.querySelectorAll('#file-list .file-item')].map(item => window.Mory.getDocumentSnapshot(item.dataset.documentId));
+            const valid = window.Mory.getMarkdown() === '' && documents.length === 2 && documents.some(item => item.markdown === 'Native recovered notes');
+            localStorage.clear();
+            return valid;
+            """
+        default:
+            script = "window.Mory.initializeSession({hasWorkspaceRecords:true}); return window.Mory.getMarkdown() === ''"
+        }
+        let result = try await webView.callAsyncJavaScript(script, arguments: [:], in: nil, contentWorld: .page)
+        guard result as? Bool == true else { finish("Native startup phase \(startupPhase) failed") }
+        if startupPhase == 4 {
+            print("macOS startup passed: first use, blank relaunch, immediate recovery, workspace-history migration")
+            Darwin.exit(0)
+        }
+        startupPhase += 1
+        webView.reload()
     }
 
     private func finish(_ error: String) -> Never {

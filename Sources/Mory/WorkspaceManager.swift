@@ -120,6 +120,8 @@ final class WorkspaceManager: @unchecked Sendable {
     private let cacheRoot: URL
     private(set) var workspaces: [WorkspaceConfig] = []
     private(set) var activeId = ""
+    private(set) var isOpen = false
+    private(set) var hasWorkspaceRecords = false
 
     init(supportRoot: URL? = nil) throws {
         if let supportRoot {
@@ -141,15 +143,21 @@ final class WorkspaceManager: @unchecked Sendable {
         return cacheRoot.appendingPathComponent(workspace.id, isDirectory: true)
     }
 
-    var activeRoot: URL { root(for: active) }
+    var activeRoot: URL {
+        if isOpen { return root(for: active) }
+        let documents = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first ?? supportRoot
+        return documents.appendingPathComponent("Mory", isDirectory: true)
+    }
 
     func state() -> [String: Any] {
-        ["activeId": activeId, "workspaces": workspaces.map { $0.publicDictionary(root: root(for: $0)) }]
+        ["activeId": isOpen ? activeId : "", "hasWorkspaceRecords": hasWorkspaceRecords, "workspaces": workspaces.map { $0.publicDictionary(root: root(for: $0)) }]
     }
 
     @discardableResult
     func save(_ dictionary: [String: Any]) throws -> [String: Any] {
         let existing = (dictionary["id"] as? String).flatMap { id in workspaces.first { $0.id == id } }
+            ?? (dictionary["id"] == nil && dictionary["provider"] as? String == "local"
+                ? workspaces.first { $0.provider == "local" && $0.localPath == dictionary["localPath"] as? String } : nil)
         var value = dictionary
         value["isImplicit"] = false
         var workspace = WorkspaceConfig(dictionary: value, existing: existing)
@@ -161,6 +169,7 @@ final class WorkspaceManager: @unchecked Sendable {
         else { workspaces.append(workspace) }
         activeId = workspace.id
         try fileManager.createDirectory(at: root(for: workspace), withIntermediateDirectories: true)
+        isOpen = true
         try persist()
         return state()
     }
@@ -168,8 +177,16 @@ final class WorkspaceManager: @unchecked Sendable {
     @discardableResult
     func activate(_ id: String) throws -> [String: Any] {
         guard let workspace = workspaces.first(where: { $0.id == id }) else { throw workspaceError("工作区不存在。") }
+        if workspace.provider == "local" {
+            var directory: ObjCBool = false
+            guard fileManager.fileExists(atPath: root(for: workspace).path, isDirectory: &directory), directory.boolValue else {
+                throw workspaceError("Workspace directory is unavailable")
+            }
+        } else {
+            try fileManager.createDirectory(at: root(for: workspace), withIntermediateDirectories: true)
+        }
         activeId = id
-        try fileManager.createDirectory(at: root(for: workspace), withIntermediateDirectories: true)
+        isOpen = true
         try persist()
         return state()
     }
@@ -605,6 +622,7 @@ final class WorkspaceManager: @unchecked Sendable {
 
     private func load() throws {
         if let data = try? Data(contentsOf: configURL), let store = try? JSONDecoder().decode(WorkspaceStore.self, from: data), !store.workspaces.isEmpty {
+            hasWorkspaceRecords = true
             workspaces = store.workspaces
             let documents = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first ?? URL(fileURLWithPath: NSHomeDirectory())
             let defaultRoot = documents.appendingPathComponent("Mory", isDirectory: true).standardizedFileURL
@@ -626,7 +644,6 @@ final class WorkspaceManager: @unchecked Sendable {
             activeId = workspace.id
             try persist()
         }
-        try fileManager.createDirectory(at: activeRoot, withIntermediateDirectories: true)
     }
 
     private func persist() throws {

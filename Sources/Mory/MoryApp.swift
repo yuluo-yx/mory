@@ -226,6 +226,7 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     private var currentDocumentName = "未命名.md"
     private var currentDocumentID = ""
     private var workspaceManager: WorkspaceManager!
+    private var recentWorkspaces: [[String: String]] = []
     private var workspaceWatcher: WorkspaceWatcher!
     private var themeManager: ThemeManager!
     private var editorReady = false
@@ -266,7 +267,6 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
             workspaceWatcher = WorkspaceWatcher { [weak self] in
                 Task { @MainActor in self?.refreshWorkspace() }
             }
-            workspaceWatcher.start(at: workspaceManager.activeRoot)
         } catch {
             presentError("无法初始化工作区：\(error.localizedDescription)")
             NSApp.terminate(nil)
@@ -485,7 +485,7 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         fileMenu.addItem(withTitle: "打开…", action: #selector(openDocument), keyEquivalent: "o")
         fileMenu.addItem(withTitle: "打开文件夹…", action: #selector(openFolder), keyEquivalent: "O").keyEquivalentModifierMask = [.command, .shift]
         let recentItem = NSMenuItem(title: "最近打开", action: nil, keyEquivalent: "")
-        let recentDocuments = RecentDocuments.entries(from: NSDocumentController.shared.recentDocumentURLs)
+        let recentDocuments = RecentDocuments.entries(from: NSDocumentController.shared.recentDocumentURLs.filter { !$0.hasDirectoryPath })
         recentItem.submenu = RecentDocuments.menu(
             entries: recentDocuments,
             target: self,
@@ -497,6 +497,27 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
             workspaceSuffix: interfaceLocale == "en" ? "Workspace" : "工作区"
         )
         fileMenu.addItem(recentItem)
+        let recentWorkspacesMenu = NSMenu(title: interfaceLocale == "en" ? "Recent Workspaces" : "最近打开的工作区")
+        for workspace in recentWorkspaces {
+            let item = recentWorkspacesMenu.addItem(withTitle: "\(workspace["name"] ?? "") — \(workspace["path"] ?? "")", action: #selector(openRecentWorkspace(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = workspace["id"]
+        }
+        if recentWorkspaces.isEmpty {
+            recentWorkspacesMenu.addItem(withTitle: interfaceLocale == "en" ? "No Recent Items" : "无最近项目", action: nil, keyEquivalent: "")
+        } else {
+            recentWorkspacesMenu.addItem(.separator())
+            recentWorkspacesMenu.addItem(withTitle: interfaceLocale == "en" ? "Clear Menu" : "清除菜单", action: #selector(clearRecentWorkspaces), keyEquivalent: "").target = self
+            let removal = NSMenu(title: interfaceLocale == "en" ? "Remove an Entry…" : "移除一条记录…")
+            for workspace in recentWorkspaces {
+                let item = removal.addItem(withTitle: "\(workspace["name"] ?? "") — \(workspace["path"] ?? "")", action: #selector(removeRecentWorkspace(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = workspace["id"]
+            }
+            let item = recentWorkspacesMenu.addItem(withTitle: removal.title, action: nil, keyEquivalent: "")
+            item.submenu = removal
+        }
+        fileMenu.addItem(withTitle: recentWorkspacesMenu.title, action: nil, keyEquivalent: "").submenu = recentWorkspacesMenu
         fileMenu.addItem(.separator())
         fileMenu.addItem(withTitle: "保存", action: #selector(saveDocument), keyEquivalent: "s")
         fileMenu.addItem(withTitle: "另存为…", action: #selector(saveDocumentAs), keyEquivalent: "S").keyEquivalentModifierMask = [.command, .shift]
@@ -547,6 +568,10 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         viewMenu.addItem(withTitle: "缩小", action: #selector(zoomOut), keyEquivalent: "-")
         viewItem.submenu = viewMenu
 
+        let help = NSMenu(title: interfaceLocale == "en" ? "Help" : "帮助")
+        help.addItem(withTitle: interfaceLocale == "en" ? "User Guide" : "使用介绍", action: #selector(showIntroduction), keyEquivalent: "").target = self
+        main.addItem(withTitle: help.title, action: nil, keyEquivalent: "").submenu = help
+
         MenuLocalizer.localize(main, locale: interfaceLocale)
         NSApp.mainMenu = main
     }
@@ -560,6 +585,17 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         window.title = "未命名 — Mory"
         runJavaScript("window.Mory.newDocument()")
     }
+
+    @objc private func openRecentWorkspace(_ sender: NSMenuItem) {
+        if let id = sender.representedObject as? String { sendJSON(function: "window.Mory.openRecentWorkspace", value: id) }
+    }
+
+    @objc private func removeRecentWorkspace(_ sender: NSMenuItem) {
+        if let id = sender.representedObject as? String { sendJSON(function: "window.Mory.removeRecentWorkspace", value: id) }
+    }
+
+    @objc private func clearRecentWorkspaces() { runJavaScript("window.Mory.clearRecentWorkspaces()") }
+    @objc private func showIntroduction() { runJavaScript("window.Mory.showIntroduction()") }
 
     @objc private func newFolder() {
         runJavaScript("window.Mory.newFolder()")
@@ -626,7 +662,7 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
             persistDocument(snapshot: snapshot, to: url)
             return
         }
-        guard workspaceManager != nil, workspaceManager.active.isImplicit != true else { saveCapturedDocumentAs(snapshot); return }
+        guard workspaceManager != nil, workspaceManager.isOpen, workspaceManager.active.isImplicit != true else { saveCapturedDocumentAs(snapshot); return }
         let english = interfaceLocale == "en"
         let alert = NSAlert()
         alert.alertStyle = .informational
@@ -909,6 +945,7 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     }
 
     private func refreshWorkspace() {
+        guard workspaceManager.isOpen else { return }
         do {
             workspaceWatcher?.start(at: workspaceManager.activeRoot)
             sendJSON(function: "window.Mory.setWorkspaceSnapshot", value: [
@@ -1099,7 +1136,8 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         switch type {
         case "ready":
             editorReady = true
-            if launchRequest.export == nil { refreshWorkspace() }
+            sendJSON(function: "window.Mory.initializeSession", value: workspaceManager.state())
+            if workspaceManager.isOpen { refreshWorkspace() }
             if let pendingDocument {
                 self.pendingDocument = nil
                 sendJSON(function: "window.Mory.openDocument", value: pendingDocument) { [weak self] error in
@@ -1114,6 +1152,9 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
                 return
             }
             startCLIExportIfNeeded()
+        case "recentWorkspaces":
+            recentWorkspaces = payload["entries"] as? [[String: String]] ?? []
+            configureMenu()
         case "changed":
             if let id = payload["documentId"] as? String, !id.isEmpty {
                 guard currentDocumentID.isEmpty || id == currentDocumentID else { return }

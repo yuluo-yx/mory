@@ -13,6 +13,80 @@ async function runDocumentLifecycleCases() {
     try { await test(); passed.push(name); }
     catch (error) { failures.push({ name, error: error.message }); }
   };
+  const startupMarkdown = window.Mory.getMarkdown();
+  const visibleFiles = () => [...document.querySelectorAll('#file-list .file-item')];
+  let workspaceSequence = 0;
+  const emptyWorkspace = () => {
+    for (const item of visibleFiles()) {
+      if (item.dataset.documentId) window.Mory.closeDocument(item.dataset.documentId);
+    }
+    const id = `lifecycle-workspace-${++workspaceSequence}`;
+    window.Mory.setWorkspaceSnapshot({ state: { activeId: id, workspaces: [{ id, name: 'Test', provider: 'local' }] }, files: [], directories: [] });
+  };
+  await run('opening a file replaces the untouched startup introduction', () => {
+    const introduction = window.Mory.getDocumentSnapshot();
+    check(visibleFiles().length === 1 && startupMarkdown.includes('Mory'), 'The startup introduction was not present');
+    window.Mory.openDocument({ path: '/lifecycle/startup.md', markdown: '# Opened file' });
+    check(visibleFiles().length === 1, 'Opening a file retained an extra introduction entry');
+    check(window.Mory.getDocumentSnapshot(introduction.documentId) === null, 'The introduction remained in the document session');
+    check(window.Mory.getMarkdown() === '# Opened file', 'The requested file was not activated');
+  });
+  // Initialize the workspace identity; subsequent changes create fresh empty-workspace placeholders.
+  emptyWorkspace();
+  for (const order of ['before opening', 'after opening']) {
+    await run(`empty workspace refresh ${order} does not retain a placeholder`, () => {
+      emptyWorkspace();
+      const placeholder = window.Mory.getDocumentSnapshot();
+      if (order === 'before opening') window.Mory.setFiles([]);
+      window.Mory.openDocument({ path: `/lifecycle/${order}.md`, markdown: '# External file' });
+      if (order === 'after opening') window.Mory.setFiles([]);
+      check(visibleFiles().length === 1, 'An empty workspace left an extra placeholder');
+      check(window.Mory.getDocumentSnapshot(placeholder.documentId) === null, 'Placeholder cleanup only hid the entry');
+      check(window.Mory.getMarkdown() === '# External file', 'Workspace refresh changed the requested file');
+    });
+  }
+  await run('opening files preserves an edited introduction and its undo history', () => {
+    emptyWorkspace();
+    window.Mory.loadMarkdown(startupMarkdown);
+    const introduction = window.Mory.getDocumentSnapshot();
+    window.Mory.toggleSource(true);
+    document.querySelector('#source-editor').dispatchEvent(new InputEvent('beforeinput', { bubbles: true, inputType: 'insertText' }));
+    edit('My notes in the introduction');
+    window.Mory.openDocument({ path: '/lifecycle/keep-introduction.md', markdown: 'Opened' });
+    check(visibleFiles().length === 2, 'Opening a file removed the edited introduction');
+    check(window.Mory.getDocumentSnapshot(introduction.documentId)?.markdown === 'My notes in the introduction', 'Opening discarded introduction edits');
+    document.querySelector(`#file-list .file-item[data-document-id="${introduction.documentId}"]`).click();
+    window.Mory.undo();
+    check(window.Mory.getMarkdown() === startupMarkdown, 'Opening discarded introduction undo history');
+  });
+  await run('opening a file preserves an explicitly created empty draft', () => {
+    emptyWorkspace();
+    window.Mory.newDocument();
+    const draft = window.Mory.getDocumentSnapshot();
+    window.Mory.openDocument({ path: '/lifecycle/keep-draft.md', markdown: 'Opened' });
+    check(visibleFiles().length === 2, 'Opening removed an explicit draft or retained the placeholder');
+    check(window.Mory.getDocumentSnapshot(draft.documentId)?.markdown === '', 'The explicit draft was discarded');
+  });
+  await run('opening another file preserves a saved introduction', () => {
+    emptyWorkspace();
+    window.Mory.loadMarkdown(startupMarkdown);
+    const introduction = window.Mory.getDocumentSnapshot();
+    window.Mory.didSave({ ...introduction, path: '/lifecycle/introduction.md', name: 'introduction.md', sourceMarkdown: introduction.markdown });
+    window.Mory.openDocument({ path: '/lifecycle/keep-saved.md', markdown: 'Opened' });
+    check(visibleFiles().length === 2, 'Opening removed the saved introduction');
+    check(window.Mory.getDocumentSnapshot(introduction.documentId)?.path === '/lifecycle/introduction.md', 'The saved introduction was discarded');
+  });
+  await run('repeated external opens keep only the requested documents', () => {
+    emptyWorkspace();
+    window.Mory.openDocument({ path: '/lifecycle/one.md', markdown: 'One' });
+    window.Mory.openDocument({ path: '/lifecycle/two.md', markdown: 'Two' });
+    window.Mory.openDocument({ path: '/lifecycle/one.md', markdown: 'One' });
+    check(visibleFiles().length === 2, 'Opening files added a placeholder or duplicate entry');
+    check(window.Mory.getMarkdown() === 'One', 'Reopening did not activate the requested file');
+    window.Mory.closeDocument(currentId());
+    window.Mory.closeDocument(currentId());
+    check(visibleFiles().length === 1 && window.Mory.getMarkdown() === '', 'Closing files restored the introduction');
+  });
   await run('saving an older snapshot preserves text typed while saving', () => {
     window.Mory.openDocument({ path: '/lifecycle/edit.md', markdown: 'saved snapshot' });
     const id = currentId();
