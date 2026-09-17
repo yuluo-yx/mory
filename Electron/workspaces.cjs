@@ -27,6 +27,8 @@ function createWorkspaceManager({ userDataPath, sidecarPath, defaultRoot = path.
   const cacheRoot = path.join(userDataPath, "workspaces");
   let workspaces = [];
   let activeId = "";
+  let isOpen = false;
+  let hasWorkspaceRecords = false;
 
   async function initialize() {
     await fs.mkdir(cacheRoot, { recursive: true });
@@ -39,6 +41,7 @@ function createWorkspaceManager({ userDataPath, sidecarPath, defaultRoot = path.
           : workspace.provider === "local" && workspace.name === "本地工作区" && path.resolve(workspace.localPath || "") === path.resolve(defaultRoot)
       })) : [];
       activeId = typeof stored.activeId === "string" ? stored.activeId : "";
+      hasWorkspaceRecords = workspaces.length > 0;
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
     }
@@ -50,7 +53,6 @@ function createWorkspaceManager({ userDataPath, sidecarPath, defaultRoot = path.
       await persist();
     }
     if (!workspaces.some(workspace => workspace.id === activeId)) activeId = workspaces[0].id;
-    await fs.mkdir(activeRoot(), { recursive: true });
     return state();
   }
 
@@ -63,7 +65,7 @@ function createWorkspaceManager({ userDataPath, sidecarPath, defaultRoot = path.
   }
 
   function activeRoot() {
-    return rootFor(active());
+    return isOpen ? rootFor(active()) : defaultRoot;
   }
 
   function publicWorkspace(workspace) {
@@ -77,7 +79,7 @@ function createWorkspaceManager({ userDataPath, sidecarPath, defaultRoot = path.
   }
 
   function state() {
-    return { activeId, workspaces: workspaces.map(publicWorkspace) };
+    return { activeId: isOpen ? activeId : "", hasWorkspaceRecords, workspaces: workspaces.map(publicWorkspace) };
   }
 
   async function persist() {
@@ -86,7 +88,9 @@ function createWorkspaceManager({ userDataPath, sidecarPath, defaultRoot = path.
   }
 
   async function save(input) {
-    const existing = workspaces.find(workspace => workspace.id === input.id);
+    const existing = workspaces.find(workspace => workspace.id === input.id)
+      || (!input.id && input.provider === "local" && input.localPath
+        ? workspaces.find(workspace => workspace.provider === "local" && path.resolve(workspace.localPath) === path.resolve(input.localPath)) : null);
     const id = existing?.id || crypto.randomUUID();
     const provider = String(input.provider || "local");
     const workspace = { ...(existing || {}), ...input, id, provider, isImplicit: false };
@@ -104,6 +108,7 @@ function createWorkspaceManager({ userDataPath, sidecarPath, defaultRoot = path.
     else workspaces.push(workspace);
     activeId = id;
     await fs.mkdir(rootFor(workspace), { recursive: true });
+    isOpen = true;
     await persist();
     return state();
   }
@@ -111,8 +116,10 @@ function createWorkspaceManager({ userDataPath, sidecarPath, defaultRoot = path.
   async function activate(id) {
     const workspace = workspaces.find(item => item.id === id);
     if (!workspace) throw new Error("工作区不存在。");
+    if (workspace.provider === "local" && !(await fs.stat(rootFor(workspace))).isDirectory()) throw new Error("Workspace directory is unavailable");
     activeId = id;
-    await fs.mkdir(rootFor(workspace), { recursive: true });
+    if (workspace.provider !== "local") await fs.mkdir(rootFor(workspace), { recursive: true });
+    isOpen = true;
     await persist();
     return state();
   }
@@ -132,7 +139,7 @@ function createWorkspaceManager({ userDataPath, sidecarPath, defaultRoot = path.
     return runSidecar(sidecarPath(), payload);
   }
 
-  return { initialize, state, save, activate, remove, sync, active, activeRoot };
+  return { initialize, state, save, activate, remove, sync, active, activeRoot, get isOpen() { return isOpen; } };
 }
 
 function validateWorkspace(workspace) {

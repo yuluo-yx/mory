@@ -20,11 +20,19 @@ import (
 )
 
 type windowsPlatform struct {
-	mu     sync.RWMutex
-	ctx    context.Context
-	host   *windowshost.Host
-	recent *recentfiles.Store
-	locale string
+	mu               sync.RWMutex
+	ctx              context.Context
+	host             *windowshost.Host
+	recent           *recentfiles.Store
+	locale           string
+	recentWorkspaces []windowshost.RecentWorkspace
+}
+
+func (platform *windowsPlatform) SetRecentWorkspaces(entries []windowshost.RecentWorkspace) {
+	platform.mu.Lock()
+	platform.recentWorkspaces = append([]windowshost.RecentWorkspace(nil), entries...)
+	platform.mu.Unlock()
+	platform.rebuildMenu()
 }
 
 func (platform *windowsPlatform) setContext(ctx context.Context) {

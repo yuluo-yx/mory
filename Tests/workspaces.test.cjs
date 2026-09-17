@@ -41,6 +41,9 @@ test("creates a default local workspace on first launch", async t => {
   assert.equal(state.workspaces.length, 1);
   assert.equal(state.workspaces[0].provider, "local");
   assert.equal(state.workspaces[0].isImplicit, true);
+  assert.equal(state.activeId, "");
+  assert.equal(state.hasWorkspaceRecords, false);
+  assert.equal(manager.isOpen, false);
   assert.equal(manager.activeRoot(), local);
   const configured = await manager.save({ ...state.workspaces[0], name: "\u660E\u786E\u9009\u62E9", localPath: local });
   assert.equal(configured.workspaces[0].isImplicit, false);
@@ -81,12 +84,12 @@ test("switches and removes workspaces without invoking a remote sidecar for loca
   const initial = await manager.initialize();
   const second = await manager.save({ name: "\u672C\u5730 B", provider: "local", localPath: path.join(root, "local-b") });
   assert.equal(second.workspaces.length, 2);
-  const activated = await manager.activate(initial.activeId);
-  assert.equal(activated.activeId, initial.activeId);
+  const activated = await manager.activate(initial.workspaces[0].id);
+  assert.equal(activated.activeId, initial.workspaces[0].id);
   assert.deepEqual(await manager.sync("pull"), { files: 0, bytes: 0, local: true });
   const removed = await manager.remove(second.workspaces.find(item => item.name === "\u672C\u5730 B").id);
   assert.equal(removed.workspaces.length, 1);
-  await assert.rejects(() => manager.remove(initial.activeId), /\u81F3\u5C11\u4FDD\u7559/);
+  await assert.rejects(() => manager.remove(initial.workspaces[0].id), /\u81F3\u5C11\u4FDD\u7559/);
   await assert.rejects(() => manager.activate("missing"), /\u4E0D\u5B58\u5728/);
 });
 
@@ -97,6 +100,29 @@ test("validates provider-specific credentials for S3, S4, OSS, and SFTP", () => 
   assert.doesNotThrow(() => validateWorkspace({ provider: "sftp", host: "server", username: "user", password: "pass", remotePath: "/docs" }));
   assert.throws(() => validateWorkspace({ provider: "s3" }), /\u5BF9\u8C61\u5B58\u50A8/);
   assert.throws(() => validateWorkspace({ provider: "sftp", host: "server" }), /SFTP/);
+});
+
+test("restart keeps history without opening or recreating a missing workspace", async t => {
+  const root = await fixture(t);
+  const options = { userDataPath: path.join(root, 'config'), defaultRoot: path.join(root, 'default'), sidecarPath: () => 'missing' };
+  const first = createWorkspaceManager(options);
+  await first.initialize();
+  const chosen = path.join(root, 'chosen');
+  const saved = await first.save({ name: 'Chosen', provider: 'local', localPath: chosen });
+  const again = await first.save({ name: 'Chosen', provider: 'local', localPath: chosen });
+  assert.equal(again.workspaces.length, 2);
+  assert.equal(again.activeId, saved.activeId);
+  await fs.rmdir(chosen);
+  const next = createWorkspaceManager(options);
+  const state = await next.initialize();
+  assert.equal(state.activeId, '');
+  assert.equal(state.hasWorkspaceRecords, true);
+  assert.equal(next.isOpen, false);
+  await assert.rejects(() => fs.stat(chosen), { code: 'ENOENT' });
+  await assert.rejects(() => next.activate(saved.activeId), { code: 'ENOENT' });
+  assert.equal(next.state().activeId, '');
+  await fs.mkdir(chosen);
+  assert.equal((await next.activate(saved.activeId)).activeId, saved.activeId);
 });
 
 test("stores images by document name and loads them as embedded assets", async t => {

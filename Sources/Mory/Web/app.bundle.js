@@ -597,7 +597,8 @@ function markdownToHTML(markdown) {
     while (index < lines.length && lines[index].trim() && !blockStart.test(lines[index]) && !readMarkdownFence(lines[index]) && !htmlBlockStart.test(lines[index]) && !(index + 1 < lines.length && isTableSeparator(lines[index + 1]))) {
       paragraph.push(lines[index++]);
     }
-    html.push(`<p>${inlineMarkdown(paragraph.join("\n")).replaceAll("\n", " ")}</p>`);
+    const literalHeading = /^\\#{1,6}\s/.test(line) ? ' data-literal-heading="true"' : "";
+    html.push(`<p${literalHeading}>${inlineMarkdown(paragraph.join("\n")).replaceAll("\n", " ")}</p>`);
   }
 
   return html.join("\n");
@@ -671,7 +672,8 @@ function editorToMarkdown(root, { escapeText = true } = {}) {
     switch (element.tagName) {
       case "H1": case "H2": case "H3": case "H4": case "H5": case "H6":
         blocks.push(`${"#".repeat(Number(element.tagName[1]))} ${content}`); break;
-      case "P": case "DIV": blocks.push(content); break;
+      case "P": case "DIV":
+        blocks.push(element.dataset?.literalHeading ? content.replace(/^(#{1,6})(?=\s)/, "\\$1") : content); break;
       case "BLOCKQUOTE": {
         const quoteContent = [...element.children].some(child => /^(P|DIV)$/.test(child.tagName))
           ? [...element.children].map(child => inlineNodeToMarkdown(child, escapeText).trim()).join("\n")
@@ -949,6 +951,7 @@ let viewportTypographyFrame = 0;
 let pendingCodeExit = null;
 let recentCompositionCommit = null;
 let activeComposition = null;
+let writeComposing = false;
 let hostRequestSequence = 0;
 let workspaceKnowledgeRequest = 0;
 let markdownNormalizationFrame = 0;
@@ -968,6 +971,10 @@ let calendarInsertRange = null;
 let calendarQuickEditor = null;
 let calendarDrag = null;
 let headingFoldTarget = null;
+let sessionInitialized = false;
+let recoveryWarningShown = false;
+let recentWorkspaceIds = null;
+let lastWorkspaceDocuments = {};
 const pendingHostRequests = new Map();
 const caretMarker = "\u200b";
 const renderCaretMarker = "\ue000";
@@ -1034,7 +1041,10 @@ const englishText = {
   "移除标记": "Remove mark", "保存标记": "Save mark", "重新选择": "Select again", "添加范围": "Add range", "添加事项": "Add item", "添加": "Add", "删除日历": "Delete calendar", "保存日历": "Save calendar",
   "Mermaid 源码": "Mermaid source", "Mermaid 图表": "Mermaid diagram", "Mermaid 无法渲染": "Mermaid could not render", "Mermaid 运行时未加载": "Mermaid runtime is unavailable",
   "收起源码": "Collapse source", "展开源码": "Expand source", "放大编辑框": "Expand editor", "退出放大": "Exit expanded view",
-  "折叠标题内容": "Collapse section", "展开标题内容": "Expand section"
+  "折叠标题内容": "Collapse section", "展开标题内容": "Expand section",
+  "未打开工作区": "No workspace open", "打开的文稿": "Open documents", "选择工作区以浏览目录": "Choose a workspace to browse its files",
+  "恢复的文稿.md": "Recovered note.md", "无法打开工作区，请检查目录是否存在或从最近记录中移除。": "Unable to open workspace. Check its location or remove it from recent entries.",
+  "无法保存恢复副本，请及时保存文稿。": "Unable to store recovery copies. Please save your documents."
 };
 const staticLocaleNodes = new WeakMap();
 const staticLocaleAttributes = new WeakMap();
@@ -1216,6 +1226,9 @@ function enhanceRawHTML(root, { interactive = true } = {}) {
 }
 
 function renderDocument(document, announce = false) {
+  writeComposing = false;
+  activeComposition = null;
+  recentCompositionCommit = null;
   closeExpandedMermaidWorkbench();
   closePathSuggestions();
   closeCalendarQuickEditor();
@@ -1258,6 +1271,10 @@ function activateDocument(documentId, { announce = false, notifyHost = true, foc
   const document = state.documents.find(item => item.id === documentId);
   if (!document) return;
   state.activeDocumentId = document.id;
+  if (state.activeWorkspaceId && state.files.some(file => file.path === document.path)) {
+    lastWorkspaceDocuments[state.activeWorkspaceId] = document.path;
+    localStorage.setItem("mory.lastWorkspaceDocuments", JSON.stringify(lastWorkspaceDocuments));
+  }
   const workspaceFile = state.files.find(file => file.path === document.path);
   // Documents and directories share one selection source so only one tree entry is highlighted.
   state.selectedWorkspaceEntry = workspaceFile
@@ -1297,7 +1314,7 @@ function createResumeFromTemplate() {
   setDocumentTheme("lapis-cv", { announceFontWarning: true });
   renderDocument(document);
   notifyDocumentSelected(document);
-  localStorage.setItem("mory.draft", markdown);
+  persistRecovery();
   togglePreferences(false);
   requestAnimationFrame(() => write.focus());
   toast(localized("简历模板已创建"));
@@ -1318,6 +1335,8 @@ function openDocument(payload = {}) {
   const name = String(payload.name || path.split(/[\\/]/).pop() || "未命名.md");
   const workspaceFile = state.files.find(file => file.path === path);
   const createdAt = Number(payload.createdAt ?? workspaceFile?.createdAt ?? Date.now());
+  // A successfully opened document replaces untouched startup or empty-workspace placeholders.
+  discardWorkspacePlaceholders();
   let document = path ? state.documents.find(item => item.path === path) : null;
   if (document?.dirty) {
     activateDocument(document.id, { announce: true, notifyHost: true });
@@ -1501,6 +1520,43 @@ function currentWriteBlock() {
   if (block?.nodeType === Node.TEXT_NODE) block = block.parentElement;
   while (block && block.parentElement !== write) block = block.parentElement;
   return block instanceof HTMLElement ? block : null;
+}
+
+function normalizeWriteRoot() {
+  if (state.sourceMode || writeComposing) return;
+  const selection = window.getSelection();
+  // Moving nodes resets live range endpoints. Preserve both endpoints, including root boundaries.
+  const bookmark = (node, offset) => node === write
+    ? { sibling: write.childNodes[offset] || write.lastChild, after: offset === write.childNodes.length }
+    : { node, offset };
+  const anchor = bookmark(selection?.anchorNode, selection?.anchorOffset);
+  const focus = bookmark(selection?.focusNode, selection?.focusOffset);
+  const inEditor = write.contains(selection?.anchorNode) && write.contains(selection?.focusNode);
+  let paragraph = null;
+  let changed = false;
+  for (const node of [...write.childNodes]) {
+    // Parser formatting between block elements is not an editable blank paragraph.
+    if (node.nodeType === Node.COMMENT_NODE || (node.nodeType === Node.TEXT_NODE && /^\s*\n\s*$/.test(node.nodeValue || ""))) {
+      paragraph = null;
+      continue;
+    }
+    if (node instanceof Element && node.matches("p, div, h1, h2, h3, h4, h5, h6, pre, blockquote, ul, ol, table, hr, section, article, figure")) {
+      paragraph = null;
+      continue;
+    }
+    if (!paragraph) {
+      paragraph = document.createElement("p");
+      node.before(paragraph);
+    }
+    paragraph.append(node);
+    changed = true;
+    if (node.nodeName === "BR") paragraph = null;
+  }
+  if (!changed || !inEditor) return;
+  const resolve = point => point.sibling
+    ? [point.sibling.parentNode, [...point.sibling.parentNode.childNodes].indexOf(point.sibling) + Number(point.after)]
+    : [point.node, point.offset];
+  selection.setBaseAndExtent(...resolve(anchor), ...resolve(focus));
 }
 
 function writeBlockForNode(node) {
@@ -1713,6 +1769,7 @@ function handlePathSuggestionKey(event) {
 }
 
 function beginComposition(event) {
+  writeComposing = true;
   pendingCodeExit = null;
   recentCompositionCommit = null;
   const block = writeBlockForNode(event.target) || currentWriteBlock();
@@ -1776,7 +1833,8 @@ function handleHeadingCompositionInput(event) {
 }
 
 function rawHeadingMatch(block) {
-  return block?.matches("p, div") ? block.textContent?.match(/^(#{1,6})\s+(.+?)\s*#*$/) : null;
+  return block?.matches("p, div") && !block.dataset.literalHeading
+    ? block.textContent?.match(/^(#{1,6})\s+(.+?)\s*#*$/) : null;
 }
 
 function selectionAtEnd(element) {
@@ -3117,12 +3175,14 @@ function renderMarkdownBlockAtCaret() {
   if (block.matches("pre, ul, ol, table")) return false;
 
   const text = block.textContent ?? "";
-  const rawHeading = block.matches("p, div") && /^(#{1,6})\s+\S/.test(text);
+  const rawHeading = !block.dataset.literalHeading && block.matches("p, div") && /^(#{1,6})\s+\S/.test(text);
   const rawList = block.matches("p, div") && /^\s*(?:[-*+]|\d+[.)])\s+\S/.test(text);
   const rawInline = /`[^`\n]+`|\*\*[^*\n]+\*\*|__[^_\n]+__|~~[^~\n]+~~|(^|[^*])\*[^*\n]+\*(?!\*)|(^|[^_])_[^_\n]+_(?!_)|!?\[[^\]\n]+\]\([^\n)]+\)|<\/?[A-Za-z][^>]*>/.test(text);
   if (!rawHeading && !rawList && !rawInline) return false;
   if (!insertRenderCaretMarker()) return false;
-  const html = markdownToHTML(block.textContent || "");
+  let source = block.textContent || "";
+  if (block.dataset.literalHeading) source = source.replace(/^(#{1,6})(?=\s)/, "\\$1");
+  const html = markdownToHTML(source);
   const template = document.createElement("template");
   template.innerHTML = html || "<p><br></p>";
   enhanceRawHTML(template.content);
@@ -3206,11 +3266,14 @@ function handleWriteInput(event) {
     syncFromWrite();
     return;
   }
-  if (event?.isComposing || event?.inputType === "insertCompositionText") {
+  if (writeComposing || event?.isComposing || event?.inputType === "insertCompositionText") {
     removeCaretMarkers();
     syncFromWrite();
     return;
   }
+  normalizeWriteRoot();
+  const block = currentWriteBlock();
+  if (block?.dataset.literalHeading && !/^#{1,6}\s/.test(block.textContent || "")) delete block.dataset.literalHeading;
   const converted = renderRawTableAtCaret() || renderMarkdownBlockAtCaret();
   if (!converted) removeCaretMarkers();
   syncFromWrite();
@@ -3234,11 +3297,11 @@ function normalizeInactiveRawHeadings(activeBlock = currentWriteBlock()) {
 }
 
 function scheduleMarkdownNormalization() {
-  if (markdownNormalizationFrame || state.sourceMode || activeComposition) return;
+  if (markdownNormalizationFrame || state.sourceMode || writeComposing) return;
   if (![...write.children].some(block => rawHeadingMatch(block))) return;
   markdownNormalizationFrame = requestAnimationFrame(() => {
     markdownNormalizationFrame = 0;
-    if (state.sourceMode || activeComposition) return;
+    if (state.sourceMode || writeComposing) return;
     const converted = renderMarkdownBlockAtCaret();
     const normalizedInactive = normalizeInactiveRawHeadings(currentWriteBlock());
     if (converted || normalizedInactive) syncFromWrite();
@@ -3272,6 +3335,7 @@ function markChanged() {
     document.dirty = true;
   }
   if (becameDirty) renderFiles();
+  persistRecovery();
   $("#save-state").textContent = localized("未保存");
   $("#save-state").classList.add("is-visible");
   clearTimeout(changeTimer);
@@ -3280,7 +3344,7 @@ function markChanged() {
   changeTimer = setTimeout(() => {
     updateDerivedState();
     rebuildWorkspaceKnowledge();
-    localStorage.setItem("mory.draft", state.markdown);
+    persistRecovery();
   }, 180);
 }
 
@@ -3377,6 +3441,7 @@ function closeDocument(documentId) {
   if (index < 0) return;
 
   const [removed] = state.documents.splice(index, 1);
+  persistRecovery();
   const message = localized(removed.path ? "文档已关闭" : "草稿已移除");
   if (removed.id !== state.activeDocumentId) {
     renderFiles();
@@ -3389,7 +3454,7 @@ function closeDocument(documentId) {
     activateDocument(next.id, { announce: false, notifyHost: true });
   } else {
     state.untitledSequence = 0;
-    createUntitledDocument("", { announce: false, notifyHost: true });
+    createUntitledDocument("", { announce: false, notifyHost: true, workspacePlaceholder: true });
   }
   toast(message);
 }
@@ -3410,6 +3475,7 @@ function removeDeletedDocument(file) {
     }
   }
   renderFiles();
+  persistRecovery();
 }
 
 async function deleteDocument(file) {
@@ -3431,6 +3497,11 @@ function compareWorkspaceDirectories(left, right) {
 function toggleNewFolderForm(force) {
   const form = $("#new-folder-form");
   const open = typeof force === "boolean" ? force : form.hidden;
+  if (open && !state.activeWorkspaceId) {
+    togglePreferences(true);
+    toast(localized("选择工作区以浏览目录"));
+    return;
+  }
   form.hidden = !open;
   $("#new-folder-button").classList.toggle("is-active", open);
   if (open) {
@@ -4296,13 +4367,79 @@ function activeWorkspace() {
   return state.workspaces.find(item => item.id === state.activeWorkspaceId) || null;
 }
 
+function readSessionJSON(key, fallback) {
+  try { return JSON.parse(localStorage.getItem(key) || "null") ?? fallback; }
+  catch { return fallback; }
+}
+
+function persistRecovery() {
+  if (!sessionInitialized) return;
+  try {
+    localStorage.setItem("mory.recovery", JSON.stringify(state.documents.filter(item => item.dirty).map(item => ({
+      name: item.name, path: item.path || "", markdown: item.markdown, createdAt: item.createdAt
+    }))));
+    recoveryWarningShown = false;
+  } catch {
+    // Recovery storage limits must not interrupt editing or native save notifications.
+    if (!recoveryWarningShown) toast(localized("无法保存恢复副本，请及时保存文稿。"), 8000);
+    recoveryWarningShown = true;
+  }
+}
+
+function publishRecentWorkspaces() {
+  if (!sessionInitialized) return;
+  if (!Array.isArray(recentWorkspaceIds)) recentWorkspaceIds = state.workspaces.filter(item => !item.isImplicit).map(item => item.id);
+  recentWorkspaceIds = [...new Set(recentWorkspaceIds)].filter(id => state.workspaces.some(item => item.id === id)).slice(0, 20);
+  localStorage.setItem("mory.recentWorkspaces", JSON.stringify(recentWorkspaceIds));
+  bridge({ type: "recentWorkspaces", entries: recentWorkspaceIds.map(id => {
+    const item = state.workspaces.find(workspace => workspace.id === id);
+    return { id: item.id, name: item.name, path: item.localPath || item.provider };
+  }) });
+}
+
+function initializeSession(payload = {}) {
+  if (sessionInitialized) return;
+  const seenIntroduction = localStorage.getItem("mory.introductionSeen") === "true";
+  recentWorkspaceIds = readSessionJSON("mory.recentWorkspaces", null);
+  lastWorkspaceDocuments = readSessionJSON("mory.lastWorkspaceDocuments", {});
+  if (!lastWorkspaceDocuments || typeof lastWorkspaceDocuments !== "object" || Array.isArray(lastWorkspaceDocuments)) lastWorkspaceDocuments = {};
+  const storedRecovery = readSessionJSON("mory.recovery", []);
+  const recovery = Array.isArray(storedRecovery) ? storedRecovery : [];
+  const legacyDraft = localStorage.getItem("mory.draft");
+  // Migrate the legacy single buffer once; new sessions use explicit dirty-document snapshots.
+  if (localStorage.getItem("mory.recovery") === null && legacyDraft && legacyDraft !== defaultMarkdown) {
+    recovery.push({ name: localized("恢复的文稿.md"), markdown: legacyDraft, path: "" });
+  }
+  localStorage.removeItem("mory.draft");
+  setWorkspaceState({ ...payload, activeId: "" });
+  for (const item of Array.isArray(recovery) ? recovery : []) {
+    if (typeof item?.markdown !== "string") continue;
+    state.documents.push({ id: nextDocumentId(), name: String(item.name || localized("恢复的文稿.md")), path: typeof item.path === "string" ? item.path : "", markdown: item.markdown, createdAt: Number(item.createdAt) || Date.now(), dirty: true, assets: {} });
+  }
+  loadMarkdown(!seenIntroduction && !payload.hasWorkspaceRecords && !recovery.length ? defaultMarkdown : "");
+  localStorage.setItem("mory.introductionSeen", "true");
+  sessionInitialized = true;
+  publishRecentWorkspaces();
+  persistRecovery();
+  notifyDocumentSelected(activeDocument());
+}
+
+function removeRecentWorkspace(id) {
+  recentWorkspaceIds = (recentWorkspaceIds || []).filter(value => value !== id);
+  publishRecentWorkspaces();
+}
+
 function setWorkspaceState(payload = {}) {
   const previousId = state.activeWorkspaceId;
-  const nextId = String(payload.activeId || payload.workspaces?.[0]?.id || "");
+  const nextId = String(payload.activeId ?? "");
   state.workspaces = Array.isArray(payload.workspaces) ? payload.workspaces : [];
   state.activeWorkspaceId = nextId;
-  if (previousId && nextId && previousId !== nextId) resetWorkspaceSession();
+  if (nextId && previousId !== nextId) {
+    resetWorkspaceSession();
+    recentWorkspaceIds = [nextId, ...(recentWorkspaceIds || state.workspaces.filter(item => !item.isImplicit).map(item => item.id)).filter(id => id !== nextId)];
+  }
   renderWorkspaceSettings();
+  publishRecentWorkspaces();
 }
 
 function discardWorkspacePlaceholders() {
@@ -4350,21 +4487,22 @@ function reconcileDeletedWorkspaceDocuments(previousFiles, nextFiles) {
     notifyDocumentSelected(activeDraft);
     toast(localized("文件已从磁盘删除，未保存内容已保留为草稿"), 3200);
   }
+  persistRecovery();
   return activeDeleted;
 }
 
-function setWorkspaceFiles(files = [], { openFirst = false } = {}) {
+function setWorkspaceFiles(files = [], { restoreLast = false } = {}) {
   const previousFiles = state.files;
   state.files = Array.isArray(files) ? [...files].sort(compareWorkspaceFiles) : [];
   const activeDeleted = reconcileDeletedWorkspaceDocuments(previousFiles, state.files);
   const activePlaceholderRemoved = state.files.length ? discardWorkspacePlaceholders() : false;
-  const firstFile = state.files.length && (activeDeleted || (openFirst && activePlaceholderRemoved))
-    ? state.files[0]
+  const lastFile = state.files.length && (activeDeleted || (restoreLast && activePlaceholderRemoved))
+    ? state.files.find(file => file.path === lastWorkspaceDocuments[state.activeWorkspaceId])
     : null;
-  if (!firstFile && !activeDocument()) {
+  if (!lastFile && !activeDocument()) {
     const fallback = state.documents[0];
     if (fallback) activateDocument(fallback.id, { announce: false, notifyHost: true });
-    else if (!state.files.length) createUntitledDocument("", {
+    else createUntitledDocument("", {
       announce: false,
       notifyHost: true,
       workspacePlaceholder: true
@@ -4372,7 +4510,7 @@ function setWorkspaceFiles(files = [], { openFirst = false } = {}) {
   }
   renderFiles();
   void refreshWorkspaceKnowledge();
-  if (firstFile?.path) bridge({ type: "openFile", path: firstFile.path });
+  if (lastFile?.path) bridge({ type: "openFile", path: lastFile.path });
 }
 
 function compareWorkspaceFiles(left, right) {
@@ -4395,12 +4533,13 @@ function setWorkspaceSnapshot(payload = {}) {
     state.directories.some(directory => directory.path === state.selectedWorkspaceEntry.path)
     || (payload.files || []).some(file => file.path === state.selectedWorkspaceEntry.path)
   )) state.selectedWorkspaceEntry = null;
-  // Open the first sorted document in a non-empty workspace; keep a placeholder only for an empty one.
-  setWorkspaceFiles(payload.files || [], { openFirst: true });
+  // Restore an explicitly visited document only; a first visit starts with a blank draft.
+  setWorkspaceFiles(payload.files || [], { restoreLast: true });
 }
 
 function resetWorkspaceSession() {
-  state.documents = [];
+  // Unsaved work survives explicit workspace changes, including native menu opens.
+  state.documents = state.documents.filter(item => item.dirty || (!item.path && !item.workspacePlaceholder));
   state.files = [];
   state.directories = [];
   state.expandedDirectoryPaths.clear();
@@ -4418,6 +4557,12 @@ function resetWorkspaceSession() {
 function renderWorkspaceSettings() {
   const select = $("#workspace-select");
   select.innerHTML = "";
+  if (!state.activeWorkspaceId) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = localized("未打开工作区");
+    select.append(option);
+  }
   state.workspaces.forEach(item => {
     const option = document.createElement("option");
     option.value = item.id;
@@ -4426,10 +4571,10 @@ function renderWorkspaceSettings() {
   });
   select.value = state.activeWorkspaceId;
   const current = activeWorkspace();
-  $("#workspace-button").textContent = current?.name || localized("本地工作区");
-  $("#folder-name").textContent = current?.name || localized("工作区");
-  $("#workspace-path").textContent = current?.localPath || localized("尚未连接宿主");
-  $("#workspace-path").title = current?.localPath || localized("尚未连接宿主");
+  $("#workspace-button").textContent = current?.name || localized("未打开工作区");
+  $("#folder-name").textContent = current?.name || localized("打开的文稿");
+  $("#workspace-path").textContent = current?.localPath || localized("选择工作区以浏览目录");
+  $("#workspace-path").title = current?.localPath || localized("选择工作区以浏览目录");
   const local = !current || current.provider === "local";
   $("#workspace-pull").hidden = local;
   $("#workspace-push").hidden = local;
@@ -4487,18 +4632,14 @@ function collectWorkspaceForm() {
 }
 
 async function switchWorkspace(id) {
-  if (id === state.activeWorkspaceId) return;
-  if (state.documents.some(document => document.dirty) && !confirm("当前有未保存文稿。切换工作区会关闭这些文稿，是否继续？")) {
-    $("#workspace-select").value = state.activeWorkspaceId;
-    return;
-  }
+  if (!id || id === state.activeWorkspaceId) return;
   try {
     const result = await hostRequest("activateWorkspace", { id });
     setWorkspaceState(result);
     toast("已切换工作区");
   } catch (error) {
     $("#workspace-select").value = state.activeWorkspaceId;
-    toast(error.message);
+    toast(`${localized("无法打开工作区，请检查目录是否存在或从最近记录中移除。")} ${error.message}`, 5000);
   }
 }
 
@@ -4574,6 +4715,7 @@ function rebuildWorkspaceKnowledge({ renderGraph = false } = {}) {
 }
 
 async function refreshWorkspaceKnowledge({ renderGraph = false } = {}) {
+  if (!state.activeWorkspaceId) { rebuildWorkspaceKnowledge({ renderGraph }); return; }
   const request = ++workspaceKnowledgeRequest;
   try {
     if (window.moryNative || nativeMacHost || nativeWailsHost()) {
@@ -5556,8 +5698,29 @@ function paragraphizeHeading(block) {
   updateFocusLine();
 }
 
+function handleHeadingEnter(event, block = currentWriteBlock()) {
+  if (!block || !event.cancelable) return false;
+  const followsCompositionCommit = recentCompositionCommit?.block === block
+    && performance.now() - recentCompositionCommit.time <= 900;
+  const atEnd = selectionAtEnd(block) || followsCompositionCommit;
+  let heading = block;
+  if (atEnd && rawHeadingMatch(block)) {
+    const template = document.createElement("template");
+    template.innerHTML = markdownToHTML(block.textContent || "");
+    heading = template.content.firstElementChild;
+  }
+  if (!heading?.matches("h1, h2, h3, h4, h5, h6")) return false;
+  event.preventDefault();
+  beginEditorHistory("heading-enter", { force: true });
+  recentCompositionCommit = null;
+  if (atEnd) exitHeadingToParagraph(block, heading);
+  else splitHeadingAtCaret(block);
+  return true;
+}
+
 function handleEditorShortcut(event) {
-  if (event.isComposing || event.keyCode === 229) return;
+  if (writeComposing || event.isComposing || event.keyCode === 229) return;
+  normalizeWriteRoot();
   if (handlePathSuggestionKey(event)) return;
   if (deleteTableBeforeCaret(event)) return;
   if (event.key !== "Enter") recentCompositionCommit = null;
@@ -5633,6 +5796,7 @@ function handleEditorShortcut(event) {
   if (!command && event.key === "Enter" && !state.sourceMode) {
     const selection = window.getSelection();
     if (!selection?.isCollapsed || !selection.rangeCount) return;
+    if (handleHeadingEnter(event)) return;
     let block = selection.anchorNode;
     if (block?.nodeType === Node.TEXT_NODE) block = block.parentElement;
     while (block && block.parentElement !== write) block = block.parentElement;
@@ -5644,22 +5808,7 @@ function handleEditorShortcut(event) {
     } catch {
       return;
     }
-    const followsCompositionCommit = recentCompositionCommit?.block === block
-      && performance.now() - recentCompositionCommit.time <= 900;
-    const atBlockEnd = tail.toString() === "" || followsCompositionCommit;
-    const rawHeading = atBlockEnd ? rawHeadingMatch(block) : null;
-    if (rawHeading) {
-      event.preventDefault();
-      beginEditorHistory("heading-enter", { force: true });
-      recentCompositionCommit = null;
-      const template = document.createElement("template");
-      template.innerHTML = markdownToHTML(block.textContent || "");
-      const heading = template.content.firstElementChild;
-      if (heading?.matches("h1, h2, h3, h4, h5, h6")) {
-        exitHeadingToParagraph(block, heading);
-        return;
-      }
-    }
+    const atBlockEnd = tail.toString() === "";
     if (block.matches("blockquote")) {
       event.preventDefault();
       exitEmptyQuoteOrSplit(block);
@@ -5696,14 +5845,6 @@ function handleEditorShortcut(event) {
       selection.addRange(caret);
       syncFromWrite();
       updateFocusLine();
-      return;
-    }
-    if (/^H[1-6]$/.test(block.tagName)) {
-      event.preventDefault();
-      recentCompositionCommit = null;
-      beginEditorHistory("heading-enter", { force: true });
-      if (atBlockEnd) exitHeadingToParagraph(block);
-      else splitHeadingAtCaret(block);
       return;
     }
   }
@@ -5910,8 +6051,10 @@ write.addEventListener("beforeinput", event => {
     const coalesced = ["insertText", "deleteContentBackward", "deleteContentForward"].includes(event.inputType);
     beginEditorHistory(coalesced ? event.inputType : event.inputType || "input", { force: !coalesced });
   }
-  if (state.sourceMode || event.isComposing || !["insertParagraph", "insertLineBreak"].includes(event.inputType)) return;
+  if (state.sourceMode || writeComposing || event.isComposing || !["insertParagraph", "insertLineBreak"].includes(event.inputType)) return;
+  normalizeWriteRoot();
   const block = currentWriteBlock();
+  if (event.inputType === "insertParagraph" && handleHeadingEnter(event, block)) return;
   if (rawTableCells(block)) {
     event.preventDefault();
     if (renderRawTableAtCaret({ allowHeaderOnly: true })) {
@@ -5976,13 +6119,15 @@ write.addEventListener("drop", event => {
 });
 write.addEventListener("compositionstart", beginComposition);
 write.addEventListener("compositionend", event => {
-  let committedBlock = activeComposition?.block || writeBlockForNode(event.target);
+  writeComposing = false;
+  normalizeWriteRoot();
+  let committedBlock = activeComposition?.block || writeBlockForNode(event.target) || currentWriteBlock();
   recentCompositionCommit = committedBlock instanceof HTMLElement
     ? { block: committedBlock, time: performance.now() }
     : null;
   activeComposition = null;
   requestAnimationFrame(() => {
-    if (!(committedBlock instanceof HTMLElement) || !committedBlock.isConnected) return;
+    if (writeComposing || !(committedBlock instanceof HTMLElement) || !write.contains(committedBlock)) return;
     if (rawHeadingMatch(committedBlock) && currentWriteBlock() === committedBlock && !selectionAtEnd(committedBlock)) {
       const selection = window.getSelection();
       const caret = document.createRange();
@@ -6395,6 +6540,11 @@ function restorePreferences() {
 }
 
 window.Mory = {
+  initializeSession,
+  openRecentWorkspace: switchWorkspace,
+  removeRecentWorkspace,
+  clearRecentWorkspaces: () => { recentWorkspaceIds = []; publishRecentWorkspaces(); },
+  showIntroduction: () => createUntitledDocument(defaultMarkdown),
   loadMarkdown: markdown => loadMarkdown(markdown, true),
   openDocument,
   newDocument: () => createUntitledDocument(),
@@ -6453,6 +6603,7 @@ window.Mory = {
       notifyDocumentSelected(document);
     }
     renderFiles();
+    persistRecovery();
     toast(localized("已保存"));
   },
   exportStarted: format => toast(locale() === "en" ? `Exporting ${String(format).toUpperCase()}…` : `正在导出 ${String(format).toUpperCase()}…`, 5000),
@@ -6484,11 +6635,11 @@ window.Mory = {
 };
 
 restorePreferences();
-const browserDraft = (window.webkit || window.moryNative || nativeWailsHost()) ? null : localStorage.getItem("mory.draft");
-createUntitledDocument(browserDraft || defaultMarkdown, {
+createUntitledDocument("", {
   announce: false,
   notifyHost: false,
-  workspacePlaceholder: !browserDraft
+  workspacePlaceholder: true
 });
+if (!nativeMacHost && !window.moryNative && !nativeWailsHost()) initializeSession();
 bridge({ type: "ready" });
 void refreshCustomThemes();

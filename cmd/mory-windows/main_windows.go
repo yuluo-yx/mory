@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -167,6 +168,13 @@ func buildMenu(platform *windowsPlatform, english bool) *menu.Menu {
 	file.AddText(label("打开文件夹…", "Open Folder…"), keys.Combo("o", keys.CmdOrCtrlKey, keys.ShiftKey), func(*menu.CallbackData) { _ = host.OpenFolder() })
 	recent := file.AddSubmenu(label("最近打开", "Open Recent"))
 	paths, _ := platform.recent.List()
+	filePaths := paths[:0]
+	for _, path := range paths {
+		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+			filePaths = append(filePaths, path)
+		}
+	}
+	paths = filePaths
 	if len(paths) == 0 {
 		recent.AddText(label("无最近项目", "No Recent Items"), nil, nil)
 	} else {
@@ -180,6 +188,25 @@ func buildMenu(platform *windowsPlatform, english bool) *menu.Menu {
 		}
 		recent.AddSeparator()
 		recent.AddText(label("清除菜单", "Clear Menu"), nil, func(*menu.CallbackData) { platform.clearRecentDocuments() })
+	}
+	recentWorkspaces := file.AddSubmenu(label("最近打开的工作区", "Recent Workspaces"))
+	platform.mu.RLock()
+	entries := append([]windowshost.RecentWorkspace(nil), platform.recentWorkspaces...)
+	platform.mu.RUnlock()
+	for _, entry := range entries {
+		id, _ := json.Marshal(entry.ID)
+		recentWorkspaces.AddText(entry.Name+" — "+entry.Path, nil, func(*menu.CallbackData) { host.Evaluate("window.Mory.openRecentWorkspace(" + string(id) + ")") })
+	}
+	if len(entries) == 0 {
+		recentWorkspaces.AddText(label("无最近项目", "No Recent Items"), nil, nil)
+	} else {
+		recentWorkspaces.AddSeparator()
+		recentWorkspaces.AddText(label("清除菜单", "Clear Menu"), nil, func(*menu.CallbackData) { host.Evaluate("window.Mory.clearRecentWorkspaces()") })
+		remove := recentWorkspaces.AddSubmenu(label("移除一条记录…", "Remove an Entry…"))
+		for _, entry := range entries {
+			id, _ := json.Marshal(entry.ID)
+			remove.AddText(entry.Name+" — "+entry.Path, nil, func(*menu.CallbackData) { host.Evaluate("window.Mory.removeRecentWorkspace(" + string(id) + ")") })
+		}
 	}
 	file.AddSeparator()
 	file.AddText(label("保存", "Save"), keys.CmdOrCtrl("s"), func(*menu.CallbackData) { _ = host.Save() })
@@ -222,6 +249,7 @@ func buildMenu(platform *windowsPlatform, english bool) *menu.Menu {
 	view.AddText(label("缩小", "Zoom Out"), keys.CmdOrCtrl("-"), func(*menu.CallbackData) { host.Evaluate("window.Mory.zoom(-1)") })
 
 	help := application.AddSubmenu(label("帮助", "Help"))
+	help.AddText(label("使用介绍", "User Guide"), nil, func(*menu.CallbackData) { host.Evaluate("window.Mory.showIntroduction()") })
 	help.AddText(label("关于 Mory", "About Mory"), nil, func(*menu.CallbackData) { host.ShowAbout() })
 	help.AddSeparator()
 	help.AddText(label("偏好设置", "Preferences"), keys.CmdOrCtrl(","), func(*menu.CallbackData) { host.Evaluate("window.Mory.togglePreferences()") })

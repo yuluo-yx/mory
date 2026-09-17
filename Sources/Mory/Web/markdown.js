@@ -241,7 +241,8 @@ export function markdownToHTML(markdown) {
     while (index < lines.length && lines[index].trim() && !blockStart.test(lines[index]) && !readMarkdownFence(lines[index]) && !htmlBlockStart.test(lines[index]) && !(index + 1 < lines.length && isTableSeparator(lines[index + 1]))) {
       paragraph.push(lines[index++]);
     }
-    html.push(`<p>${inlineMarkdown(paragraph.join("\n")).replaceAll("\n", " ")}</p>`);
+    const literalHeading = /^\\#{1,6}\s/.test(line) ? ' data-literal-heading="true"' : "";
+    html.push(`<p${literalHeading}>${inlineMarkdown(paragraph.join("\n")).replaceAll("\n", " ")}</p>`);
   }
 
   return html.join("\n");
@@ -315,7 +316,8 @@ export function editorToMarkdown(root, { escapeText = true } = {}) {
     switch (element.tagName) {
       case "H1": case "H2": case "H3": case "H4": case "H5": case "H6":
         blocks.push(`${"#".repeat(Number(element.tagName[1]))} ${content}`); break;
-      case "P": case "DIV": blocks.push(content); break;
+      case "P": case "DIV":
+        blocks.push(element.dataset?.literalHeading ? content.replace(/^(#{1,6})(?=\s)/, "\\$1") : content); break;
       case "BLOCKQUOTE": {
         const quoteContent = [...element.children].some(child => /^(P|DIV)$/.test(child.tagName))
           ? [...element.children].map(child => inlineNodeToMarkdown(child, escapeText).trim()).join("\n")

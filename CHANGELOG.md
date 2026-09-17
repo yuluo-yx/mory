@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Start each launch with a blank document and no active workspace. Show the introduction only on first use without existing workspace records; reopen it through Help > User Guide.
+- Add separate Recent Workspaces menus on macOS, Windows, and Electron, with most-recent ordering, individual removal, and history clearing. Missing local directories are reported without recreating them.
+- Restore the last visited document only after explicitly opening its workspace. Preserve unsaved documents across workspace changes and recover dirty buffers beside the new blank document after restarting.
+- Reuse local workspace records when opening the same directory. Existing workspace settings remain compatible; recent history and legacy draft recovery migrate automatically without changing Markdown files. To roll back, save recovered drafts and reinstall the previous app.
+- Remove the untouched introduction or empty-workspace placeholder when opening a Markdown file. Preserve edited introductions, saved documents, and explicitly created drafts.
+- Fix headings remaining as raw Markdown when browser editing leaves text directly under the editor root. Preserve inline content, line boundaries, and selections while restoring paragraph blocks.
+- Handle heading paragraph breaks through both keyboard and native input events. Defer normalization until composition commits, including commits targeted at the editor itself.
+- Preserve explicitly escaped heading text during live normalization and Markdown round trips.
+- Add shared Chromium and native WebKit regressions for empty-root typing, document replacement, heading levels, composition, and caret preservation.
+- Upgrade the transitive packaging dependency js-yaml to 4.3.2 to resolve GHSA-2883-xcg3-v3hh.
+
 ## 0.5.1 - 2026-09-08
 
 ### Editor fixes

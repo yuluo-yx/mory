@@ -212,6 +212,18 @@ class FakeElement {
 
 const element = (tag, children = [], attributes = {}) => new FakeElement(tag, children, attributes);
 
+test("preserves escaped heading intent through rendering and serialization", () => {
+  globalThis.Node = { TEXT_NODE: 3, ELEMENT_NODE: 1 };
+  for (let level = 1; level <= 6; level += 1) {
+    const content = `${"#".repeat(level)} literal`;
+    assert.equal(markdownToHTML(`\\${content}`), `<p data-literal-heading="true">${content}</p>`);
+    const root = element("article", [element("p", [content], { dataset: { literalHeading: "true" } })]);
+    assert.equal(editorToMarkdown(root), `\\${content}`);
+    assert.equal(editorToMarkdown(root, { escapeText: false }), `\\${content}`);
+  }
+  assert.equal(markdownToHTML("# Heading"), "<h1>Heading</h1>");
+});
+
 test("serializes code with safe fences and preserves consecutive blank lines", () => {
   globalThis.Node = { TEXT_NODE: 3, ELEMENT_NODE: 1 };
   const code = "```js\n\n\nconst value = 1;\n```";
