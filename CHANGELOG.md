@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Wait for editor animation frames in heading regressions instead of a fixed delay, and run a deterministic slow-frame case to cover hidden Windows CI windows.
+- Allow busy macOS disk images up to fifteen normal detach attempts before failing packaging. Late release of Finder handles no longer succeeds only in cleanup after the packaging step has already failed.
 - Start each launch with a blank document and no active workspace. Show the introduction only on first use without existing workspace records; reopen it through Help > User Guide.
 - Add separate Recent Workspaces menus on macOS, Windows, and Electron, with most-recent ordering, individual removal, and history clearing. Missing local directories are reported without recreating them.
 - Restore the last visited document only after explicitly opening its workspace. Preserve unsaved documents across workspace changes and recover dirty buffers beside the new blank document after restarting.

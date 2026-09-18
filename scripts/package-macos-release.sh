@@ -42,16 +42,18 @@ ATTACHED_DEVICE=""
 detach_image() {
   local device="$1"
   local attempt status
-  for attempt in {1..5}; do
+  # Finder may release its volume handles after the original eight-second retry window.
+  # Keep waiting in the packaging path so a late successful detach can still produce artifacts.
+  for attempt in {1..15}; do
     if hdiutil detach "$device"; then
       return 0
     else
       status=$?
     fi
-    if [[ "$status" -ne 16 || "$attempt" -eq 5 ]]; then
+    if [[ "$status" -ne 16 || "$attempt" -eq 15 ]]; then
       return "$status"
     fi
-    echo "Disk image is busy; retrying detach ($attempt/5): $device" >&2
+    echo "Disk image is busy; retrying detach ($attempt/15): $device" >&2
     sleep 2
   done
 }

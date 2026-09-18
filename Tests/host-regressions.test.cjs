@@ -18,17 +18,18 @@ const fs = require('node:fs');
 const attempt = Number(fs.existsSync(process.env.COUNTER) ? fs.readFileSync(process.env.COUNTER, 'utf8') : 0) + 1;
 fs.writeFileSync(process.env.COUNTER, String(attempt));
 if (process.argv.slice(2).join(' ') !== 'detach /dev/disk42') process.exit(99);
-process.exit(process.env.SCENARIO === 'permanent' ? 22 : process.env.SCENARIO === 'busy' && attempt >= 3 ? 0 : 16);
+process.exit(process.env.SCENARIO === 'permanent' ? 22 : process.env.SCENARIO === 'busy' && attempt >= 7 ? 0 : 16);
 `, { mode: 0o755 });
     fs.writeFileSync(path.join(temporary, "sleep"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
-    for (const [scenario, status, attempts] of [["busy", 0, 3], ["permanent", 22, 1], ["exhausted", 16, 5]]) {
+    for (const [scenario, status, attempts] of [["busy", 0, 7], ["permanent", 22, 1], ["exhausted", 16, 15]]) {
       const counter = path.join(temporary, scenario);
-      const result = spawnSync("bash", ["-euo", "pipefail", "-c", `${detachFunction}\ndetach_image /dev/disk42`], {
+      const result = spawnSync("bash", ["-euo", "pipefail", "-c", `${detachFunction}\ndetach_image /dev/disk42\nprintf 'continue packaging'`], {
         encoding: "utf8", timeout: 10000,
         env: { ...process.env, PATH: temporary + path.delimiter + process.env.PATH, COUNTER: counter, SCENARIO: scenario }
       });
       assert.equal(result.status, status, result.stderr);
       assert.equal(Number(fs.readFileSync(counter, "utf8")), attempts);
+      assert.equal(result.stdout, status === 0 ? 'continue packaging' : '', 'Packaging must continue only after a successful detach');
     }
     assert.doesNotMatch(script, /hdiutil detach[^\n]*-quiet/);
     assert.match(script, /if ! detach_image/);

@@ -3,7 +3,20 @@ async function runHeadingInputCases() {
   const passed = [];
   const failures = [];
   const check = (condition, message) => { if (!condition) throw new Error(`${message}; DOM=${editor.innerHTML}`); };
-  const settle = () => new Promise(resolve => setTimeout(resolve, 80));
+  const settle = () => new Promise((resolve, reject) => {
+    let frame;
+    const timeout = setTimeout(() => {
+      cancelAnimationFrame(frame);
+      reject(new Error('Editor animation frames did not settle within 5 seconds'));
+    }, 5000);
+    // Composition commits can queue normalization for the following frame.
+    frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
+        clearTimeout(timeout);
+        resolve();
+      });
+    });
+  });
   const caret = (node, offset) => {
     const range = document.createRange();
     range.setStart(node, offset);
