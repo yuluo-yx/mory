@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 import WebKit
 
 final class IMEKeyWindow: NSWindow {
@@ -14,6 +15,12 @@ final class MacIMEInputSmoke: NSObject, NSApplicationDelegate, WKNavigationDeleg
 
     private var window: NSWindow!
     private var webView: WKWebView!
+    private var previousInputSource: TISInputSource?
+    private var inputMonitor: Any?
+    private let eventMarker: Int64 = 0x4D4F5259
+    private let sentencePrefix = "\u{6362}\u{800C}\u{8A00}\u{4E4B}\u{53EA}\u{9700}\u{8981}"
+    private let pinyinID = "com.apple.inputmethod.SCIM.ITABC"
+    private var finished = false
     private let headingStrokes = [
         Stroke(keyCode: 45),
         Stroke(keyCode: 34),
@@ -42,21 +49,33 @@ final class MacIMEInputSmoke: NSObject, NSApplicationDelegate, WKNavigationDeleg
         let delegate = MacIMEInputSmoke()
         application.delegate = delegate
         application.setActivationPolicy(.regular)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
+            delegate.finish(failure: "Native IME test exceeded its 30-second deadline")
+        }
         application.run()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        previousInputSource = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
+        inputMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
+            guard let self, !finished else { return event }
+            guard event.cgEvent?.getIntegerValueField(.eventSourceUserData) == eventMarker else {
+                finishInconclusive("Unrelated keyboard input reached the test window (key code \(event.keyCode))")
+                return nil
+            }
+            return event
+        }
         let configuration = WKWebViewConfiguration()
         webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 900, height: 620), configuration: configuration)
         webView.navigationDelegate = self
         window = IMEKeyWindow(
             contentRect: webView.frame,
-            styleMask: [.borderless],
+            styleMask: [.titled],
             backing: .buffered,
             defer: false
         )
-        window.alphaValue = 0.02
-        window.setFrameOrigin(NSPoint(x: -1_800, y: -1_200))
+        window.title = "Mory native Pinyin regression"
+        window.center()
         window.contentView = webView
         window.makeKeyAndOrderFront(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
@@ -73,8 +92,13 @@ final class MacIMEInputSmoke: NSObject, NSApplicationDelegate, WKNavigationDeleg
         (() => {
           window.Mory.loadMarkdown('');
           window.__moryIMETrace = [];
+          window.__moryKeyCount = 0;
+          window.__moryComposing = false;
           const write = document.querySelector('#write');
           const record = event => {
+            if (event.type === 'keydown') window.__moryKeyCount += 1;
+            if (event.type === 'compositionstart') window.__moryComposing = true;
+            if (event.type === 'compositionend') window.__moryComposing = false;
             const selection = getSelection();
             window.__moryIMETrace.push({
               type: event.type,
@@ -115,12 +139,65 @@ final class MacIMEInputSmoke: NSObject, NSApplicationDelegate, WKNavigationDeleg
                 finish(failure: "Native IME test initialization failed: \(error.localizedDescription)")
                 return
             }
-            window.makeKeyAndOrderFront(nil)
-            NSApplication.shared.activate(ignoringOtherApps: true)
-            window.makeFirstResponder(webView)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                print("Native IME host: active=\(NSApplication.shared.isActive), key=\(self.window.isKeyWindow), firstResponder=\(String(describing: self.window.firstResponder))")
+            prepareInput(deadline: Date().addingTimeInterval(5))
+        }
+    }
+
+    private func inputSourceID(_ source: TISInputSource) -> String {
+        guard let value = TISGetInputSourceProperty(source, kTISPropertyInputSourceID) else { return "" }
+        return Unmanaged<CFString>.fromOpaque(value).takeUnretainedValue() as String
+    }
+
+    private func prepareInput(deadline: Date) {
+        window.makeKeyAndOrderFront(nil)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        window.makeFirstResponder(webView)
+        guard NSApplication.shared.isActive, window.isKeyWindow else {
+            guard Date() < deadline else { finish(failure: "Native IME window did not acquire focus; no keys were sent"); return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { self.prepareInput(deadline: deadline) }
+            return
+        }
+        let filter = [kTISPropertyInputSourceID as String: pinyinID] as CFDictionary
+        let sources = TISCreateInputSourceList(filter, false).takeRetainedValue() as! [TISInputSource]
+        guard let pinyin = sources.first, TISSelectInputSource(pinyin) == noErr else {
+            fputs("SKIP: Simplified Pinyin is not installed or selectable.\n", stderr)
+            cleanup()
+            Darwin.exit(77)
+        }
+        guard inputSourceID(TISCopyCurrentKeyboardInputSource().takeRetainedValue()) == pinyinID else {
+            finish(failure: "The selected input source is not Simplified Pinyin")
+            return
+        }
+        waitForScript("document.activeElement === document.querySelector('#write')", deadline: deadline) {
+            // Input-source restoration by the window system may lag application activation.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                guard Date() < deadline else { self.finishInconclusive("Native IME input source did not settle"); return }
+                guard NSApplication.shared.isActive, self.window.isKeyWindow,
+                      self.inputSourceID(TISCopyCurrentKeyboardInputSource().takeRetainedValue()) == self.pinyinID else {
+                    self.prepareInput(deadline: deadline)
+                    return
+                }
+                print("Native IME focus and Simplified Pinyin verified")
+                if ProcessInfo.processInfo.arguments.contains("--inject-unrelated-key") {
+                    // Exercise the inconclusive result with a real, untagged native event.
+                    for keyDown in [true, false] {
+                        CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: keyDown)?.postToPid(getpid())
+                    }
+                    return
+                }
                 self.clearPendingComposition()
+            }
+        }
+    }
+
+    private func waitForScript(_ predicate: String, deadline: Date, completion: @escaping () -> Void) {
+        webView.evaluateJavaScript(predicate) { [weak self] value, error in
+            guard let self, !finished else { return }
+            if let error { finish(failure: "Native IME readiness check failed: \(error)"); return }
+            if value as? Bool == true { completion(); return }
+            guard Date() < deadline else { finish(failure: "Native IME event acknowledgment timed out: \(predicate)"); return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                self.waitForScript(predicate, deadline: deadline, completion: completion)
             }
         }
     }
@@ -133,7 +210,8 @@ final class MacIMEInputSmoke: NSObject, NSApplicationDelegate, WKNavigationDeleg
                 keyDown: keyDown
             ) else { continue }
             event.flags = []
-            event.post(tap: .cghidEventTap)
+            event.setIntegerValueField(.eventSourceUserData, value: eventMarker)
+            event.postToPid(getpid())
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
             guard let self else { return }
@@ -147,17 +225,31 @@ final class MacIMEInputSmoke: NSObject, NSApplicationDelegate, WKNavigationDeleg
             return
         }
         let stroke = strokes[index]
-        for keyDown in [true, false] {
-            guard let event = CGEvent(
-                keyboardEventSource: nil,
-                virtualKey: CGKeyCode(stroke.keyCode),
-                keyDown: keyDown
-            ) else { continue }
-            event.flags = []
-            event.post(tap: .cghidEventTap)
+        guard NSApplication.shared.isActive, window.isKeyWindow,
+              inputSourceID(TISCopyCurrentKeyboardInputSource().takeRetainedValue()) == pinyinID else {
+            finishInconclusive("Native IME focus or input source changed before a key was sent")
+            return
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-            self?.sendStrokes(strokes, at: index + 1, completion: completion)
+        webView.evaluateJavaScript("window.__moryKeyCount") { [weak self] value, error in
+            guard let self, let count = value as? Int, error == nil else {
+                self?.finish(failure: "Unable to read the native IME key acknowledgment counter")
+                return
+            }
+            for keyDown in [true, false] {
+                guard let event = CGEvent(keyboardEventSource: nil, virtualKey: stroke.keyCode, keyDown: keyDown) else {
+                    finish(failure: "Unable to create a native keyboard event")
+                    return
+                }
+                event.flags = []
+                event.setIntegerValueField(.eventSourceUserData, value: self.eventMarker)
+                event.postToPid(getpid())
+            }
+            let committed = stroke.keyCode == 49 ? " && !window.__moryComposing" : ""
+            waitForScript("window.__moryKeyCount > \(count)\(committed)", deadline: Date().addingTimeInterval(3)) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    self.sendStrokes(strokes, at: index + 1, completion: completion)
+                }
+            }
         }
     }
 
@@ -205,9 +297,9 @@ final class MacIMEInputSmoke: NSObject, NSApplicationDelegate, WKNavigationDeleg
           window.__moryIMETrace = [];
           const write = document.querySelector('#write');
           const paragraph = write.querySelector('p');
-          paragraph.textContent = '****';
+          paragraph.textContent = '\(sentencePrefix)****';
           const range = document.createRange();
-          range.setStart(paragraph.firstChild, 2);
+          range.setStart(paragraph.firstChild, \(sentencePrefix.utf16.count + 2));
           range.collapse(true);
           getSelection().removeAllRanges();
           getSelection().addRange(range);
@@ -246,20 +338,52 @@ final class MacIMEInputSmoke: NSObject, NSApplicationDelegate, WKNavigationDeleg
                 return
             }
             guard let result = value as? [String: Any],
-                  result["text"] as? String == "\u{51B3}\u{7B56}\u{5373}\u{53EF}",
+                  result["text"] as? String == sentencePrefix + "\u{51B3}\u{7B56}\u{5373}\u{53EF}",
                   result["bold"] as? String == "\u{51B3}\u{7B56}",
-                  result["markdown"] as? String == "**\u{51B3}\u{7B56}**\u{5373}\u{53EF}" else {
+                  result["markdown"] as? String == sentencePrefix + "**\u{51B3}\u{7B56}**\u{5373}\u{53EF}" else {
                 finish(failure: "Native Simplified Chinese Pinyin bold boundary failed: \(String(describing: value))")
                 return
             }
-            print("macOS Simplified Chinese Pinyin bold boundary passed: bold=expected first candidate, following text=plain")
+            print("macOS Simplified Chinese Pinyin bold boundary passed: sentence prefix preserved, bold=expected first candidate, following text=plain")
+            cleanup()
             NSApplication.shared.terminate(nil)
         }
     }
 
     private func finish(failure: String) {
+        guard !finished else { return }
         fputs("\(failure)\n", stderr)
+        cleanup()
         Darwin.exit(1)
+    }
+
+    private func finishInconclusive(_ reason: String) {
+        guard !finished else { return }
+        fputs("SKIP: \(reason); no product conclusion can be drawn from this run.\n", stderr)
+        cleanup()
+        Darwin.exit(77)
+    }
+
+    private func cleanup() {
+        finished = true
+        if let inputMonitor { NSEvent.removeMonitor(inputMonitor); self.inputMonitor = nil }
+        if let previousInputSource {
+            guard TISSelectInputSource(previousInputSource) == noErr,
+                  inputSourceID(TISCopyCurrentKeyboardInputSource().takeRetainedValue()) == inputSourceID(previousInputSource) else {
+                fputs("Failed to restore the previous input source.\n", stderr)
+                Darwin.exit(1)
+            }
+            print("Native IME input source restored")
+        }
+        window?.orderOut(nil)
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        finish(failure: "Native IME page load failed: \(error)")
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        finish(failure: "Native IME navigation failed: \(error)")
     }
 }
 

@@ -41,26 +41,13 @@ func (backend *sftpBackend) Pull(ctx context.Context, root string) (Summary, err
 			continue
 		}
 		relative := strings.TrimPrefix(strings.TrimPrefix(walker.Path(), remoteRoot), "/")
-		destination, err := safeLocalPath(root, relative)
-		if err != nil {
-			return summary, err
-		}
-		if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
-			return summary, fmt.Errorf("create local directory: %w", err)
-		}
 		remoteFile, err := client.Open(walker.Path())
 		if err != nil {
 			return summary, fmt.Errorf("open sftp file %q: %w", relative, err)
 		}
-		localFile, err := os.Create(destination)
-		if err != nil {
-			remoteFile.Close()
-			return summary, fmt.Errorf("create local file %q: %w", relative, err)
-		}
-		written, copyErr := io.Copy(localFile, remoteFile)
-		closeErr := errors.Join(localFile.Close(), remoteFile.Close())
-		if copyErr != nil || closeErr != nil {
-			return summary, fmt.Errorf("download sftp file %q: %w", relative, errors.Join(copyErr, closeErr))
+		written, copyErr := copyRemoteFile(root, relative, remoteFile)
+		if copyErr != nil {
+			return summary, fmt.Errorf("download sftp file %q: %w", relative, copyErr)
 		}
 		summary.Files++
 		summary.Bytes += written

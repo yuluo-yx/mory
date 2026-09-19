@@ -32,7 +32,7 @@ final class ThemeManager {
         return try files.compactMap { file in
             let values = try file.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
             guard values.isRegularFile == true, (values.fileSize ?? 0) <= 1024 * 1024 else { return nil }
-            let css = try inlineAssets(in: String(contentsOf: file, encoding: .utf8), base: directory)
+            let css = try Self.inlineAssets(in: String(contentsOf: file, encoding: .utf8), base: directory)
             return ["id": themeID(file.lastPathComponent), "name": file.deletingPathExtension().lastPathComponent,
                     "filename": file.lastPathComponent, "css": css]
         }
@@ -60,7 +60,7 @@ final class ThemeManager {
         return "user-\(base.isEmpty ? "theme" : String(base.prefix(48)))-\(digest)"
     }
 
-    private func inlineAssets(in css: String, base: URL) throws -> String {
+    static func inlineAssets(in css: String, base: URL) throws -> String {
         let expression = try NSRegularExpression(pattern: #"url\(\s*([\"']?)([^\"')]+)\1\s*\)"#, options: .caseInsensitive)
         var result = css
         var total = 0
@@ -69,7 +69,8 @@ final class ThemeManager {
             let reference = String(css[referenceRange]).trimmingCharacters(in: .whitespacesAndNewlines)
             if reference.range(of: #"^(data:|https?:|file:|#|/)"#, options: [.regularExpression, .caseInsensitive]) != nil { continue }
             let asset = base.appendingPathComponent(reference.removingPercentEncoding ?? reference).standardizedFileURL
-            guard asset.path.hasPrefix(base.standardizedFileURL.path + "/"), fileManager.fileExists(atPath: asset.path) else { continue }
+            guard asset.path.hasPrefix(base.standardizedFileURL.path + "/"), FileManager.default.fileExists(atPath: asset.path),
+                  (try? validateContainedURL(root: base, candidate: asset)) != nil else { continue }
             let data = try Data(contentsOf: asset)
             total += data.count
             if total > 5 * 1024 * 1024 { throw workspaceError("主题资源总大小不能超过 5 MB。") }

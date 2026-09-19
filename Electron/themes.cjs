@@ -1,6 +1,7 @@
 const crypto = require("node:crypto");
 const fs = require("node:fs/promises");
 const path = require("node:path");
+const { containedPath } = require("./workspace-paths.cjs");
 
 const MAX_THEME_BYTES = 1024 * 1024;
 const MAX_ASSET_BYTES = 5 * 1024 * 1024;
@@ -31,6 +32,11 @@ async function inlineThemeAssets(css, directory) {
     const resolved = path.resolve(directory, decoded.split(/[?#]/)[0]);
     const relative = path.relative(directory, resolved);
     if (relative === ".." || relative.startsWith(`..${path.sep}`)) continue;
+    try { containedPath(directory, resolved); }
+    catch (error) {
+      if (["ENOENT", "ELOOP", "MORY_PATH_OUTSIDE"].includes(error.code)) continue;
+      throw error;
+    }
     try {
       const data = await fs.readFile(resolved);
       total += data.length;

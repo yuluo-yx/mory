@@ -1,0 +1,22 @@
+[
+  { "name": "ordinary images and document links", "from": "Old", "to": "New", "source": "![x](Old/image.png) [file](Old/file.pdf)", "expected": "![x](New/image.png) [file](New/file.pdf)" },
+  { "name": "dot relative and title", "from": "Old", "to": "New", "source": "![x](./Old/image.png \"title\")", "expected": "![x](./New/image.png \"title\")" },
+  { "name": "angle URL and whitespace", "from": "Old", "to": "New", "source": "![x](<./Old/my image.png> 'title')", "expected": "![x](<./New/my image.png> 'title')" },
+  { "name": "HTML attribute variants", "from": "Old", "to": "New", "source": "<img alt='>' src=\"./Old/image.png\"><IMG SRC='Old/image.png'><img src=Old/image.png>", "expected": "<img alt='>' src=\"./New/image.png\"><IMG SRC='New/image.png'><img src=New/image.png>" },
+  { "name": "percent encoding and URL suffix", "from": "Old", "to": "New", "source": "![x](%4Fld/image%20one.png?width=2#image)", "expected": "![x](New/image%20one.png?width=2#image)" },
+  { "name": "encoded CJK directory", "from": "\u65e7", "to": "\u65b0", "source": "![x](./%E6%97%A7/image.png)", "expected": "![x](./%E6%96%B0/image.png)" },
+  { "name": "HTML escaped ampersand", "from": "Old&More", "to": "New&More", "source": "<img src=\"Old&amp;More/image.png\">", "expected": "<img src=\"New&amp;More/image.png\">" },
+  { "name": "unrelated and external paths", "from": "Old", "to": "New", "source": "![a](Older/a.png) ![b](https://example.com/Old/a.png) ![c](/Old/a.png) ![d](../Old/a.png)", "expected": "![a](Older/a.png) ![b](https://example.com/Old/a.png) ![c](/Old/a.png) ![d](../Old/a.png)" },
+  { "name": "inline code", "from": "Old", "to": "New", "source": "`![literal](Old/a.png)` ![real](Old/a.png) ``<img src=\"Old/a.png\">``", "expected": "`![literal](Old/a.png)` ![real](New/a.png) ``<img src=\"Old/a.png\">``" },
+  { "name": "fenced code", "from": "Old", "to": "New", "source": "```markdown\n![literal](Old/a.png)\n```\n![real](Old/a.png)", "expected": "```markdown\n![literal](Old/a.png)\n```\n![real](New/a.png)" },
+  { "name": "long fence and CRLF", "from": "Old", "to": "New", "source": "~~~~\r\n![literal](Old/a.png)\r\n~~~\r\n![literal](Old/b.png)\r\n~~~~\r\n![real](./Old/a.png)", "expected": "~~~~\r\n![literal](Old/a.png)\r\n~~~\r\n![literal](Old/b.png)\r\n~~~~\r\n![real](./New/a.png)" },
+  { "name": "unfinished fence", "from": "Old", "to": "New", "source": "```\n![literal](Old/a.png)", "expected": "```\n![literal](Old/a.png)" },
+  { "name": "indented code", "from": "Old", "to": "New", "source": "    ![literal](Old/a.png)\n\n![real](Old/a.png)", "expected": "    ![literal](Old/a.png)\n\n![real](New/a.png)" },
+  { "name": "HTML code and comments", "from": "Old", "to": "New", "source": "<pre><img src=\"Old/a.png\"></pre><!-- ![literal](Old/a.png) -->\n![real](Old/a.png)", "expected": "<pre><img src=\"Old/a.png\"></pre><!-- ![literal](Old/a.png) -->\n![real](New/a.png)" },
+  { "name": "escaped example", "from": "Old", "to": "New", "source": "\\![literal](Old/a.png) ![real](Old/a.png)", "expected": "\\![literal](Old/a.png) ![real](New/a.png)" },
+  { "name": "malformed encoding", "from": "Old", "to": "New", "source": "![x](%ZZ/a.png)", "expected": "![x](%ZZ/a.png)" },
+  { "name": "HTML attributes with backticks", "from": "Old", "to": "New", "source": "<img alt=\"`literal`\" src=\"Old/a.png\">", "expected": "<img alt=\"`literal`\" src=\"New/a.png\">" },
+  { "name": "unmatched code delimiter", "from": "Old", "to": "New", "source": "`![real](Old/a.png)``", "expected": "`![real](New/a.png)``" },
+  { "name": "literal token characters", "from": "Old", "to": "New", "source": "\ue1000\ue101 ![real](Old/a.png)", "expected": "\ue1000\ue101 ![real](New/a.png)" },
+  { "name": "token characters in new directory", "from": "Old", "to": "\ue1000\ue101", "source": "![real](Old/a.png)", "expected": "![real](\ue1000\ue101/a.png)" }
+]

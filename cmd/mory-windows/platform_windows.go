@@ -14,6 +14,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"golang.org/x/sys/windows"
 
+	"github.com/yuluo-yx/mory"
 	"github.com/yuluo-yx/mory/internal/recentfiles"
 	"github.com/yuluo-yx/mory/internal/slidevexport"
 	"github.com/yuluo-yx/mory/internal/windowshost"
@@ -47,10 +48,17 @@ func (platform *windowsPlatform) context() context.Context {
 	return platform.ctx
 }
 
+func (platform *windowsPlatform) text(message string) string {
+	platform.mu.RLock()
+	locale := platform.locale
+	platform.mu.RUnlock()
+	return mory.HostMessage(message, locale)
+}
+
 func (platform *windowsPlatform) ChooseDirectory(defaultDirectory string) (string, error) {
 	return runtime.OpenDirectoryDialog(platform.context(), runtime.OpenDialogOptions{
 		DefaultDirectory:     defaultDirectory,
-		Title:                "选择工作目录",
+		Title:                platform.text("选择工作目录"),
 		CanCreateDirectories: true,
 	})
 }
@@ -62,8 +70,8 @@ func (platform *windowsPlatform) ChooseFile(defaultDirectory string, extensions 
 	}
 	return runtime.OpenFileDialog(platform.context(), runtime.OpenDialogOptions{
 		DefaultDirectory: defaultDirectory,
-		Title:            "打开文件",
-		Filters:          []runtime.FileFilter{{DisplayName: "支持的文件", Pattern: strings.Join(patterns, ";")}},
+		Title:            platform.text("打开文件"),
+		Filters:          []runtime.FileFilter{{DisplayName: platform.text("支持的文件"), Pattern: strings.Join(patterns, ";")}},
 	})
 }
 
@@ -75,9 +83,9 @@ func (platform *windowsPlatform) ChooseSavePath(defaultPath string, extensions [
 	return runtime.SaveFileDialog(platform.context(), runtime.SaveDialogOptions{
 		DefaultDirectory:     filepath.Dir(defaultPath),
 		DefaultFilename:      filepath.Base(defaultPath),
-		Title:                "保存文件",
+		Title:                platform.text("保存文件"),
 		CanCreateDirectories: true,
-		Filters:              []runtime.FileFilter{{DisplayName: "支持的文件", Pattern: strings.Join(patterns, ";")}},
+		Filters:              []runtime.FileFilter{{DisplayName: platform.text("支持的文件"), Pattern: strings.Join(patterns, ";")}},
 	})
 }
 
@@ -115,15 +123,16 @@ func (platform *windowsPlatform) ChooseDraftSaveDestination(workspaceName string
 }
 
 func (platform *windowsPlatform) Confirm(title, message, detail string) (bool, error) {
+	confirm, cancel := platform.text("确定"), platform.text("取消")
 	result, err := runtime.MessageDialog(platform.context(), runtime.MessageDialogOptions{
 		Type:          runtime.WarningDialog,
 		Title:         title,
 		Message:       message + "\n\n" + detail,
-		Buttons:       []string{"确定", "取消"},
-		DefaultButton: "取消",
-		CancelButton:  "取消",
+		Buttons:       []string{confirm, cancel},
+		DefaultButton: cancel,
+		CancelButton:  cancel,
 	})
-	return result == "确定", err
+	return result == confirm, err
 }
 
 func (platform *windowsPlatform) Trash(path string) error { return moveToRecycleBin(path) }
@@ -289,12 +298,13 @@ func (platform *windowsPlatform) clearRecentDocuments() {
 }
 
 func (platform *windowsPlatform) showError(title string, cause error) {
+	confirm := platform.text("确定")
 	_, _ = runtime.MessageDialog(platform.context(), runtime.MessageDialogOptions{
 		Type:          runtime.ErrorDialog,
 		Title:         title,
-		Message:       cause.Error(),
-		Buttons:       []string{"确定"},
-		DefaultButton: "确定",
+		Message:       platform.text(cause.Error()),
+		Buttons:       []string{confirm},
+		DefaultButton: confirm,
 	})
 }
 

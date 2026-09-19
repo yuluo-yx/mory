@@ -33,6 +33,26 @@ async function fixture(t) {
   return root;
 }
 
+test('rename and Save As preserve dot-relative and HTML image references', async t => {
+  for (const operation of ['rename', 'save as']) {
+    for (const markdown of ['![image](Old/image.png)', '![image](./Old/image.png)', '<img src="Old/image.png">']) {
+      const root = await fixture(t);
+      const source = path.join(root, 'Old.md');
+      const target = path.join(root, operation === 'rename' ? '' : 'destination', 'New.md');
+      await fs.mkdir(path.join(root, 'Old'));
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      await fs.writeFile(source, markdown);
+      await fs.writeFile(path.join(root, 'Old/image.png'), 'image');
+      assert.equal(Object.keys(await loadDocumentAssets(source, markdown, root)).length, 1);
+      if (operation === 'rename') await renameWorkspaceEntry(root, source, 'New.md');
+      else await fs.writeFile(target, await relocateDocumentAssets({ root, markdown, oldPath: source, oldName: 'Old.md', newPath: target }));
+      const saved = await fs.readFile(target, 'utf8');
+      assert.equal(Object.keys(await loadDocumentAssets(target, saved, root)).length, 1, `${operation}: ${saved}`);
+      if (operation === 'save as') assert.equal(await fs.readFile(source, 'utf8'), markdown);
+    }
+  }
+});
+
 test("creates a default local workspace on first launch", async t => {
   const root = await fixture(t);
   const local = path.join(root, "documents");

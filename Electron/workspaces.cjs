@@ -3,6 +3,7 @@ const crypto = require("node:crypto");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
+const { containedPath, realDestination, validateContainedTree } = require("./workspace-paths.cjs");
 
 const DOCUMENT_EXTENSIONS = new Set([".md", ".markdown", ".mmd", ".mdown", ".mkd", ".txt", ".text"]);
 const IMAGE_MIME = new Map([
@@ -222,8 +223,11 @@ async function listDocumentImages(documentPath, markdown) {
   const visited = new Set();
   async function visit(directory, current) {
     let entries;
-    try { entries = await fs.readdir(current, { withFileTypes: true }); }
-    catch (error) { if (error.code === "ENOENT") return; throw error; }
+    try {
+      containedPath(path.dirname(documentPath), current);
+      entries = await fs.readdir(current, { withFileTypes: true });
+    }
+    catch (error) { if (["ENOENT", "ELOOP", "MORY_PATH_OUTSIDE"].includes(error.code)) return; throw error; }
     for (const entry of entries) {
       if (entry.name.startsWith(".")) continue;
       const fullPath = path.join(current, entry.name);
@@ -251,6 +255,7 @@ async function readDocumentImage(root, imagePath) {
   const local = path.relative(resolvedRoot, resolved);
   if (!local || local === ".." || local.startsWith(`..${path.sep}`) || path.isAbsolute(local)) throw new Error("图片必须位于当前工作区内。");
   if (!IMAGE_EXTENSIONS.has(path.extname(resolved).toLowerCase())) throw new Error("不支持的图片格式。");
+  containedPath(root, resolved);
   const data = await fs.readFile(resolved);
   if (data.length > 50 * 1024 * 1024) throw new Error("图片超过 50 MB。");
   return { name: path.basename(resolved), path: resolved, dataURL: `data:${mimeForPath(resolved)};base64,${data.toString("base64")}` };
@@ -295,6 +300,7 @@ function resolveWorkspaceDirectory(root, relativePath) {
 
 async function createWorkspaceDirectory(root, relativePath) {
   const { resolved, relative } = resolveWorkspaceDirectory(root, relativePath);
+  containedPath(root, resolved);
   await fs.mkdir(resolved, { recursive: true });
   const stat = await fs.stat(resolved);
   const birthtime = Number(stat.birthtimeMs);
@@ -309,7 +315,7 @@ function workspaceEntryPath(root, value, kind = "条目") {
   if (!local || local === ".." || local.startsWith(`..${path.sep}`) || path.isAbsolute(local)) {
     throw new Error(`${kind}必须位于当前工作区内。`);
   }
-  return resolved;
+  return containedPath(root, resolved);
 }
 
 async function workspaceDirectory(root, value) {
@@ -327,7 +333,7 @@ function companionAssets(documentPath) {
 }
 
 async function entryExists(target) {
-  try { await fs.stat(target); return true; }
+  try { await fs.lstat(target); return true; }
   catch (error) { if (error.code === "ENOENT") return false; throw error; }
 }
 
@@ -342,7 +348,7 @@ async function availableEntryPath(directory, name, isDirectory) {
 }
 
 function isSameOrDescendant(parent, candidate) {
-  const local = path.relative(parent, candidate);
+  const local = path.relative(realDestination(parent), realDestination(candidate));
   return !local || (!local.startsWith(`..${path.sep}`) && local !== ".." && !path.isAbsolute(local));
 }
 
@@ -369,6 +375,8 @@ async function copyWorkspaceEntry(root, sourcePath, destinationPath) {
   const stat = await fs.stat(source);
   if (stat.isDirectory() && isSameOrDescendant(source, destination)) throw new Error("不能把目录复制到自身或子目录。");
   const target = await availableEntryPath(destination, path.basename(source), stat.isDirectory());
+  validateContainedTree(root, source);
+  if (!stat.isDirectory()) validateContainedTree(root, companionAssets(source));
   if (stat.isDirectory()) {
     await fs.cp(source, target, { recursive: true, errorOnExist: true, force: false });
   } else {
@@ -386,6 +394,8 @@ async function moveWorkspaceEntry(root, sourcePath, destinationPath) {
   if (path.dirname(source) === destination) throw new Error("条目已经位于所选目录。");
   if (stat.isDirectory() && isSameOrDescendant(source, destination)) throw new Error("不能把目录移动到自身或子目录。");
   const target = await availableEntryPath(destination, path.basename(source), stat.isDirectory());
+  validateContainedTree(root, source);
+  if (!stat.isDirectory()) validateContainedTree(root, companionAssets(source));
   try {
     await fs.rename(source, target);
   } catch (error) {
@@ -435,12 +445,15 @@ async function renameWorkspaceEntry(root, sourcePath, requestedName) {
 
   const sourceAssets = companionAssets(source);
   const targetAssets = companionAssets(target);
+  containedPath(root, sourceAssets);
+  containedPath(root, targetAssets);
   const hasAssets = await entryExists(sourceAssets);
   if (hasAssets && await entryExists(targetAssets)) throw new Error("同名图片目录已经存在。");
   const markdown = await fs.readFile(source, "utf8");
   const oldBase = path.basename(sourceAssets);
   const newBase = path.basename(targetAssets);
-  const nextMarkdown = markdown.split(`](${oldBase}/`).join(`](${newBase}/`);
+  const { rebaseSavedAssetPaths } = await import('../Sources/Mory/Web/editor-features.js');
+  const nextMarkdown = rebaseSavedAssetPaths(markdown, { [`${oldBase}/`]: `${newBase}/` });
   let assetsMoved = false;
   await fs.rename(source, target);
   try {
@@ -448,7 +461,7 @@ async function renameWorkspaceEntry(root, sourcePath, requestedName) {
       await fs.rename(sourceAssets, targetAssets);
       assetsMoved = true;
     }
-    if (nextMarkdown !== markdown) await fs.writeFile(target, nextMarkdown);
+    if (nextMarkdown !== markdown) await require('./atomic-file.cjs').writeAtomicFile(target, nextMarkdown);
   } catch (error) {
     if (assetsMoved) await fs.rename(targetAssets, sourceAssets).catch(() => {});
     await fs.rename(target, source).catch(() => {});
@@ -509,6 +522,7 @@ async function loadDocumentAssets(documentPath, markdown, workspaceRoot = path.d
     const local = path.relative(root, resolved);
     if (local === ".." || local.startsWith(`..${path.sep}`)) continue;
     try {
+      containedPath(root, resolved);
       const data = await fs.readFile(resolved);
       const mime = mimeForPath(resolved);
       assets[relative.replaceAll("\\", "/")] = `data:${mime};base64,${data.toString("base64")}`;
@@ -527,6 +541,9 @@ async function importImage({ root, documentPath, documentName, name, mime, data 
   const documentBase = sanitizeSegment(path.basename(documentName || "未命名.md", path.extname(documentName || "未命名.md")) || "未命名");
   const documentDirectory = documentPath ? path.dirname(documentPath) : root;
   const assetDirectory = path.join(documentDirectory, documentBase);
+  const local = path.relative(path.resolve(root), path.resolve(documentDirectory));
+  const assetRoot = local === ".." || local.startsWith(`..${path.sep}`) || path.isAbsolute(local) ? documentDirectory : root;
+  containedPath(assetRoot, assetDirectory);
   await fs.mkdir(assetDirectory, { recursive: true });
   const originalBase = sanitizeSegment(path.basename(name || `图片${extension}`, path.extname(name || "")) || "图片");
   let filename = `${originalBase}${extension}`;
@@ -555,13 +572,16 @@ async function relocateDocumentAssets({ root, markdown, oldPath, oldName, newPat
   } catch {
     return markdown;
   }
+  validateContainedTree(oldPath ? path.dirname(oldPath) : root, oldDirectory);
+  containedPath(path.dirname(newPath), newDirectory);
   // Save As must preserve the original document's assets and never merge conflicting folders.
   await fs.mkdir(newDirectory);
   // Copy children into the reserved directory; strict cp rejects an existing destination root.
   for (const entry of await fs.readdir(oldDirectory)) {
     await fs.cp(path.join(oldDirectory, entry), path.join(newDirectory, entry), { recursive: true, force: false, errorOnExist: true });
   }
-  return String(markdown).split(`](${oldBase}/`).join(`](${newBase}/`);
+  const { rebaseSavedAssetPaths } = await import('../Sources/Mory/Web/editor-features.js');
+  return rebaseSavedAssetPaths(markdown, { [`${oldBase}/`]: `${newBase}/` });
 }
 
 function sanitizeSegment(value) {
