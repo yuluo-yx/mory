@@ -224,6 +224,15 @@ test("preserves escaped heading intent through rendering and serialization", () 
   assert.equal(markdownToHTML("# Heading"), "<h1>Heading</h1>");
 });
 
+test("renders empty ATX headings as editable headings", () => {
+  assert.equal(
+    markdownToHTML("## Before\n\n###\n\n## After"),
+    "<h2>Before</h2>\n<h3><br></h3>\n<h2>After</h2>"
+  );
+  globalThis.Node = { TEXT_NODE: 3, ELEMENT_NODE: 1 };
+  assert.equal(editorToMarkdown(element("article", [element("h3", [element("br")])])), "###");
+});
+
 test("serializes code with safe fences and preserves consecutive blank lines", () => {
   globalThis.Node = { TEXT_NODE: 3, ELEMENT_NODE: 1 };
   const code = "```js\n\n\nconst value = 1;\n```";

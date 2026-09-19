@@ -797,7 +797,8 @@ app.whenReady().then(async () => {
       paragraph.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertCompositionText', data: '\u4F60\u597D', isComposing: true }));
       paragraph.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '\u4F60\u597D' }));
       const enter = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Enter' });
-      const dispatched = paragraph.dispatchEvent(enter);
+      const committedBlock = document.querySelector('#write > h1') || paragraph;
+      const dispatched = committedBlock.dispatchEvent(enter);
       return { prevented: !dispatched };
     })()`);
     await expect(window, "Enter immediately after IME commit creates a heading and paragraph", `(() => {
@@ -878,6 +879,55 @@ app.whenReady().then(async () => {
     })()`);
     await window.webContents.insertText("\u8FD9\u662F **\u5373\u65F6\u52A0\u7C97** \u6587\u672C");
     await expect(window, "paired asterisks convert to bold immediately", "document.querySelector('#write p strong')?.textContent === '\u5373\u65F6\u52A0\u7C97' && document.querySelector('#write p')?.textContent === '\u8FD9\u662F \u5373\u65F6\u52A0\u7C97 \u6587\u672C'");
+
+    const inlineCompositionCases = [
+      { label: "bold", source: "****", offset: 2, selector: "strong", markdown: "**\\u51B3\\u7B56**\\u5373\\u53EF" },
+      { label: "underscore bold", source: "____", offset: 2, selector: "strong", markdown: "**\\u51B3\\u7B56**\\u5373\\u53EF" },
+      { label: "italic", source: "**", offset: 1, selector: "em", markdown: "*\\u51B3\\u7B56*\\u5373\\u53EF" },
+      { label: "underscore italic", source: "__", offset: 1, selector: "em", markdown: "*\\u51B3\\u7B56*\\u5373\\u53EF" },
+      { label: "strikethrough", source: "~~~~", offset: 2, selector: "del", markdown: "~~\\u51B3\\u7B56~~\\u5373\\u53EF" },
+      { label: "inline code", source: "``", offset: 1, selector: "code", markdown: "`\\u51B3\\u7B56`\\u5373\\u53EF" },
+      { label: "link", source: "[](https://example.com)", offset: 1, selector: "a", markdown: "[\\u51B3\\u7B56](https://example.com)\\u5373\\u53EF" }
+    ];
+    for (const testCase of inlineCompositionCases) {
+      await inspect(window, `(() => {
+        window.Mory.loadMarkdown('');
+        const paragraph = document.querySelector('#write p');
+        paragraph.textContent = ${JSON.stringify(testCase.source)};
+        const range = document.createRange();
+        range.setStart(paragraph.firstChild, ${testCase.offset});
+        range.collapse(true);
+        const selection = getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        document.querySelector('#write').focus();
+        paragraph.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+        paragraph.firstChild.insertData(${testCase.offset}, '\\u51B3\\u7B56');
+        range.setStart(paragraph.firstChild, ${testCase.offset + 2});
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        paragraph.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertCompositionText', data: '\\u51B3\\u7B56', isComposing: true }));
+        paragraph.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '\\u51B3\\u7B56' }));
+        const activeParagraph = document.querySelector('#write p');
+        activeParagraph.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+        const secondRange = getSelection().getRangeAt(0);
+        const secondText = document.createTextNode('\\u5373\\u53EF');
+        secondRange.insertNode(secondText);
+        secondRange.setStart(secondText, secondText.data.length);
+        secondRange.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(secondRange);
+        activeParagraph.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertCompositionText', data: '\\u5373\\u53EF', isComposing: true }));
+        activeParagraph.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '\\u5373\\u53EF' }));
+      })()`);
+      await expect(window, `consecutive Chinese compositions exit ${testCase.label} at its closing Markdown marker`, `(() => {
+        const formatted = document.querySelector('#write p ${testCase.selector}');
+        return formatted?.textContent === '\\u51B3\\u7B56'
+          && document.querySelector('#write p')?.textContent === '\\u51B3\\u7B56\\u5373\\u53EF'
+          && window.Mory.getMarkdown() === '${testCase.markdown}';
+      })()`);
+    }
 
     await inspect(window, `(() => {
       window.Mory.loadMarkdown('');
@@ -1185,6 +1235,48 @@ app.whenReady().then(async () => {
       emptyQuote.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Enter' }));
     })()`);
     await expect(window, "a second Enter exits consecutive blockquotes", "document.querySelectorAll('#write > blockquote').length === 1 && document.querySelector('#write > blockquote')?.textContent === '\u5F15\u7528\u5185\u5BB9' && document.querySelector('#write > blockquote + p')");
+
+    await inspect(window, `(() => {
+      window.Mory.loadMarkdown('## First\\n\\n## Second');
+      const heading = document.querySelectorAll('#write > h2')[1];
+      const range = document.createRange();
+      range.selectNodeContents(heading);
+      range.collapse(true);
+      getSelection().removeAllRanges();
+      getSelection().addRange(range);
+      heading.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Enter' }));
+    })()`);
+    await window.webContents.insertText('Body');
+    await expect(window, "Enter at the start of a heading inserts body text before the intact heading", "document.querySelectorAll('#write > h2').length === 2 && document.querySelector('#write > h2:first-child')?.textContent === 'First' && document.querySelector('#write > h2:first-child + p')?.textContent === 'Body' && document.querySelector('#write > p + h2')?.textContent === 'Second' && window.Mory.getMarkdown() === '## First\\n\\nBody\\n\\n## Second'");
+
+    await inspect(window, `(() => {
+      window.Mory.loadMarkdown('## First\\n\\n## Second');
+      const heading = document.querySelectorAll('#write > h2')[1];
+      const range = document.createRange();
+      range.selectNodeContents(heading);
+      range.collapse(true);
+      getSelection().removeAllRanges();
+      getSelection().addRange(range);
+      heading.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Enter' }));
+    })()`);
+    await window.webContents.insertText('###');
+    window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Space" });
+    window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Space" });
+    await wait(40);
+    await expect(window, "a space after heading markers creates a visible editable nested heading", "(() => { const heading = document.querySelector('#write > h2:first-child + h3'); const anchor = getSelection()?.anchorNode; const active = (anchor?.nodeType === Node.ELEMENT_NODE ? anchor : anchor?.parentElement)?.closest('#write > *'); return heading?.firstChild && heading.getBoundingClientRect().height > 0 && active === heading && document.querySelector('#write > h3 + h2')?.textContent === 'Second' && window.Mory.getMarkdown() === '## First\\n\\n###\\n\\n## Second'; })()");
+    await inspect(window, "window.Mory.toggleSource(true); window.Mory.toggleSource(false)");
+    await expect(window, "an empty nested heading survives a source and preview round trip", "document.querySelector('#write > h2:first-child + h3:empty, #write > h2:first-child + h3:has(br)') && document.querySelector('#write > h3 + h2')?.textContent === 'Second' && window.Mory.getMarkdown() === '## First\\n\\n###\\n\\n## Second'");
+    await inspect(window, `(() => {
+      const heading = document.querySelector('#write > h3');
+      const range = document.createRange();
+      range.selectNodeContents(heading);
+      range.collapse(true);
+      getSelection().removeAllRanges();
+      getSelection().addRange(range);
+      document.querySelector('#write').focus();
+    })()`);
+    await window.webContents.insertText('Nested');
+    await expect(window, "typing after the round trip keeps text in the nested heading", "document.querySelector('#write > h3')?.textContent === 'Nested' && window.Mory.getMarkdown() === '## First\\n\\n### Nested\\n\\n## Second'");
 
     await inspect(window, `(() => {
       window.Mory.loadMarkdown('## AlphaBeta');

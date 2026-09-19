@@ -14,7 +14,7 @@ final class MacIMEInputSmoke: NSObject, NSApplicationDelegate, WKNavigationDeleg
 
     private var window: NSWindow!
     private var webView: WKWebView!
-    private let strokes = [
+    private let headingStrokes = [
         Stroke(keyCode: 45),
         Stroke(keyCode: 34),
         Stroke(keyCode: 4),
@@ -22,6 +22,19 @@ final class MacIMEInputSmoke: NSObject, NSApplicationDelegate, WKNavigationDeleg
         Stroke(keyCode: 31),
         Stroke(keyCode: 49),
         Stroke(keyCode: 36)
+    ]
+    private let boldStrokes = [
+        Stroke(keyCode: 38),
+        Stroke(keyCode: 32),
+        Stroke(keyCode: 14),
+        Stroke(keyCode: 8),
+        Stroke(keyCode: 14),
+        Stroke(keyCode: 49),
+        Stroke(keyCode: 38),
+        Stroke(keyCode: 34),
+        Stroke(keyCode: 40),
+        Stroke(keyCode: 14),
+        Stroke(keyCode: 49)
     ]
 
     static func main() {
@@ -123,13 +136,14 @@ final class MacIMEInputSmoke: NSObject, NSApplicationDelegate, WKNavigationDeleg
             event.post(tap: .cghidEventTap)
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-            self?.sendStroke(at: 0)
+            guard let self else { return }
+            sendStrokes(headingStrokes) { self.verifyHeading() }
         }
     }
 
-    private func sendStroke(at index: Int) {
+    private func sendStrokes(_ strokes: [Stroke], at index: Int = 0, completion: @escaping () -> Void) {
         guard index < strokes.count else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.verify() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { completion() }
             return
         }
         let stroke = strokes[index]
@@ -143,11 +157,11 @@ final class MacIMEInputSmoke: NSObject, NSApplicationDelegate, WKNavigationDeleg
             event.post(tap: .cghidEventTap)
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-            self?.sendStroke(at: index + 1)
+            self?.sendStrokes(strokes, at: index + 1, completion: completion)
         }
     }
 
-    private func verify() {
+    private func verifyHeading() {
         let script = """
         (() => {
           const selection = getSelection();
@@ -180,6 +194,65 @@ final class MacIMEInputSmoke: NSObject, NSApplicationDelegate, WKNavigationDeleg
                 return
             }
             print("macOS Simplified Chinese Pinyin regression passed: heading=expected CJK text, followingBlock=P")
+            testBoldCompositionBoundary()
+        }
+    }
+
+    private func testBoldCompositionBoundary() {
+        let script = """
+        (() => {
+          window.Mory.loadMarkdown('');
+          window.__moryIMETrace = [];
+          const write = document.querySelector('#write');
+          const paragraph = write.querySelector('p');
+          paragraph.textContent = '****';
+          const range = document.createRange();
+          range.setStart(paragraph.firstChild, 2);
+          range.collapse(true);
+          getSelection().removeAllRanges();
+          getSelection().addRange(range);
+          write.focus();
+        })()
+        """
+        webView.evaluateJavaScript(script) { [weak self] _, error in
+            guard let self else { return }
+            if let error {
+                finish(failure: "Native bold IME initialization failed: \(error.localizedDescription)")
+                return
+            }
+            window.makeKeyAndOrderFront(nil)
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            window.makeFirstResponder(webView)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                self.sendStrokes(self.boldStrokes) { self.verifyBoldCompositionBoundary() }
+            }
+        }
+    }
+
+    private func verifyBoldCompositionBoundary() {
+        let script = """
+        (() => ({
+          html: document.querySelector('#write').innerHTML,
+          markdown: window.Mory.getMarkdown(),
+          text: document.querySelector('#write > p')?.textContent || '',
+          bold: document.querySelector('#write > p strong')?.textContent || '',
+          trace: window.__moryIMETrace
+        }))()
+        """
+        webView.evaluateJavaScript(script) { [weak self] value, error in
+            guard let self else { return }
+            if let error {
+                finish(failure: "Failed to read the native bold IME state: \(error.localizedDescription)")
+                return
+            }
+            guard let result = value as? [String: Any],
+                  result["text"] as? String == "\u{51B3}\u{7B56}\u{5373}\u{53EF}",
+                  result["bold"] as? String == "\u{51B3}\u{7B56}",
+                  result["markdown"] as? String == "**\u{51B3}\u{7B56}**\u{5373}\u{53EF}" else {
+                finish(failure: "Native Simplified Chinese Pinyin bold boundary failed: \(String(describing: value))")
+                return
+            }
+            print("macOS Simplified Chinese Pinyin bold boundary passed: bold=expected first candidate, following text=plain")
             NSApplication.shared.terminate(nil)
         }
     }

@@ -2296,6 +2296,20 @@ function insertRenderCaretMarker() {
   return true;
 }
 
+function moveRenderCaretPastInlineSyntax(source) {
+  const movePastMatch = pattern => source = source.replace(pattern, match => match.replace(renderCaretMarker, "") + renderCaretMarker);
+  movePastMatch(/!?\[[^\]\n]*\ue000\]\([^\n)]*\)/);
+  for (const pattern of [
+    /`[^`\n]+\ue000`/,
+    /\*\*[^*\n]+\ue000\*\*/,
+    /__[^_\n]+\ue000__/,
+    /~~[^~\n]+\ue000~~/,
+    /\*[^*\n]+\ue000\*(?!\*)/,
+    /_[^_\n]+\ue000_(?!_)/
+  ]) movePastMatch(pattern);
+  return source;
+}
+
 function restoreRenderCaret() {
   const walker = document.createTreeWalker(write, NodeFilter.SHOW_TEXT);
   let restored = false;
@@ -2353,6 +2367,7 @@ function renderMarkdownBlockAtCaret() {
   if (!insertRenderCaretMarker()) return false;
   let source = block.textContent || "";
   if (block.dataset.literalHeading) source = source.replace(/^(#{1,6})(?=\s)/, "\\$1");
+  source = moveRenderCaretPastInlineSyntax(source);
   const html = markdownToHTML(source);
   const template = document.createElement("template");
   template.innerHTML = html || "<p><br></p>";
@@ -2438,7 +2453,6 @@ function handleWriteInput(event) {
     return;
   }
   if (writeComposing || event?.isComposing || event?.inputType === "insertCompositionText") {
-    removeCaretMarkers();
     syncFromWrite();
     return;
   }
@@ -4820,10 +4834,20 @@ function focusBlockStart(block) {
 
 function appendEditableContent(block, fragment) {
   if (fragment?.childNodes.length) block.append(fragment);
-  if (!block.childNodes.length) block.append(document.createElement("br"));
+  const hasContent = [...block.childNodes].some(node => node.nodeType !== Node.TEXT_NODE || node.nodeValue);
+  if (!hasContent) block.replaceChildren(document.createElement("br"));
 }
 
 function splitHeadingAtCaret(block) {
+  if (selectionAtStart(block)) {
+    const paragraph = document.createElement("p");
+    paragraph.append(document.createElement("br"));
+    block.before(paragraph);
+    focusBlockStart(paragraph);
+    syncFromWrite();
+    updateFocusLine();
+    return true;
+  }
   const tail = extractContentAfterCaret(block);
   if (!tail) return false;
   block.classList.remove("is-heading-folded");
@@ -5297,20 +5321,19 @@ write.addEventListener("compositionend", event => {
     ? { block: committedBlock, time: performance.now() }
     : null;
   activeComposition = null;
-  requestAnimationFrame(() => {
-    if (writeComposing || !(committedBlock instanceof HTMLElement) || !write.contains(committedBlock)) return;
-    if (rawHeadingMatch(committedBlock) && currentWriteBlock() === committedBlock && !selectionAtEnd(committedBlock)) {
-      const selection = window.getSelection();
-      const caret = document.createRange();
-      caret.selectNodeContents(committedBlock);
-      caret.collapse(false);
-      selection?.removeAllRanges();
-      selection?.addRange(caret);
-    }
-    const converted = renderMarkdownBlockAtCaret();
-    const normalized = normalizeInactiveRawHeadings(currentWriteBlock());
-    if (converted || normalized) syncFromWrite();
-  });
+  if (!(committedBlock instanceof HTMLElement) || !write.contains(committedBlock)) return;
+  if (rawHeadingMatch(committedBlock) && currentWriteBlock() === committedBlock && !selectionAtEnd(committedBlock)) {
+    const selection = window.getSelection();
+    const caret = document.createRange();
+    caret.selectNodeContents(committedBlock);
+    caret.collapse(false);
+    selection?.removeAllRanges();
+    selection?.addRange(caret);
+  }
+  const converted = renderMarkdownBlockAtCaret();
+  if (!converted) removeCaretMarkers();
+  const normalized = normalizeInactiveRawHeadings(currentWriteBlock());
+  if (converted || normalized) syncFromWrite();
 });
 document.addEventListener("selectionchange", () => {
   if (document.activeElement !== write) return;
