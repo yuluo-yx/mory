@@ -3,12 +3,17 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { app, BrowserWindow } = require('electron');
 
+app.commandLine.appendSwitch('disable-gpu');
 app.disableHardwareAcceleration();
 app.whenReady().then(async () => {
-  const window = new BrowserWindow({ show: false, webPreferences: { contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
-  const timeout = setTimeout(() => { process.stderr.write('Heading input timed out\n'); app.exit(1); }, 45000);
+  // Hidden Windows windows may stop producing animation frames unless rendered offscreen.
+  const window = new BrowserWindow({ show: false, webPreferences: { offscreen: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
+  let phase = 'loading the editor';
+  const timeout = setTimeout(() => { process.stderr.write(`Heading input timed out while ${phase}\n`); app.exit(1); }, 45000);
   try {
     await window.loadFile(process.env.MORY_WEB_INDEX || path.join(__dirname, '../Sources/Mory/Web/index.html'));
+    phase = 'running editor interactions';
+    process.stdout.write('Heading editor loaded; starting interaction cases\n');
     if (process.argv.includes('--slow-frames')) {
       // Exercise scheduling slower than the old 80 ms sleep, independently of the host OS.
       await window.webContents.executeJavaScript(`
