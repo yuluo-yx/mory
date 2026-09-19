@@ -64,13 +64,15 @@ async function click(window, selector) {
       return {
         x,
         y,
+        viewport: { width: innerWidth, height: innerHeight },
+        panelTop: expected.closest('.calendar-quick-editor')?.style.top,
         hittable: Boolean(actual && (expected === actual || expected.contains(actual))),
         hit: actual?.id || actual?.dataset?.command || actual?.className || actual?.tagName
       };
     })()`);
     hittable = target.hittable;
   }
-  if (!hittable) throw new Error(`Click target is obscured: ${selector}; final hit ${target.hit}`);
+  if (!hittable) throw new Error(`Click target is obscured: ${selector}; final state ${JSON.stringify(target)}`);
   window.webContents.sendInputEvent({ type: "mouseDown", x: target.x, y: target.y, button: "left", clickCount: 1 });
   window.webContents.sendInputEvent({ type: "mouseUp", x: target.x, y: target.y, button: "left", clickCount: 1 });
   await wait(selector === "#sidebar-toggle" ? 280 : 80);
@@ -1385,9 +1387,14 @@ app.whenReady().then(async () => {
       document.querySelector('.calendar-date-quick-editor .calendar-quick-colors [data-calendar-color="amber"]').click();
       const item = document.querySelector('.calendar-date-quick-editor .calendar-quick-item-form input');
       item.value = 'Publish release notes';
-      item.closest('form').requestSubmit();
+      const scheduleFrame = window.requestAnimationFrame;
+      // Reproduce the deferred layout of hosted Intel renderers deterministically.
+      window.requestAnimationFrame = callback => scheduleFrame(time => setTimeout(() => callback(time), 300));
+      try { item.closest('form').requestSubmit(); }
+      finally { window.requestAnimationFrame = scheduleFrame; }
     })()`);
     await expect(window, "date items can be added without opening the full calendar editor", "document.querySelectorAll('.calendar-date-quick-editor .calendar-quick-item').length === 1 && document.querySelector('.calendar-date-quick-editor .calendar-quick-item span').textContent === 'Publish release notes'");
+    await expectEventually(window, "the date editor finishes deferred layout and restores item focus before saving", "document.activeElement === document.querySelector('.calendar-date-quick-editor .calendar-quick-item-form input')");
     await click(window, ".calendar-date-quick-editor > footer .primary-button");
     await expect(window, "the compact date editor saves its title, color, and item to Markdown", "(() => { const cell = document.querySelector(`#write .calendar-day-cell[data-date=\"${window.__calendarTestDates.day24}\"]`); const markdown = window.Mory.getMarkdown(); return !document.querySelector('.calendar-quick-editor') && cell.dataset.calendarColor === 'amber' && cell.textContent.includes('Launch day') && markdown.includes('Launch day') && markdown.includes('Publish release notes'); })()");
     await inspect(window, `(() => {
