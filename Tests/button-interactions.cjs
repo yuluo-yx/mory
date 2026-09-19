@@ -37,7 +37,7 @@ async function inspect(window, expression) {
 }
 
 async function click(window, selector) {
-  let target = await inspect(window, `(() => {
+  const locate = () => inspect(window, `(() => {
     const element = document.querySelector(${JSON.stringify(selector)});
     if (!element) throw new Error(${JSON.stringify(`Element not found: ${selector}`)});
     element.scrollIntoView({ block: "center", inline: "center" });
@@ -47,8 +47,11 @@ async function click(window, selector) {
     const hit = document.elementFromPoint(x, y);
     return { x, y, hit: hit?.id || hit?.dataset?.command || hit?.className || hit?.tagName };
   })()`);
+  let target;
   let hittable = false;
   for (let attempt = 0; attempt < 3 && !hittable; attempt += 1) {
+    // Deferred panel layout may move a control after the first scroll on slower renderers.
+    target = await locate();
     window.webContents.sendInputEvent({ type: "mouseMove", x: target.x, y: target.y });
     await wait(60);
     target = await inspect(window, `(() => {

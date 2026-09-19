@@ -57,6 +57,10 @@ func TestWriteFilePreservesModeAndLink(t *testing.T) {
 	if err := WriteFile(name, []byte("first"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	original, err := os.Stat(name)
+	if err != nil {
+		t.Fatal(err)
+	}
 	link := filepath.Join(directory, "alias.md")
 	if err := os.Symlink("note.md", link); err != nil {
 		t.Skipf("Symlinks unavailable: %v", err)
@@ -69,7 +73,7 @@ func TestWriteFilePreservesModeAndLink(t *testing.T) {
 		t.Fatalf("Unexpected content: %q, %v", data, err)
 	}
 	info, err := os.Stat(name)
-	if err != nil || info.Mode().Perm() != 0o600 {
+	if err != nil || info.Mode().Perm() != original.Mode().Perm() {
 		t.Fatalf("Permissions changed: %v, %v", info, err)
 	}
 	info, err = os.Lstat(link)

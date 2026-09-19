@@ -15,11 +15,12 @@ test('completed saves replace content and preserve existing permissions and file
   const { root, target } = await fixture(t);
   await writeAtomicFile(target, 'first');
   await fs.chmod(target, 0o600);
+  const originalMode = (await fs.stat(target)).mode & 0o777;
   const link = path.join(root, 'alias.md');
   await fs.symlink(target, link);
   await writeAtomicFile(link, 'second');
   assert.equal(await fs.readFile(target, 'utf8'), 'second');
-  assert.equal((await fs.stat(target)).mode & 0o777, 0o600);
+  assert.equal((await fs.stat(target)).mode & 0o777, originalMode);
   assert.equal((await fs.lstat(link)).isSymbolicLink(), true);
   assert.deepEqual((await fs.readdir(root)).sort(), ['alias.md', 'note.md']);
 });

@@ -18,6 +18,21 @@ env CLANG_MODULE_CACHE_PATH="$PROJECT_DIR/.cache/clang" SDKROOT="$SDK_PATH" \
 cd "$PROJECT_DIR"
 node "$PROJECT_DIR/scripts/run-native-smoke.mjs" 40 "$OUTPUT_PATH"
 
+MISSING_SOURCE_LOG="$PROJECT_DIR/.build/mory-ime-missing-source.log"
+if node "$PROJECT_DIR/scripts/run-native-smoke.mjs" 40 "$OUTPUT_PATH" --missing-input-source > "$MISSING_SOURCE_LOG" 2>&1; then
+  cat "$MISSING_SOURCE_LOG"
+  echo "An unavailable input source was incorrectly accepted."
+  exit 1
+else
+  MISSING_SOURCE_STATUS=$?
+fi
+if [[ "$MISSING_SOURCE_STATUS" != 77 ]] || ! grep -q 'SKIP: Simplified Pinyin is not installed or selectable.' "$MISSING_SOURCE_LOG"; then
+  cat "$MISSING_SOURCE_LOG"
+  echo "An unavailable input source did not produce the expected inconclusive result."
+  exit 1
+fi
+echo "Native IME unavailable-source detection passed: exit 77 without a crash."
+
 # An unrelated native key must produce an explicit inconclusive result, never a pass.
 INTERFERENCE_LOG="$PROJECT_DIR/.build/mory-ime-interference.log"
 if node "$PROJECT_DIR/scripts/run-native-smoke.mjs" 40 "$OUTPUT_PATH" --inject-unrelated-key > "$INTERFERENCE_LOG" 2>&1; then

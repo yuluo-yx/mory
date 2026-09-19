@@ -16,10 +16,12 @@ final class MacIMEInputSmoke: NSObject, NSApplicationDelegate, WKNavigationDeleg
     private var window: NSWindow!
     private var webView: WKWebView!
     private var previousInputSource: TISInputSource?
+    private var temporarilyEnabledSources: [TISInputSource] = []
     private var inputMonitor: Any?
     private let eventMarker: Int64 = 0x4D4F5259
     private let sentencePrefix = "\u{6362}\u{800C}\u{8A00}\u{4E4B}\u{53EA}\u{9700}\u{8981}"
-    private let pinyinID = "com.apple.inputmethod.SCIM.ITABC"
+    private let pinyinID = ProcessInfo.processInfo.arguments.contains("--missing-input-source")
+        ? "io.mory.unavailable-input-source" : "com.apple.inputmethod.SCIM.ITABC"
     private var finished = false
     private let headingStrokes = [
         Stroke(keyCode: 45),
@@ -148,6 +150,35 @@ final class MacIMEInputSmoke: NSObject, NSApplicationDelegate, WKNavigationDeleg
         return Unmanaged<CFString>.fromOpaque(value).takeUnretainedValue() as String
     }
 
+    private func inputSources(_ filter: CFDictionary, includeDisabled: Bool) -> [TISInputSource] {
+        guard let sources = TISCreateInputSourceList(filter, includeDisabled) else { return [] }
+        return sources.takeRetainedValue() as? [TISInputSource] ?? []
+    }
+
+    private func enableForTest(_ source: TISInputSource) -> Bool {
+        if let value = TISGetInputSourceProperty(source, kTISPropertyInputSourceIsEnabled),
+           CFBooleanGetValue(Unmanaged<CFBoolean>.fromOpaque(value).takeUnretainedValue()) { return true }
+        guard TISEnableInputSource(source) == noErr else { return false }
+        temporarilyEnabledSources.append(source)
+        return true
+    }
+
+    private func pinyinSource() -> TISInputSource? {
+        let filter = [kTISPropertyInputSourceID as String: pinyinID] as CFDictionary
+        if let source = inputSources(filter, includeDisabled: false).first { return source }
+        guard let source = inputSources(filter, includeDisabled: true).first else { return nil }
+        // Hosted macOS runners have Pinyin installed but no enabled input mode.
+        if let value = TISGetInputSourceProperty(source, kTISPropertyBundleID) {
+            let bundleID = Unmanaged<CFString>.fromOpaque(value).takeUnretainedValue()
+            let parentFilter = [kTISPropertyBundleID as String: bundleID,
+                                kTISPropertyInputSourceType as String: kTISTypeKeyboardInputMethodModeEnabled] as CFDictionary
+            for parent in inputSources(parentFilter, includeDisabled: true) {
+                guard enableForTest(parent) else { return nil }
+            }
+        }
+        return enableForTest(source) ? source : nil
+    }
+
     private func prepareInput(deadline: Date) {
         window.makeKeyAndOrderFront(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
@@ -157,9 +188,7 @@ final class MacIMEInputSmoke: NSObject, NSApplicationDelegate, WKNavigationDeleg
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { self.prepareInput(deadline: deadline) }
             return
         }
-        let filter = [kTISPropertyInputSourceID as String: pinyinID] as CFDictionary
-        let sources = TISCreateInputSourceList(filter, false).takeRetainedValue() as! [TISInputSource]
-        guard let pinyin = sources.first, TISSelectInputSource(pinyin) == noErr else {
+        guard let pinyin = pinyinSource(), TISSelectInputSource(pinyin) == noErr else {
             fputs("SKIP: Simplified Pinyin is not installed or selectable.\n", stderr)
             cleanup()
             Darwin.exit(77)
@@ -375,6 +404,13 @@ final class MacIMEInputSmoke: NSObject, NSApplicationDelegate, WKNavigationDeleg
             }
             print("Native IME input source restored")
         }
+        for source in temporarilyEnabledSources.reversed() {
+            guard TISDisableInputSource(source) == noErr else {
+                fputs("Failed to restore the enabled input sources.\n", stderr)
+                Darwin.exit(1)
+            }
+        }
+        temporarilyEnabledSources.removeAll()
         window?.orderOut(nil)
     }
 
