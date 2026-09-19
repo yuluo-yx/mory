@@ -125,7 +125,8 @@ final class MacTypingSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegat
           paragraph.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertCompositionText', data: '\u{4F60}\u{597D}', isComposing: true }));
           paragraph.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '\u{4F60}\u{597D}' }));
           const enter = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Enter' });
-          result.immediateCompositionEnter = !paragraph.dispatchEvent(enter)
+          const committedBlock = document.querySelector('#write > h1') || paragraph;
+          result.immediateCompositionEnter = !committedBlock.dispatchEvent(enter)
             && document.querySelector('#write > h1')?.textContent === '\u{4F60}\u{597D}'
             && Boolean(document.querySelector('#write > h1 + p'));
           return result;
@@ -186,6 +187,86 @@ final class MacTypingSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegat
                 return
             }
             print("macOS WKWebView native input passed: consecutiveHeadings=\(heading); doubleEnterCodeExit=\(fence)")
+            testEmptyNestedHeading()
+        }
+    }
+
+    private func testEmptyNestedHeading() {
+        let setup = """
+        (() => {
+          window.Mory.loadMarkdown('## First\\n\\n## Second');
+          const heading = document.querySelectorAll('#write > h2')[1];
+          const range = document.createRange();
+          range.selectNodeContents(heading);
+          range.collapse(true);
+          const selection = getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
+          document.querySelector('#write').focus();
+        })()
+        """
+        webView.evaluateJavaScript(setup) { [weak self] _, error in
+            guard let self else { return }
+            if let error {
+                finish(failure: "Failed to prepare the empty nested heading test: \(error.localizedDescription)")
+                return
+            }
+            window.makeFirstResponder(webView)
+            var actions: [() -> Void] = []
+            actions.append { self.sendKey("\r", keyCode: 36) }
+            appendText("###", to: &actions)
+            actions.append { self.sendKey(" ", keyCode: 49) }
+            perform(actions) { self.verifyEmptyNestedHeading() }
+        }
+    }
+
+    private func verifyEmptyNestedHeading() {
+        let script = """
+        (() => {
+          const capture = () => ({
+            html: document.querySelector('#write').innerHTML,
+            markdown: window.Mory.getMarkdown(),
+            h2Count: document.querySelectorAll('#write > h2').length,
+            h3Count: document.querySelectorAll('#write > h3').length,
+            h3Text: document.querySelector('#write > h3')?.textContent || '',
+            h3HasPlaceholder: Boolean(document.querySelector('#write > h3')?.firstChild),
+            h3Height: document.querySelector('#write > h3')?.getBoundingClientRect().height || 0,
+            activeTag: getSelection()?.anchorNode?.parentElement?.closest('#write > *')?.tagName
+              || (getSelection()?.anchorNode?.nodeType === Node.ELEMENT_NODE ? getSelection().anchorNode.closest('#write > *')?.tagName : '')
+          });
+          const live = capture();
+          window.Mory.toggleSource(true);
+          const source = document.querySelector('#source-editor').value;
+          window.Mory.toggleSource(false);
+          return { live, source, roundTrip: capture() };
+        })()
+        """
+        webView.evaluateJavaScript(script) { [weak self] value, error in
+            guard let self else { return }
+            if let error {
+                finish(failure: "Failed to read the empty nested heading state: \(error.localizedDescription)")
+                return
+            }
+            let expected = "## First\n\n###\n\n## Second"
+            guard let result = value as? [String: Any],
+                  let live = result["live"] as? [String: Any],
+                  let roundTrip = result["roundTrip"] as? [String: Any],
+                  live["markdown"] as? String == expected,
+                  live["h2Count"] as? Int == 2,
+                  live["h3Count"] as? Int == 1,
+                  live["h3Text"] as? String == "",
+                  live["h3HasPlaceholder"] as? Bool == true,
+                  (live["h3Height"] as? Double ?? 0) > 0,
+                  live["activeTag"] as? String == "H3",
+                  result["source"] as? String == expected,
+                  roundTrip["markdown"] as? String == expected,
+                  roundTrip["h2Count"] as? Int == 2,
+                  roundTrip["h3Count"] as? Int == 1,
+                  roundTrip["h3Text"] as? String == "" else {
+                finish(failure: "Empty nested heading state is invalid: \(String(describing: value)); Renderer errors=\(errors.joined(separator: " | "))")
+                return
+            }
+            print("macOS WKWebView empty nested heading passed: \(result)")
             NSApplication.shared.terminate(nil)
         }
     }

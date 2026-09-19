@@ -90,11 +90,50 @@ export function replaceTextMatches(source, matches, replacement) {
 }
 
 export function rebaseSavedAssetPaths(markdown, changes = {}) {
-  let result = String(markdown);
-  for (const [from, to] of Object.entries(changes ?? {})) {
-    if (from && typeof to === "string" && from !== to) result = result.replaceAll(`](${from}`, `](${to}`);
-  }
-  return result;
+  const source = String(markdown);
+  const mappings = Object.entries(changes ?? {}).filter(([from, to]) => from && typeof to === "string" && from !== to);
+  if (!mappings.length) return source;
+  let prefix = "\uE100";
+  while ([source, ...mappings.flat()].some(value => value.includes(prefix))) prefix += "\uE100";
+  const protectedText = [];
+  const restore = value => value.replace(new RegExp(`${prefix}(\\d+)\uE101`, "g"), (_match, index) => protectedText[Number(index)]);
+  const protect = value => `${prefix}${protectedText.push(restore(value)) - 1}\uE101`;
+  const rewriteURL = (value, html = false) => {
+    const leading = value.match(/^(?:\.\/)+/)?.[0] || "";
+    const slash = value.indexOf("/", leading.length);
+    if (slash < 0) return value;
+    const encoded = value.slice(leading.length, slash);
+    let directory;
+    try { directory = decodeURIComponent(html ? encoded.replaceAll("&amp;", "&") : encoded); }
+    catch { return value; }
+    const mapping = mappings.find(([from]) => from === `${directory}/`);
+    if (!mapping) return value;
+    let replacement = mapping[1].replace(/\/$/, "");
+    if (encoded.includes("%")) replacement = encodeURIComponent(replacement).replace(/[!'()*]/g, char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+    if (html) replacement = replacement.replaceAll("&", "&amp;");
+    return leading + replacement + value.slice(slash);
+  };
+  let result = mapMarkdownFences(source, value => {
+    const ending = value.match(/(?:\r\n|\r|\n)$/)?.[0] || "";
+    return protect(ending ? value.slice(0, -ending.length) : value) + ending;
+  });
+  result = result.replace(/<(pre|code|script|style)\b[^>]*>[\s\S]*?<\/\1\s*>|<!--[\s\S]*?-->/gi, protect)
+    .replace(/(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g, protect)
+    .replace(/^(?: {4}|\t)[^\r\n]*/gm, protect);
+  // Protect HTML attributes from the Markdown pass, rewriting only real image sources.
+  result = result.replace(/<\/?[A-Za-z][A-Za-z0-9:-]*(?:\s+(?:[^>"']|"[^"]*"|'[^']*')*)?\/?>/g, tag => protect(/^<img\b/i.test(tag)
+    ? tag.replace(/(\s+src\s*=\s*)(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i, (match, start, double, single, bare) => {
+      const value = double ?? single ?? bare;
+      const quote = double !== undefined ? '"' : single !== undefined ? "'" : "";
+      return start + quote + rewriteURL(value, true) + quote;
+    }) : tag));
+  result = result.replace(/(!?\[[^\]\r\n]*\]\(\s*)(?:<([^>\r\n]+)>|([^\s)]+))/g, (match, start, angle, bare, offset, text) => {
+    let escaped = 0;
+    for (let index = offset - 1; index >= 0 && text[index] === "\\"; index--) escaped++;
+    if (escaped % 2) return match;
+    return start + (angle !== undefined ? `<${rewriteURL(angle)}>` : rewriteURL(bare));
+  });
+  return restore(result);
 }
 
 export const calendarColors = ["red", "amber", "green", "blue", "violet", "gray"];

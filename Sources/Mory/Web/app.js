@@ -215,13 +215,23 @@ const englishText = {
   "折叠标题内容": "Collapse section", "展开标题内容": "Expand section",
   "未打开工作区": "No workspace open", "打开的文稿": "Open documents", "选择工作区以浏览目录": "Choose a workspace to browse its files",
   "恢复的文稿.md": "Recovered note.md", "无法打开工作区，请检查目录是否存在或从最近记录中移除。": "Unable to open workspace. Check its location or remove it from recent entries.",
-  "无法保存恢复副本，请及时保存文稿。": "Unable to store recovery copies. Please save your documents."
+  "无法保存恢复副本，请及时保存文稿。": "Unable to store recovery copies. Please save your documents.",
+  "正在推送…": "Pushing…", "正在拉取…": "Pulling…",
+  "同步完成：{count} 个文件": "Sync complete: {count} files", "同步失败：{error}": "Sync failed: {error}",
+  "已设置本地工作目录": "Local working folder set", "已切换工作区": "Workspace switched", "工作区配置已保存": "Workspace configuration saved", "工作区配置已删除": "Workspace configuration deleted",
+  "保存失败：{error}": "Save failed: {error}",
+  "确定删除这个工作区配置吗？本地文件不会被删除。": "Delete this workspace configuration? Local files will be kept.",
+  "图片导入失败：{error}": "Image import failed: {error}", "已归档 {count} 张图片": "Imported {count} images",
+  "{words} 字 · {characters} 字符 · {lines} 行": "{words} words · {characters} characters · {lines} lines"
 };
 const staticLocaleNodes = new WeakMap();
 const staticLocaleAttributes = new WeakMap();
 
 function locale() { return state.locale === "en" ? "en" : "zh-CN"; }
-function localized(chinese) { return locale() === "en" ? (englishText[chinese] || chinese) : chinese; }
+function localized(chinese, values = {}) {
+  const text = locale() === "en" ? (englishText[chinese] || chinese) : chinese;
+  return text.replace(/\{(\w+)\}/g, (marker, key) => Object.hasOwn(values, key) ? String(values[key]) : marker);
+}
 
 function applyAppearanceTheme(theme, { persist = true } = {}) {
   const next = ["system", "light", "dark"].includes(theme) ? theme : "system";
@@ -2296,6 +2306,20 @@ function insertRenderCaretMarker() {
   return true;
 }
 
+function moveRenderCaretPastInlineSyntax(source) {
+  const movePastMatch = pattern => source = source.replace(pattern, match => match.replace(renderCaretMarker, "") + renderCaretMarker);
+  movePastMatch(/!?\[[^\]\n]*\ue000\]\([^\n)]*\)/);
+  for (const pattern of [
+    /`[^`\n]+\ue000`/,
+    /\*\*[^*\n]+\ue000\*\*/,
+    /__[^_\n]+\ue000__/,
+    /~~[^~\n]+\ue000~~/,
+    /\*[^*\n]+\ue000\*(?!\*)/,
+    /_[^_\n]+\ue000_(?!_)/
+  ]) movePastMatch(pattern);
+  return source;
+}
+
 function restoreRenderCaret() {
   const walker = document.createTreeWalker(write, NodeFilter.SHOW_TEXT);
   let restored = false;
@@ -2353,6 +2377,7 @@ function renderMarkdownBlockAtCaret() {
   if (!insertRenderCaretMarker()) return false;
   let source = block.textContent || "";
   if (block.dataset.literalHeading) source = source.replace(/^(#{1,6})(?=\s)/, "\\$1");
+  source = moveRenderCaretPastInlineSyntax(source);
   const html = markdownToHTML(source);
   const template = document.createElement("template");
   template.innerHTML = html || "<p><br></p>";
@@ -2438,7 +2463,6 @@ function handleWriteInput(event) {
     return;
   }
   if (writeComposing || event?.isComposing || event?.inputType === "insertCompositionText") {
-    removeCaretMarkers();
     syncFromWrite();
     return;
   }
@@ -3807,7 +3831,7 @@ async function switchWorkspace(id) {
   try {
     const result = await hostRequest("activateWorkspace", { id });
     setWorkspaceState(result);
-    toast("已切换工作区");
+    toast(localized("已切换工作区"));
   } catch (error) {
     $("#workspace-select").value = state.activeWorkspaceId;
     toast(`${localized("无法打开工作区，请检查目录是否存在或从最近记录中移除。")} ${error.message}`, 5000);
@@ -3818,12 +3842,12 @@ async function syncWorkspace(action) {
   const button = action === "push" ? $("#workspace-push") : $("#workspace-pull");
   const original = button.textContent;
   button.disabled = true;
-  button.textContent = action === "push" ? "正在推送…" : "正在拉取…";
+  button.textContent = localized(action === "push" ? "正在推送…" : "正在拉取…");
   try {
     const result = await hostRequest("syncWorkspace", { action });
-    toast(`同步完成：${result.files || 0} 个文件`);
+    toast(localized("同步完成：{count} 个文件", { count: result.files || 0 }));
   } catch (error) {
-    toast(`同步失败：${error.message}`);
+    toast(localized("同步失败：{error}", { error: error.message }));
   } finally {
     button.disabled = false;
     button.textContent = original;
@@ -4820,10 +4844,20 @@ function focusBlockStart(block) {
 
 function appendEditableContent(block, fragment) {
   if (fragment?.childNodes.length) block.append(fragment);
-  if (!block.childNodes.length) block.append(document.createElement("br"));
+  const hasContent = [...block.childNodes].some(node => node.nodeType !== Node.TEXT_NODE || node.nodeValue);
+  if (!hasContent) block.replaceChildren(document.createElement("br"));
 }
 
 function splitHeadingAtCaret(block) {
+  if (selectionAtStart(block)) {
+    const paragraph = document.createElement("p");
+    paragraph.append(document.createElement("br"));
+    block.before(paragraph);
+    focusBlockStart(paragraph);
+    syncFromWrite();
+    updateFocusLine();
+    return true;
+  }
   const tail = extractContentAfterCaret(block);
   if (!tail) return false;
   block.classList.remove("is-heading-folded");
@@ -5180,7 +5214,7 @@ async function importImages(files) {
         rebuildWorkspaceKnowledge();
       }
     }
-    toast(`已归档 ${markdown.length} 张图片`);
+    toast(localized("已归档 {count} 张图片", { count: markdown.length }));
   }
   if (failures.length) throw new Error(failures.join("; "));
 }
@@ -5256,7 +5290,7 @@ write.addEventListener("paste", event => {
   const images = [...event.clipboardData.files].filter(file => file.type.startsWith("image/"));
   if (images.length) {
     event.preventDefault();
-    void importImages(images).catch(error => toast(`图片导入失败：${error.message}`));
+    void importImages(images).catch(error => toast(localized("图片导入失败：{error}", { error: error.message })));
     return;
   }
   event.preventDefault();
@@ -5286,7 +5320,7 @@ write.addEventListener("drop", event => {
   if (!images.length) return;
   event.preventDefault();
   write.focus();
-  void importImages(images).catch(error => toast(`图片导入失败：${error.message}`));
+  void importImages(images).catch(error => toast(localized("图片导入失败：{error}", { error: error.message })));
 });
 write.addEventListener("compositionstart", beginComposition);
 write.addEventListener("compositionend", event => {
@@ -5297,20 +5331,19 @@ write.addEventListener("compositionend", event => {
     ? { block: committedBlock, time: performance.now() }
     : null;
   activeComposition = null;
-  requestAnimationFrame(() => {
-    if (writeComposing || !(committedBlock instanceof HTMLElement) || !write.contains(committedBlock)) return;
-    if (rawHeadingMatch(committedBlock) && currentWriteBlock() === committedBlock && !selectionAtEnd(committedBlock)) {
-      const selection = window.getSelection();
-      const caret = document.createRange();
-      caret.selectNodeContents(committedBlock);
-      caret.collapse(false);
-      selection?.removeAllRanges();
-      selection?.addRange(caret);
-    }
-    const converted = renderMarkdownBlockAtCaret();
-    const normalized = normalizeInactiveRawHeadings(currentWriteBlock());
-    if (converted || normalized) syncFromWrite();
-  });
+  if (!(committedBlock instanceof HTMLElement) || !write.contains(committedBlock)) return;
+  if (rawHeadingMatch(committedBlock) && currentWriteBlock() === committedBlock && !selectionAtEnd(committedBlock)) {
+    const selection = window.getSelection();
+    const caret = document.createRange();
+    caret.selectNodeContents(committedBlock);
+    caret.collapse(false);
+    selection?.removeAllRanges();
+    selection?.addRange(caret);
+  }
+  const converted = renderMarkdownBlockAtCaret();
+  if (!converted) removeCaretMarkers();
+  const normalized = normalizeInactiveRawHeadings(currentWriteBlock());
+  if (converted || normalized) syncFromWrite();
 });
 document.addEventListener("selectionchange", () => {
   if (document.activeElement !== write) return;
@@ -5417,7 +5450,7 @@ $("#workspace-open-local").addEventListener("click", async () => {
       id: current?.provider === "local" ? current.id : undefined,
       name: current?.provider === "local" ? current.name : undefined
     });
-    if (!result?.canceled) { setWorkspaceState(result); hideWorkspaceForm(); toast("已设置本地工作目录"); }
+    if (!result?.canceled) { setWorkspaceState(result); hideWorkspaceForm(); toast(localized("已设置本地工作目录")); }
   } catch (error) { toast(error.message); }
 });
 $("#workspace-form").addEventListener("submit", async event => {
@@ -5427,16 +5460,16 @@ $("#workspace-form").addEventListener("submit", async event => {
     const result = workspaceValue.provider === "local" && !workspaceValue.localPath
       ? await hostRequest("chooseLocalWorkspace", { id: workspaceValue.id, name: workspaceValue.name })
       : await hostRequest("saveWorkspace", { workspace: workspaceValue });
-    if (!result?.canceled) { setWorkspaceState(result); hideWorkspaceForm(); toast("工作区配置已保存"); }
-  } catch (error) { toast(`保存失败：${error.message}`); }
+    if (!result?.canceled) { setWorkspaceState(result); hideWorkspaceForm(); toast(localized("工作区配置已保存")); }
+  } catch (error) { toast(localized("保存失败：{error}", { error: error.message })); }
 });
 $("#workspace-remove").addEventListener("click", async () => {
-  if (!state.editingWorkspaceId || !confirm("确定删除这个工作区配置吗？本地文件不会被删除。")) return;
+  if (!state.editingWorkspaceId || !confirm(localized("确定删除这个工作区配置吗？本地文件不会被删除。"))) return;
   try {
     const result = await hostRequest("removeWorkspace", { id: state.editingWorkspaceId });
     setWorkspaceState(result);
     hideWorkspaceForm();
-    toast("工作区配置已删除");
+    toast(localized("工作区配置已删除"));
   } catch (error) { toast(error.message); }
 });
 $("#export-button").addEventListener("click", () => toggleExportDialog(true));
@@ -5537,7 +5570,7 @@ $("#typewriter-button").addEventListener("click", () => {
 });
 $("#word-count").addEventListener("click", () => {
   const stats = documentStats(state.markdown);
-  toast(`${stats.words} 字 · ${stats.characters} 字符 · ${stats.lines} 行`);
+  toast(localized("{words} 字 · {characters} 字符 · {lines} 行", stats));
 });
 $("#backlink-count").addEventListener("click", () => {
   const panel = $("#document-backlinks");

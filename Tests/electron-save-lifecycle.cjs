@@ -12,11 +12,12 @@ async function run() {
   const root = await fs.mkdtemp(path.join(__dirname, '../.cache/electron-save-'));
   let count = 0;
   try {
-    for (const scenario of ['switch', 'edit', 'stale changed', 'cancel', 'closed', 'write failure', 'queued writes']) {
+    for (const scenario of ['switch', 'edit', 'stale changed', 'cancel', 'closed', 'write failure', 'partial overwrite failure', 'queued writes']) {
       const directory = path.join(root, scenario);
       await fs.mkdir(directory);
       const original = { documentId: 'original', path: path.join(directory, 'original.md'), name: 'original.md', markdown: 'captured text' };
       const destination = path.join(directory, 'saved.md');
+      if (scenario === 'partial overwrite failure') await fs.writeFile(original.path, 'previous on-disk document');
       const callbacks = [];
       const errors = [];
       const handlers = new Map();
@@ -27,6 +28,15 @@ async function run() {
       const writeStarted = new Promise(resolve => { firstWrite = resolve; });
       const writeReleased = new Promise(resolve => { releaseWrite = resolve; });
       let writes = 0;
+      async function injectWrite(write, ...values) {
+        writes += 1;
+        if (['write failure', 'partial overwrite failure'].includes(scenario) && writes === 1) {
+          await write('partial');
+          throw new Error('Simulated disk failure');
+        }
+        if (scenario === 'queued writes' && writes === 1) { firstWrite(); await writeReleased; }
+        return write(...values);
+      }
       const electron = {
         app: { on() {}, requestSingleInstanceLock: () => true, whenReady: () => new Promise(() => {}) },
         ipcMain: { on: (name, handler) => handlers.set(name, handler), handle() {} },
@@ -54,11 +64,13 @@ async function run() {
           if (name === 'electron') return electron;
           if (name === './workspace-watcher.cjs') return { createWorkspaceWatcher: () => ({ start() {}, stop() {} }) };
           if (name === './recent-documents.cjs') return { addRecentDocument: () => false };
-          if (name === 'node:fs/promises') return { ...fs, async writeFile(...args) {
-            writes += 1;
-            if (scenario === 'write failure' && writes === 1) throw new Error('Simulated disk failure');
-            if (scenario === 'queued writes' && writes === 1) { firstWrite(); await writeReleased; }
-            return fs.writeFile(...args);
+          if (name === 'node:fs/promises') return { ...fs,
+            writeFile: (filename, ...values) => injectWrite((...args) => fs.writeFile(filename, ...args), ...values),
+            async open(...args) {
+            const file = await fs.open(...args);
+            const write = file.writeFile.bind(file);
+            file.writeFile = (...values) => injectWrite(write, ...values);
+            return file;
           } };
           return mainRequire(name);
         }
@@ -79,6 +91,12 @@ async function run() {
         await Promise.all([first, second]);
         assert.equal(await fs.readFile(original.path, 'utf8'), 'second text', 'An older save overtook a newer save');
         assert.deepEqual(callbacks.map(value => value.markdown), ['captured text', 'second text']);
+      } else if (scenario === 'partial overwrite failure') {
+        await vm.runInContext('runSaveAction(saveDocument)', context);
+        assert.equal(await fs.readFile(original.path, 'utf8'), 'previous on-disk document');
+        assert.equal(callbacks.length, 0, 'An incomplete save reported success');
+        assert.equal(errors.length, 1, 'The write failure was not reported');
+        assert.deepEqual(await fs.readdir(directory), ['original.md'], 'Temporary output remained after failure');
       } else {
         await vm.runInContext('runSaveAction(saveAs)', context);
         if (scenario === 'cancel' || scenario === 'closed' || scenario === 'write failure') {

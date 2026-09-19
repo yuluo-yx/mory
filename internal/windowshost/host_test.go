@@ -155,6 +155,22 @@ func (platform *fakePlatform) Export(request ExportRequest) error {
 	return nil
 }
 
+func TestHostRequestErrorsFollowInterfaceLocale(t *testing.T) {
+	host := New(&fakePlatform{}, t.TempDir(), t.TempDir())
+	if err := host.Send(map[string]any{"type": "localeChanged", "locale": "en"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := host.Request("unknown-audit-operation", nil); err == nil || err.Error() != "Unknown host request: unknown-audit-operation" {
+		t.Fatalf("untranslated English error: %v", err)
+	}
+	if err := host.Send(map[string]any{"type": "localeChanged", "locale": "zh-CN"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := host.Request("unknown-audit-operation", nil); err == nil || !strings.HasPrefix(err.Error(), "\u672a\u77e5\u5bbf\u4e3b\u8bf7\u6c42") {
+		t.Fatalf("Chinese error changed: %v", err)
+	}
+}
+
 func TestHostBridgesReadyOpenChangeLocaleAndExport(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -579,7 +595,9 @@ func TestHostWatcherRefreshesAfterExternalChange(t *testing.T) {
 	if err := host.Send(map[string]any{"type": "ready"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := host.OpenExternalFolder(root); err != nil { t.Fatal(err) }
+	if err := host.OpenExternalFolder(root); err != nil {
+		t.Fatal(err)
+	}
 	platform.mu.Lock()
 	before := len(platform.scripts)
 	platform.mu.Unlock()

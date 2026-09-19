@@ -13,6 +13,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/yuluo-yx/mory/internal/assetpaths"
+	"github.com/yuluo-yx/mory/internal/atomicfile"
 )
 
 const (
@@ -76,7 +79,7 @@ func listDocuments(root string, includeMarkdown bool) ([]Document, error) {
 		if path != root && entry.IsDir() && hiddenWorkspaceEntry(entry.Name()) {
 			return filepath.SkipDir
 		}
-		if entry.IsDir() || !documentExtensions[strings.ToLower(filepath.Ext(entry.Name()))] {
+		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || !documentExtensions[strings.ToLower(filepath.Ext(entry.Name()))] {
 			return nil
 		}
 		info, err := entry.Info()
@@ -241,7 +244,7 @@ func findCompanionAssetDirectories(root string) (map[string]bool, error) {
 		if path != root && entry.IsDir() && hiddenWorkspaceEntry(entry.Name()) {
 			return filepath.SkipDir
 		}
-		if entry.IsDir() || !documentExtensions[strings.ToLower(filepath.Ext(entry.Name()))] {
+		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || !documentExtensions[strings.ToLower(filepath.Ext(entry.Name()))] {
 			return nil
 		}
 		markdownPrefix, err := readDocumentPrefix(path)
@@ -260,6 +263,9 @@ func listDocumentImages(documentPath, markdown string) ([]DocumentImage, error) 
 	images := make([]DocumentImage, 0)
 	visited := make(map[string]bool)
 	for _, assetRoot := range documentAssetDirectories(documentPath, markdown) {
+		if _, err := safeDescendant(filepath.Dir(documentPath), assetRoot); err != nil {
+			continue
+		}
 		err := filepath.WalkDir(assetRoot, func(path string, entry fs.DirEntry, walkErr error) error {
 			if errors.Is(walkErr, os.ErrNotExist) {
 				return nil
@@ -270,7 +276,7 @@ func listDocumentImages(documentPath, markdown string) ([]DocumentImage, error) 
 			if path != assetRoot && entry.IsDir() && strings.HasPrefix(entry.Name(), ".") {
 				return filepath.SkipDir
 			}
-			if entry.IsDir() || !imageExtensions[strings.ToLower(filepath.Ext(entry.Name()))] || visited[path] {
+			if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || !imageExtensions[strings.ToLower(filepath.Ext(entry.Name()))] || visited[path] {
 				return nil
 			}
 			visited[path] = true
@@ -418,6 +424,9 @@ func importImage(root, documentPath, documentName, name, mimeType, encoded strin
 		documentDirectory = filepath.Dir(resolved)
 	}
 	assetDirectory := filepath.Join(documentDirectory, documentBase)
+	if _, err := safeDescendant(root, assetDirectory); err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(assetDirectory, 0o755); err != nil {
 		return nil, fmt.Errorf("创建图片目录：%w", err)
 	}
@@ -464,6 +473,12 @@ func relocateDocumentAssets(root, markdown, oldPath, oldName, newPath string) (s
 	} else if err != nil {
 		return "", fmt.Errorf("读取原图片目录：%w", err)
 	}
+	if err := validateContainedTree(oldParent, oldDirectory); err != nil {
+		return "", err
+	}
+	if _, err := safeDescendant(filepath.Dir(newPath), newDirectory); err != nil {
+		return "", err
+	}
 	if err := os.MkdirAll(filepath.Dir(newDirectory), 0o755); err != nil {
 		return "", fmt.Errorf("创建新图片目录：%w", err)
 	}
@@ -474,7 +489,7 @@ func relocateDocumentAssets(root, markdown, oldPath, oldName, newPath string) (s
 	if err := os.CopyFS(newDirectory, os.DirFS(oldDirectory)); err != nil {
 		return "", fmt.Errorf("copy saved document assets: %w", err)
 	}
-	return strings.ReplaceAll(markdown, "]("+oldBase+"/", "]("+newBase+"/"), nil
+	return assetpaths.Rewrite(markdown, oldBase, newBase), nil
 }
 
 func copyDirectory(source, destination string) error {
@@ -527,8 +542,12 @@ func createWorkspaceDocument(root, directory, name string) (Document, error) {
 	}
 	name = sanitizeSegment(strings.TrimSuffix(filepath.Base(name), filepath.Ext(name))) + ".md"
 	path := availableEntryPath(destination, name, false)
-	if err := os.WriteFile(path, nil, 0o644); err != nil {
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	if err != nil {
 		return Document{}, fmt.Errorf("创建文稿：%w", err)
+	}
+	if err := file.Close(); err != nil {
+		return Document{}, err
 	}
 	return loadDocument(root, path)
 }
@@ -537,6 +556,14 @@ func copyWorkspaceEntry(root, source, destination string) (WorkspaceMutation, er
 	resolved, info, targetDirectory, err := workspaceEntryPaths(root, source, destination)
 	if err != nil {
 		return WorkspaceMutation{}, err
+	}
+	if err := validateContainedTree(root, resolved); err != nil {
+		return WorkspaceMutation{}, err
+	}
+	if !info.IsDir() {
+		if err := validateContainedTree(root, companionAssets(resolved)); err != nil {
+			return WorkspaceMutation{}, err
+		}
 	}
 	if info.IsDir() && isSameOrDescendant(resolved, targetDirectory) {
 		return WorkspaceMutation{}, errors.New("不能把目录复制到自身或子目录")
@@ -561,6 +588,14 @@ func moveWorkspaceEntry(root, source, destination string) (WorkspaceMutation, er
 	resolved, info, targetDirectory, err := workspaceEntryPaths(root, source, destination)
 	if err != nil {
 		return WorkspaceMutation{}, err
+	}
+	if err := validateContainedTree(root, resolved); err != nil {
+		return WorkspaceMutation{}, err
+	}
+	if !info.IsDir() {
+		if err := validateContainedTree(root, companionAssets(resolved)); err != nil {
+			return WorkspaceMutation{}, err
+		}
 	}
 	if filepath.Clean(filepath.Dir(resolved)) == filepath.Clean(targetDirectory) {
 		return WorkspaceMutation{}, errors.New("条目已经位于所选目录")
@@ -624,6 +659,12 @@ func renameWorkspaceEntry(root, source, requestedName string) (WorkspaceMutation
 
 	sourceAssets := companionAssets(resolved)
 	targetAssets := companionAssets(target)
+	if err := validateContainedTree(root, sourceAssets); err != nil {
+		return WorkspaceMutation{}, err
+	}
+	if _, err := safeDescendant(root, targetAssets); err != nil {
+		return WorkspaceMutation{}, err
+	}
 	_, assetsErr := os.Stat(sourceAssets)
 	hasAssets := assetsErr == nil
 	if assetsErr != nil && !errors.Is(assetsErr, os.ErrNotExist) {
@@ -641,7 +682,7 @@ func renameWorkspaceEntry(root, source, requestedName string) (WorkspaceMutation
 	if err != nil {
 		return WorkspaceMutation{}, fmt.Errorf("读取待重命名文稿：%w", err)
 	}
-	nextMarkdown := strings.ReplaceAll(string(markdown), "]("+filepath.Base(sourceAssets)+"/", "]("+filepath.Base(targetAssets)+"/")
+	nextMarkdown := assetpaths.Rewrite(string(markdown), filepath.Base(sourceAssets), filepath.Base(targetAssets))
 	if err := os.Rename(resolved, target); err != nil {
 		return WorkspaceMutation{}, fmt.Errorf("重命名文稿：%w", err)
 	}
@@ -654,7 +695,7 @@ func renameWorkspaceEntry(root, source, requestedName string) (WorkspaceMutation
 		assetsMoved = true
 	}
 	if nextMarkdown != string(markdown) {
-		if err := os.WriteFile(target, []byte(nextMarkdown), info.Mode().Perm()); err != nil {
+		if err := atomicfile.WriteFile(target, []byte(nextMarkdown), info.Mode().Perm()); err != nil {
 			if assetsMoved {
 				_ = os.Rename(targetAssets, sourceAssets)
 			}
@@ -773,7 +814,12 @@ func moveCompanionAssets(source, destination string) error {
 }
 
 func isSameOrDescendant(parent, value string) bool {
-	relative, err := filepath.Rel(parent, value)
+	physicalParent, parentErr := realDestination(parent)
+	physicalValue, valueErr := realDestination(value)
+	if parentErr != nil || valueErr != nil {
+		return false
+	}
+	relative, err := filepath.Rel(physicalParent, physicalValue)
 	return err == nil && (relative == "." || relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)))
 }
 
@@ -805,7 +851,59 @@ func safeDescendant(root, value string) (string, error) {
 	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative) {
 		return "", errors.New("文件必须位于当前工作区内")
 	}
+	physicalRoot, err := realDestination(root)
+	if err != nil {
+		return "", err
+	}
+	physicalPath, err := realDestination(resolved)
+	if err != nil {
+		return "", err
+	}
+	if !isSameOrDescendant(physicalRoot, physicalPath) {
+		return "", errors.New("path must remain inside the selected directory")
+	}
 	return resolved, nil
+}
+
+// realDestination resolves existing ancestors without treating a dangling link as a missing child.
+func realDestination(value string) (string, error) {
+	ancestor := value
+	var missing []string
+	for {
+		_, err := os.Lstat(ancestor)
+		if errors.Is(err, os.ErrNotExist) && filepath.Dir(ancestor) != ancestor {
+			missing = append(missing, filepath.Base(ancestor))
+			ancestor = filepath.Dir(ancestor)
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		resolved, err := filepath.EvalSymlinks(ancestor)
+		if err != nil {
+			return "", err
+		}
+		for index := len(missing) - 1; index >= 0; index-- {
+			resolved = filepath.Join(resolved, missing[index])
+		}
+		return resolved, nil
+	}
+}
+
+func validateContainedTree(root, value string) error {
+	if _, err := safeDescendant(root, value); err != nil {
+		return err
+	}
+	return filepath.WalkDir(value, func(candidate string, entry fs.DirEntry, err error) error {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		_, err = safeDescendant(root, candidate)
+		return err
+	})
 }
 
 func sanitizeSegment(value string) string {

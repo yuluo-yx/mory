@@ -57,9 +57,8 @@ func (backend *ossBackend) Pull(ctx context.Context, root string) (Summary, erro
 				return summary, fmt.Errorf("download oss object %q: %w", key, err)
 			}
 			written, copyErr := copyRemoteFile(root, relative, result.Body)
-			closeErr := result.Body.Close()
-			if copyErr != nil || closeErr != nil {
-				return summary, fmt.Errorf("save oss object %q: %w", key, errors.Join(copyErr, closeErr))
+			if copyErr != nil {
+				return summary, fmt.Errorf("save oss object %q: %w", key, copyErr)
 			}
 			summary.Files++
 			summary.Bytes += written

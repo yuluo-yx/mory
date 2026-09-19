@@ -12,6 +12,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/yuluo-yx/mory"
+	"github.com/yuluo-yx/mory/internal/atomicfile"
 )
 
 // ExportRequest is the rendered document payload handed to WebView2 for export.
@@ -125,7 +128,8 @@ func (host *Host) ConfigureStartup(path string, export *StartupExport, complete 
 }
 
 // Send handles editor events that do not require a return value.
-func (host *Host) Send(payload map[string]any) error {
+func (host *Host) Send(payload map[string]any) (err error) {
+	defer func() { err = host.localizedError(err) }()
 	typeName := stringValue(payload, "type")
 	switch typeName {
 	case "ready":
@@ -261,7 +265,8 @@ func (host *Host) Send(payload map[string]any) error {
 }
 
 // Request handles workspace operations that return a result.
-func (host *Host) Request(method string, args map[string]any) (any, error) {
+func (host *Host) Request(method string, args map[string]any) (result any, err error) {
+	defer func() { err = host.localizedError(err) }()
 	switch method {
 	case "workspaceState":
 		return host.workspaces.state(), nil
@@ -412,6 +417,28 @@ func (host *Host) Request(method string, args map[string]any) (any, error) {
 	default:
 		return nil, fmt.Errorf("未知宿主请求：%s", method)
 	}
+}
+
+type localizedHostError struct {
+	message string
+	cause   error
+}
+
+func (err localizedHostError) Error() string { return err.message }
+func (err localizedHostError) Unwrap() error { return err.cause }
+
+func (host *Host) localizedError(err error) error {
+	if err == nil {
+		return nil
+	}
+	host.mu.RLock()
+	locale := host.locale
+	host.mu.RUnlock()
+	message := mory.HostMessage(err.Error(), locale)
+	if message == err.Error() {
+		return err
+	}
+	return localizedHostError{message: message, cause: err}
 }
 
 // OpenFile loads a note from disk and sends it to the frontend.
@@ -583,7 +610,7 @@ func (host *Host) writeDocument(path string, snapshot documentSaveSnapshot) erro
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, []byte(markdown), 0o644); err != nil {
+	if err := atomicfile.WriteFile(path, []byte(markdown), 0o644); err != nil {
 		return fmt.Errorf("保存文稿：%w", err)
 	}
 	document, err := loadDocument(snapshot.Root, path)

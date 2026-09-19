@@ -3,6 +3,8 @@ const nativeFS = require("node:fs");
 const fs = require("node:fs/promises");
 const { spawn } = require("node:child_process");
 const path = require("node:path");
+const { hostMessage } = require("./host-localization.cjs");
+const { writeAtomicFile } = require("./atomic-file.cjs");
 const { copyWorkspaceEntry, createWorkspaceDirectory, createWorkspaceDocument, createWorkspaceManager, importImage, listDirectories, listDocuments, loadDocumentAssets, moveWorkspaceEntry, readDocumentImage, readWorkspaceDocuments, relocateDocumentAssets, renameWorkspaceEntry, sanitizeSegment, workspaceEntryPath } = require("./workspaces.cjs");
 const { createThemeManager } = require("./themes.cjs");
 const { createWorkspaceWatcher } = require("./workspace-watcher.cjs");
@@ -21,6 +23,14 @@ let workspaceManager;
 let recentWorkspaces = [];
 let themeManager;
 let interfaceLocale = "zh-CN";
+
+function showHostDialog(options) {
+  const localized = { ...options };
+  for (const key of ["title", "message", "detail"]) {
+    if (typeof localized[key] === "string") localized[key] = hostMessage(localized[key], interfaceLocale);
+  }
+  return dialog.showMessageBox(mainWindow, localized);
+}
 const workspaceWatcher = createWorkspaceWatcher({
   onChange: () => refreshWorkspace(),
   onError: error => console.error("工作区文件监听失败：", error)
@@ -140,7 +150,7 @@ async function loadFile(filePath) {
     else pendingDocument = document;
     noteRecentDocument(filePath);
   } catch (error) {
-    await dialog.showMessageBox(mainWindow, {
+    await showHostDialog({
       type: "error",
       title: "Mory",
       message: "无法打开文件",
@@ -154,8 +164,8 @@ async function openDocument() {
     properties: ["openFile"],
     filters: [
       { name: "Markdown", extensions: ["md", "markdown", "mmd", "mdown", "mkd"] },
-      { name: "文本文件", extensions: ["txt", "text"] },
-      { name: "所有文件", extensions: ["*"] }
+      { name: hostMessage("文本文件", interfaceLocale), extensions: ["txt", "text"] },
+      { name: hostMessage("所有文件", interfaceLocale), extensions: ["*"] }
     ]
   });
   if (!result.canceled && result.filePaths[0]) await loadFile(result.filePaths[0]);
@@ -175,7 +185,7 @@ async function openWorkspaceFolder(folderPath) {
     await refreshWorkspace();
     noteRecentDocument(folderPath);
   } catch (error) {
-    await dialog.showMessageBox(mainWindow, { type: "error", title: "Mory", message: "无法读取文件夹", detail: error.message });
+    await showHostDialog({ type: "error", title: "Mory", message: "无法读取文件夹", detail: error.message });
   }
 }
 
@@ -219,7 +229,7 @@ async function writeDocument(filePath, snapshot) {
     markdown = await relocateDocumentAssets({
       root: snapshot.root, markdown, oldPath: snapshot.path, oldName: snapshot.name, newPath: filePath
     });
-    await fs.writeFile(filePath, markdown, "utf8");
+    await writeAtomicFile(filePath, markdown, fs);
     if (currentDocumentId === snapshot.documentId && currentMarkdown === snapshot.markdown) {
       currentMarkdown = markdown;
       currentFilePath = filePath;
@@ -234,7 +244,7 @@ async function writeDocument(filePath, snapshot) {
     await refreshWorkspace();
     noteRecentDocument(filePath);
   } catch (error) {
-    await dialog.showMessageBox(mainWindow, { type: "error", title: "Mory", message: "无法保存文件", detail: error.message });
+    await showHostDialog({ type: "error", title: "Mory", message: "无法保存文件", detail: error.message });
   } finally {
     await previousSave;
     finishSave();
@@ -253,7 +263,7 @@ async function saveAs(snapshot) {
 async function runSaveAction(action) {
   try { await action(); }
   catch (error) {
-    await dialog.showMessageBox(mainWindow, { type: "error", title: "Mory", message: interfaceLocale === "en" ? "Unable to save file" : "无法保存文件", detail: error.message });
+    await showHostDialog({ type: "error", title: "Mory", message: "无法保存文件", detail: error.message });
   }
 }
 
@@ -362,7 +372,7 @@ async function handleWorkspaceRequest(method, args = {}) {
       return summary;
     }
     case "importImage":
-      return importImage({ root: workspaceManager.activeRoot(), ...args });
+      return importImage({ ...args, root: workspaceManager.activeRoot() });
     case "documentAssets":
       return currentFilePath ? loadDocumentAssets(currentFilePath, String(args.markdown || ""), workspaceManager.activeRoot()) : {};
     case "openExternal": {
@@ -378,18 +388,12 @@ async function handleWorkspaceRequest(method, args = {}) {
       return { copied: true };
     }
     case "revealFile": {
-      const root = path.resolve(workspaceManager.activeRoot());
-      const filePath = path.resolve(String(args.path || ""));
-      const local = path.relative(root, filePath);
-      if (!local || local === ".." || local.startsWith(`..${path.sep}`) || path.isAbsolute(local)) throw new Error("文件必须位于当前工作区内。");
+      const filePath = workspaceEntryPath(workspaceManager.activeRoot(), args.path);
       shell.showItemInFolder(filePath);
       return { revealed: true };
     }
     case "readDocument": {
-      const root = path.resolve(workspaceManager.activeRoot());
-      const filePath = path.resolve(String(args.path || ""));
-      const local = path.relative(root, filePath);
-      if (!local || local === ".." || local.startsWith(`..${path.sep}`) || path.isAbsolute(local)) throw new Error("文稿必须位于当前工作区内。");
+      const filePath = workspaceEntryPath(workspaceManager.activeRoot(), args.path);
       const markdown = await fs.readFile(filePath, "utf8");
       return { name: path.basename(filePath), path: filePath, markdown, assets: await loadDocumentAssets(filePath, markdown, workspaceManager.activeRoot()) };
     }
@@ -509,7 +513,7 @@ async function exportRendered(options = {}) {
     }
     await runEditor(`window.Mory.didExport(${JSON.stringify(format)})`);
   } catch (error) {
-    await dialog.showMessageBox(mainWindow, { type: "error", title: "Mory", message: "导出失败", detail: error.message });
+    await showHostDialog({ type: "error", title: "Mory", message: "导出失败", detail: error.message });
   } finally {
     exportView?.destroy();
   }
@@ -616,7 +620,7 @@ function buildMenu() {
       label: "帮助",
       submenu: [
         { label: interfaceLocale === "en" ? "User Guide" : "使用介绍", click: () => runEditor("window.Mory.showIntroduction()") },
-        { label: "关于 Mory", click: () => dialog.showMessageBox(mainWindow, { title: "关于 Mory", message: `Mory ${app.getVersion()}`, detail: "一个跨平台、专注的 Markdown 编辑器。" }) },
+        { label: "关于 Mory", click: () => showHostDialog({ title: "关于 Mory", message: `Mory ${app.getVersion()}`, detail: "一个跨平台、专注的 Markdown 编辑器。" }) },
         { label: "偏好设置", accelerator: "CmdOrCtrl+,", click: () => runEditor("window.Mory.togglePreferences()") }
       ]
     }
@@ -684,8 +688,12 @@ ipcMain.on("mory:message", async (_event, payload) => {
 });
 
 ipcMain.handle("mory:request", async (_event, payload) => {
-  if (!payload || typeof payload.method !== "string") throw new Error("宿主请求格式无效。");
-  return handleWorkspaceRequest(payload.method, payload.args);
+  try {
+    if (!payload || typeof payload.method !== "string") throw new Error("宿主请求格式无效。");
+    return await handleWorkspaceRequest(payload.method, payload.args);
+  } catch (error) {
+    throw new Error(hostMessage(error.message, interfaceLocale), { cause: error });
+  }
 });
 
 if (!app.requestSingleInstanceLock()) app.quit();

@@ -2,7 +2,7 @@ import { isMarkdownFenceEnd, mapMarkdownFences, normalizeMermaidColorTheme, pars
 
 const htmlBlockTags = "address|article|aside|blockquote|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hr|html|legend|li|main|menu|nav|ol|p|pre|search|section|summary|table|tbody|td|tfoot|th|thead|tr|ul";
 const htmlBlockStart = new RegExp(`^ {0,3}(?:<\/?(?:${htmlBlockTags})(?:\\s|/?>)|<!--|<\\?|<![A-Z]|<!\\[CDATA\\[)`, "i");
-const blockStart = /^(#{1,6}\s|>|[-*+]\s|\d+[.)]\s|```|~~~| {0,3}([-*_])(?:\s*\2){2,}\s*$)/;
+const blockStart = /^(#{1,6}(?:\s|$)|>|[-*+]\s|\d+[.)]\s|```|~~~| {0,3}([-*_])(?:\s*\2){2,}\s*$)/;
 const inlineHTMLPattern = /<(a|abbr|b|bdi|bdo|cite|del|em|i|ins|kbd|mark|q|s|samp|small|span|strong|sub|sup|time|u|var)\b[^>]*>[\s\S]*?<\/\1\s*>|<(?:br|img|wbr)\b[^>]*\/?\s*>/gi;
 const htmlEntityPattern = /&(?:#\d{1,7}|#x[\da-f]{1,6}|[a-z][a-z\d]{1,31});/gi;
 
@@ -183,6 +183,14 @@ export function markdownToHTML(markdown) {
       continue;
     }
 
+    const emptyHeading = line.match(/^(#{1,6})[ \t]*$/);
+    if (emptyHeading) {
+      const level = emptyHeading[1].length;
+      html.push(`<h${level}><br></h${level}>`);
+      index += 1;
+      continue;
+    }
+
     const heading = line.match(/^(#{1,6})\s+(.+?)\s*#*$/);
     if (heading) {
       const level = heading[1].length;
@@ -315,7 +323,7 @@ export function editorToMarkdown(root, { escapeText = true } = {}) {
     const content = [...element.childNodes].map(child => inlineNodeToMarkdown(child, escapeText)).join("").trim();
     switch (element.tagName) {
       case "H1": case "H2": case "H3": case "H4": case "H5": case "H6":
-        blocks.push(`${"#".repeat(Number(element.tagName[1]))} ${content}`); break;
+        blocks.push(`${"#".repeat(Number(element.tagName[1]))}${content ? ` ${content}` : ""}`); break;
       case "P": case "DIV":
         blocks.push(element.dataset?.literalHeading ? content.replace(/^(#{1,6})(?=\s)/, "\\$1") : content); break;
       case "BLOCKQUOTE": {

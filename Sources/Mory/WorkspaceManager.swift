@@ -258,6 +258,7 @@ final class WorkspaceManager: @unchecked Sendable {
         }.standardizedFileURL
         let rootPath = activeRoot.standardizedFileURL.path
         guard destination.path.hasPrefix(rootPath + "/") else { throw workspaceError("目录必须位于当前工作区内。") }
+        try validateContainedURL(root: activeRoot, candidate: destination)
         try fileManager.createDirectory(at: destination, withIntermediateDirectories: true)
         let values = try destination.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
         let createdAt = (values.creationDate ?? values.contentModificationDate ?? Date()).timeIntervalSince1970 * 1_000
@@ -269,9 +270,8 @@ final class WorkspaceManager: @unchecked Sendable {
         let requested = name.isEmpty ? "未命名.md" : name
         let base = sanitize(URL(fileURLWithPath: requested).deletingPathExtension().lastPathComponent)
         let destination = availableEntryURL(in: directory, name: "\(base).md", isDirectory: false)
-        guard fileManager.createFile(atPath: destination.path, contents: Data()) else {
-            throw workspaceError("无法在所选目录创建文稿。")
-        }
+        try validateContainedURL(root: activeRoot, candidate: destination)
+        try Data().write(to: destination, options: .withoutOverwriting)
         let values = try destination.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
         let createdAt = (values.creationDate ?? values.contentModificationDate ?? Date()).timeIntervalSince1970 * 1_000
         return ["name": destination.lastPathComponent, "path": destination.path, "markdown": "", "createdAt": createdAt, "images": []]
@@ -282,6 +282,8 @@ final class WorkspaceManager: @unchecked Sendable {
         let destination = try workspaceDirectory(path: destinationPath)
         let values = try source.resourceValues(forKeys: [.isDirectoryKey])
         let isDirectory = values.isDirectory == true
+        try validateContainedTree(root: activeRoot, candidate: source)
+        if !isDirectory { try validateContainedTree(root: activeRoot, candidate: companionAssetsURL(for: source)) }
         if isDirectory, isSameOrDescendant(parent: source, candidate: destination) {
             throw workspaceError("不能把目录复制到自身或子目录。")
         }
@@ -304,6 +306,8 @@ final class WorkspaceManager: @unchecked Sendable {
         }
         let values = try source.resourceValues(forKeys: [.isDirectoryKey])
         let isDirectory = values.isDirectory == true
+        try validateContainedTree(root: activeRoot, candidate: source)
+        if !isDirectory { try validateContainedTree(root: activeRoot, candidate: companionAssetsURL(for: source)) }
         if isDirectory, isSameOrDescendant(parent: source, candidate: destination) {
             throw workspaceError("不能把目录移动到自身或子目录。")
         }
@@ -334,6 +338,7 @@ final class WorkspaceManager: @unchecked Sendable {
         let fileExtension = requestedExtension.isEmpty ? originalExtension : requestedExtension
         let filename = isDirectory || fileExtension.isEmpty ? base : "\(base).\(fileExtension)"
         let target = source.deletingLastPathComponent().appendingPathComponent(filename, isDirectory: isDirectory)
+        try validateContainedURL(root: activeRoot, candidate: target)
         guard target.standardizedFileURL != source.standardizedFileURL else { throw workspaceError("名称没有变化。") }
         guard !fileManager.fileExists(atPath: target.path) else { throw workspaceError("同名条目已经存在。") }
 
@@ -344,15 +349,14 @@ final class WorkspaceManager: @unchecked Sendable {
 
         let sourceAssets = companionAssetsURL(for: source)
         let targetAssets = companionAssetsURL(for: target)
+        try validateContainedTree(root: activeRoot, candidate: sourceAssets)
+        try validateContainedURL(root: activeRoot, candidate: targetAssets)
         let hasAssets = fileManager.fileExists(atPath: sourceAssets.path)
         guard !hasAssets || !fileManager.fileExists(atPath: targetAssets.path) else {
             throw workspaceError("同名图片目录已经存在。")
         }
         let markdown = try String(contentsOf: source, encoding: .utf8)
-        let nextMarkdown = markdown.replacingOccurrences(
-            of: "](\(sourceAssets.lastPathComponent)/",
-            with: "](\(targetAssets.lastPathComponent)/"
-        )
+        let nextMarkdown = CompanionAssetPaths.rewrite(markdown, from: sourceAssets.lastPathComponent, to: targetAssets.lastPathComponent)
         try fileManager.moveItem(at: source, to: target)
         var assetsMoved = false
         do {
@@ -383,7 +387,7 @@ final class WorkspaceManager: @unchecked Sendable {
         if path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return activeRoot.standardizedFileURL }
         if URL(fileURLWithPath: path).standardizedFileURL == activeRoot.standardizedFileURL { return activeRoot.standardizedFileURL }
         let url = try workspaceFileURL(path: path, kind: "目标目录")
-        let values = try url.resourceValues(forKeys: [.isDirectoryKey])
+        let values = try url.resolvingSymlinksInPath().resourceValues(forKeys: [.isDirectoryKey])
         guard values.isDirectory == true else { throw workspaceError("目标必须是当前工作区中的目录。") }
         return url
     }
@@ -397,8 +401,8 @@ final class WorkspaceManager: @unchecked Sendable {
             let suffix = serial == 1 ? "" : (serial == 2 ? " 副本" : " 副本 \(serial - 1)")
             let filename = fileExtension.isEmpty ? "\(base)\(suffix)" : "\(base)\(suffix).\(fileExtension)"
             let candidate = directory.appendingPathComponent(filename, isDirectory: isDirectory)
-            let assetsExist = !isDirectory && fileManager.fileExists(atPath: companionAssetsURL(for: candidate).path)
-            if !fileManager.fileExists(atPath: candidate.path), !assetsExist { return candidate }
+            let assetsExist = !isDirectory && (try? fileManager.attributesOfItem(atPath: companionAssetsURL(for: candidate).path)) != nil
+            if (try? fileManager.attributesOfItem(atPath: candidate.path)) == nil, !assetsExist { return candidate }
             serial += 1
         }
     }
@@ -408,8 +412,8 @@ final class WorkspaceManager: @unchecked Sendable {
     }
 
     private func isSameOrDescendant(parent: URL, candidate: URL) -> Bool {
-        let parentPath = parent.standardizedFileURL.path
-        let candidatePath = candidate.standardizedFileURL.path
+        let parentPath = parent.resolvingSymlinksInPath().standardizedFileURL.path
+        let candidatePath = candidate.resolvingSymlinksInPath().standardizedFileURL.path
         return candidatePath == parentPath || candidatePath.hasPrefix(parentPath + "/")
     }
 
@@ -454,6 +458,7 @@ final class WorkspaceManager: @unchecked Sendable {
         let url = URL(fileURLWithPath: path).standardizedFileURL
         let rootPath = activeRoot.standardizedFileURL.path
         guard url.path.hasPrefix(rootPath + "/") else { throw workspaceError("\(kind)必须位于当前工作区内。") }
+        try validateContainedURL(root: activeRoot, candidate: url)
         return url
     }
 
@@ -463,6 +468,7 @@ final class WorkspaceManager: @unchecked Sendable {
         var images: [[String: Any]] = []
         var visited = Set<String>()
         for directory in documentAssetDirectories(for: documentURL) {
+            guard (try? validateContainedURL(root: documentURL.deletingLastPathComponent(), candidate: directory)) != nil else { continue }
             guard let enumerator = fileManager.enumerator(at: directory, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles]) else { continue }
             for case let url as URL in enumerator where supported.contains(url.pathExtension.lowercased()) && !visited.contains(url.path) {
                 guard let values = try? url.resourceValues(forKeys: keys), values.isRegularFile == true else { continue }
@@ -532,6 +538,9 @@ final class WorkspaceManager: @unchecked Sendable {
         let documentPath = arguments["documentPath"] as? String ?? ""
         let documentDirectory = documentPath.isEmpty ? activeRoot : URL(fileURLWithPath: documentPath).deletingLastPathComponent()
         let directory = documentDirectory.appendingPathComponent(documentBase, isDirectory: true)
+        let rootPath = activeRoot.standardizedFileURL.path
+        let documentInsideWorkspace = documentDirectory.standardizedFileURL.path == rootPath || documentDirectory.standardizedFileURL.path.hasPrefix(rootPath + "/")
+        try validateContainedURL(root: documentInsideWorkspace ? activeRoot : documentDirectory, candidate: directory)
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         let sourceName = arguments["name"] as? String ?? "图片"
         let base = sanitize(URL(fileURLWithPath: sourceName).deletingPathExtension().lastPathComponent)
@@ -553,9 +562,11 @@ final class WorkspaceManager: @unchecked Sendable {
         let source = oldParent.appendingPathComponent(oldBase, isDirectory: true)
         let destination = newURL.deletingLastPathComponent().appendingPathComponent(newBase, isDirectory: true)
         guard fileManager.fileExists(atPath: source.path) else { return markdown }
+        try validateContainedTree(root: oldParent, candidate: source)
+        try validateContainedURL(root: newURL.deletingLastPathComponent(), candidate: destination)
         // Copying preserves the original note and refuses a conflicting destination directory.
         try fileManager.copyItem(at: source, to: destination)
-        return markdown.replacingOccurrences(of: "](\(oldBase)/", with: "](\(newBase)/")
+        return CompanionAssetPaths.rewrite(markdown, from: oldBase, to: newBase)
     }
 
     func savedAssetPathChanges(oldName: String, newURL: URL) -> [String: String] {
@@ -589,6 +600,7 @@ final class WorkspaceManager: @unchecked Sendable {
                 let local = workspaceRelative ? relative.trimmingCharacters(in: CharacterSet(charactersIn: "/\\")) : relative
                 let fileURL = (workspaceRelative ? root : documentDirectory).appendingPathComponent(local).standardizedFileURL
                 guard fileURL.path.hasPrefix(root.path + "/") else { return }
+                guard (try? validateContainedURL(root: root, candidate: fileURL)) != nil else { return }
                 guard let data = try? Data(contentsOf: fileURL) else { return }
                 assets[relative.replacingOccurrences(of: "\\", with: "/")] = "data:\(mimeType(for: fileURL));base64,\(data.base64EncodedString())"
             }
@@ -660,6 +672,47 @@ final class WorkspaceManager: @unchecked Sendable {
     }
 }
 
+// Resolve the existing ancestor of a new destination, rejecting dangling and cyclic links.
+func resolvedDestinationURL(_ url: URL) throws -> URL {
+    var ancestor = url.standardizedFileURL
+    var missing: [String] = []
+    while true {
+        do { _ = try FileManager.default.attributesOfItem(atPath: ancestor.path) }
+        catch {
+            let failure = error as NSError
+            guard failure.domain == NSCocoaErrorDomain, [NSFileNoSuchFileError, NSFileReadNoSuchFileError].contains(failure.code),
+                  ancestor.path != "/" else { throw error }
+            missing.insert(ancestor.lastPathComponent, at: 0)
+            ancestor.deleteLastPathComponent()
+            continue
+        }
+        guard let resolved = realpath(ancestor.path, nil) else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+        }
+        defer { free(resolved) }
+        return missing.reduce(URL(fileURLWithPath: String(cString: resolved))) { $0.appendingPathComponent($1) }
+    }
+}
+
+func validateContainedURL(root: URL, candidate: URL) throws {
+    func contains(_ root: String, _ candidate: String) -> Bool {
+        candidate == root || candidate.hasPrefix(root == "/" ? "/" : root + "/")
+    }
+    guard contains(root.standardizedFileURL.path, candidate.standardizedFileURL.path),
+          contains(try resolvedDestinationURL(root).path, try resolvedDestinationURL(candidate).path) else {
+        throw workspaceError("Path must remain inside the selected directory.")
+    }
+}
+
+func validateContainedTree(root: URL, candidate: URL) throws {
+    try validateContainedURL(root: root, candidate: candidate)
+    guard let attributes = try? FileManager.default.attributesOfItem(atPath: candidate.path),
+          attributes[.type] as? FileAttributeType == .typeDirectory else { return }
+    for child in try FileManager.default.contentsOfDirectory(at: candidate, includingPropertiesForKeys: nil) {
+        try validateContainedTree(root: root, candidate: child)
+    }
+}
+
 func workspaceError(_ message: String) -> NSError {
     NSError(domain: "Mory.Workspace", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
 }
@@ -676,4 +729,104 @@ private func imageExtension(for mime: String) -> String? {
 
 private func mimeType(for url: URL) -> String {
     ["png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif", "webp": "image/webp", "svg": "image/svg+xml", "bmp": "image/bmp"][url.pathExtension.lowercased()] ?? "application/octet-stream"
+}
+
+// Keep this URL contract aligned with the shared asset-path fixtures used by all hosts.
+enum CompanionAssetPaths {
+    private static func replace(_ pattern: String, in text: String, using transform: (NSTextCheckingResult, NSString) -> String) -> String {
+        let source = text as NSString
+        let expression = try! NSRegularExpression(pattern: pattern)
+        var result = text
+        for match in expression.matches(in: text, range: NSRange(location: 0, length: source.length)).reversed() {
+            result = (result as NSString).replacingCharacters(in: match.range, with: transform(match, source))
+        }
+        return result
+    }
+
+    private static func capture(_ match: NSTextCheckingResult, _ group: Int, _ source: NSString) -> String? {
+        let range = match.range(at: group)
+        return range.location == NSNotFound ? nil : source.substring(with: range)
+    }
+
+    static func rewrite(_ source: String, from: String, to: String) -> String {
+        guard !from.isEmpty, from != to else { return source }
+        var prefix = "\u{E100}"
+        while source.contains(prefix) || from.contains(prefix) || to.contains(prefix) { prefix += "\u{E100}" }
+        var tokens: [String] = []
+        func restore(_ text: String) -> String {
+            replace(prefix + "(\\d+)\u{E101}", in: text) { match, value in
+                tokens[Int(capture(match, 1, value)!)!]
+            }
+        }
+        func protect(_ text: String) -> String {
+            let value = restore(text)
+            tokens.append(value)
+            return prefix + String(tokens.count - 1) + "\u{E101}"
+        }
+        func rewriteURL(_ value: String, html: Bool = false) -> String {
+            var leading = "", rest = value
+            while rest.hasPrefix("./") { leading += "./"; rest = String(rest.dropFirst(2)) }
+            guard let slash = rest.firstIndex(of: "/") else { return value }
+            let encoded = String(rest[..<slash])
+            let directory = html ? encoded.replacingOccurrences(of: "&amp;", with: "&") : encoded
+            guard directory.removingPercentEncoding == from else { return value }
+            var replacement = to
+            if encoded.contains("%") {
+                let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~")
+                replacement = to.addingPercentEncoding(withAllowedCharacters: allowed) ?? to
+            }
+            if html { replacement = replacement.replacingOccurrences(of: "&", with: "&amp;") }
+            return leading + replacement + String(rest[slash...])
+        }
+        let startPattern = try! NSRegularExpression(pattern: #"^ {0,3}(`{3,}|~{3,})(.*)$"#)
+        let endPattern = try! NSRegularExpression(pattern: #"^ {0,3}(`{3,}|~{3,})[\t ]*$"#)
+        var result = "", block = "", fence = ""
+        let lines = source.components(separatedBy: "\n")
+        for (index, content) in lines.enumerated() {
+            let line = content + (index < lines.count - 1 ? "\n" : "")
+            let value = (content.hasSuffix("\r") ? String(content.dropLast()) : content) as NSString
+            let range = NSRange(location: 0, length: value.length)
+            if !fence.isEmpty {
+                block += line
+                if let match = endPattern.firstMatch(in: value as String, range: range),
+                   let marker = capture(match, 1, value), marker.first == fence.first, marker.count >= fence.count {
+                    let ending = block.hasSuffix("\r\n") ? "\r\n" : block.hasSuffix("\n") ? "\n" : ""
+                    result += protect(String(block.dropLast(ending.count))) + ending
+                    block = ""; fence = ""
+                }
+            } else if let match = startPattern.firstMatch(in: value as String, range: range),
+                      let marker = capture(match, 1, value),
+                      marker.first != "`" || !(capture(match, 2, value) ?? "").contains("`") {
+                fence = marker; block = line
+            } else { result += line }
+        }
+        if !fence.isEmpty { result += protect(block) }
+        result = replace(#"(?is)<(pre|code|script|style)\b[^>]*>[\s\S]*?</\1\s*>|<!--[\s\S]*?-->"#, in: result) { match, text in protect(text.substring(with: match.range)) }
+        result = replace(#"(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)"#, in: result) { match, text in protect(text.substring(with: match.range)) }
+        result = replace(#"(?m)^(?: {4}|\t)[^\r\n]*"#, in: result) { match, text in protect(text.substring(with: match.range)) }
+        result = replace(#"</?[A-Za-z][A-Za-z0-9:-]*(?:\s+(?:[^>"']|"[^"]*"|'[^']*')*)?/?>"#, in: result) { match, text in
+            var tag = text.substring(with: match.range)
+            if tag.range(of: #"^<img\b"#, options: [.regularExpression, .caseInsensitive]) != nil {
+                tag = replace(#"(?i)(\s+src\s*=\s*)(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))"#, in: tag) { attribute, value in
+                    for group in 2...4 {
+                        if let url = capture(attribute, group, value) {
+                            let offset = attribute.range(at: group).location - attribute.range.location
+                            return (value.substring(with: attribute.range) as NSString).replacingCharacters(in: NSRange(location: offset, length: attribute.range(at: group).length), with: rewriteURL(url, html: true))
+                        }
+                    }
+                    return value.substring(with: attribute.range)
+                }
+            }
+            return protect(tag)
+        }
+        result = replace(#"(!?\[[^\]\r\n]*\]\(\s*)(?:<([^>\r\n]+)>|([^\s)]+))"#, in: result) { match, text in
+            var index = match.range.location - 1, escaped = 0
+            while index >= 0 && text.character(at: index) == 92 { escaped += 1; index -= 1 }
+            if escaped % 2 != 0 { return text.substring(with: match.range) }
+            let start = capture(match, 1, text)!
+            if let angle = capture(match, 2, text) { return start + "<" + rewriteURL(angle) + ">" }
+            return start + rewriteURL(capture(match, 3, text)!)
+        }
+        return restore(result)
+    }
 }

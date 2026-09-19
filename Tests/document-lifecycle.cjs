@@ -3,6 +3,8 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { app, BrowserWindow } = require("electron");
 
+// Hidden-window state tests do not exercise GPU rendering.
+app.commandLine.appendSwitch("disable-gpu");
 app.disableHardwareAcceleration();
 app.whenReady().then(async () => {
   const window = new BrowserWindow({ show: false, webPreferences: { contextIsolation: true, nodeIntegration: false, partition: `mory-lifecycle-${process.pid}` } });

@@ -1,11 +1,11 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"strings"
 )
@@ -164,17 +164,8 @@ func safeLocalPath(root, remoteName string) (string, error) {
 }
 
 func writeLocalFile(root, remoteName string, data []byte) error {
-	destination, err := safeLocalPath(root, remoteName)
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
-		return fmt.Errorf("create local directory: %w", err)
-	}
-	if err := os.WriteFile(destination, data, 0o644); err != nil {
-		return fmt.Errorf("write local file: %w", err)
-	}
-	return nil
+	_, err := copyRemoteFile(root, remoteName, bytes.NewReader(data))
+	return err
 }
 
 func objectKey(prefix, relative string) string {

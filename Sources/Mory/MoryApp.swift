@@ -236,6 +236,10 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     private var dragStartPointer: NSPoint?
     private var dragStartWindowOrigin: NSPoint?
     private var interfaceLocale = "zh-CN"
+    private lazy var hostLocalizer = HostLocalizer(url: [
+        Bundle.main.resourceURL?.appendingPathComponent("Web/host-messages.json"),
+        Bundle.module.url(forResource: "host-messages", withExtension: "json", subdirectory: "Web")
+    ].compactMap { $0 }.first { FileManager.default.fileExists(atPath: $0.path) })
     private var launchRequest = LaunchRequest()
     private var pendingOpenURL: URL?
     private var cliExportStarted = false
@@ -960,7 +964,7 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
 
     private func answerHostRequest(id: String, result: Any? = nil, error: Error? = nil) {
         var payload: [String: Any] = ["requestId": id]
-        if let error { payload["error"] = error.localizedDescription }
+        if let error { payload["error"] = hostLocalizer.text(error.localizedDescription, locale: interfaceLocale) }
         else { payload["result"] = result ?? NSNull() }
         sendJSON(function: "window.Mory.resolveHostRequest", value: payload)
     }
@@ -1222,7 +1226,7 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         var options: [NSApplication.AboutPanelOptionKey: Any] = [
             .applicationName: "Mory",
             .applicationVersion: version,
-            .credits: NSAttributedString(string: "一个原生、专注的 Markdown 编辑器。")
+            .credits: NSAttributedString(string: hostLocalizer.text("一个原生、专注的 Markdown 编辑器。", locale: interfaceLocale))
         ]
         if let icon = NSApp.applicationIconImage {
             // Keep the About panel aligned with the runtime Dock icon instead of a cached bundle image.
@@ -1273,7 +1277,8 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "Mory"
-        alert.informativeText = message
+        alert.informativeText = hostLocalizer.text(message, locale: interfaceLocale)
+        alert.addButton(withTitle: hostLocalizer.text("确定", locale: interfaceLocale))
         alert.runModal()
     }
 }
