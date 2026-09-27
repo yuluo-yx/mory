@@ -16,6 +16,7 @@ import {
   mindMapHTML,
   normalizeCalendarDocument,
   normalizeMermaidColorTheme,
+  normalizedOrderedListStart,
   optimizeMarkdownTypography,
   replaceTextMatches,
   rebaseSavedAssetPaths
@@ -108,6 +109,13 @@ test("replacement preserves literal dollar tokens and unrelated text", () => {
   assert.equal(replaceTextMatches(source, matches.slice(1), "fox"), "before cat fox after");
   assert.equal(replaceTextMatches(source, matches, ""), "before   after");
   assert.equal(replaceTextMatches(source, [], "fox"), source);
+});
+
+test("normalizes ordered list starts for editor numbering", () => {
+  assert.equal(normalizedOrderedListStart("6."), 6);
+  assert.equal(normalizedOrderedListStart("03)"), 3);
+  assert.equal(normalizedOrderedListStart("0."), 1);
+  assert.equal(normalizedOrderedListStart("bad"), 1);
 });
 
 test("saved asset relocation preserves newer prose and unrelated paths", () => {

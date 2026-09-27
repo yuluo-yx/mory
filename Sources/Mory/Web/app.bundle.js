@@ -95,6 +95,11 @@ function replaceTextMatches(source, matches, replacement) {
   return parts.join("");
 }
 
+function normalizedOrderedListStart(value) {
+  const number = Number.parseInt(String(value ?? ""), 10);
+  return Number.isSafeInteger(number) && number > 0 ? number : 1;
+}
+
 function rebaseSavedAssetPaths(markdown, changes = {}) {
   const source = String(markdown);
   const mappings = Object.entries(changes ?? {}).filter(([from, to]) => from && typeof to === "string" && from !== to);
@@ -499,6 +504,53 @@ function splitTableRow(line) {
   return line.trim().replace(/^\|/, "").replace(/\|$/, "").split(/(?<!\\)\|/).map(cell => cell.trim().replaceAll("\\|", "|"));
 }
 
+function listLine(line) {
+  const match = String(line ?? "").match(/^([ \t]*)([-*+]|\d+[.)])\s+(.+)$/);
+  if (!match) return null;
+  return {
+    indent: match[1].replaceAll("\t", "    ").length,
+    marker: match[2],
+    ordered: /^\d/.test(match[2]),
+    start: normalizedOrderedListStart(match[2]),
+    content: match[3]
+  };
+}
+
+function readListBlock(lines, start, indent = null) {
+  const first = listLine(lines[start]);
+  if (!first) return null;
+  const baseIndent = indent ?? first.indent;
+  const ordered = first.ordered;
+  const tag = ordered ? "ol" : "ul";
+  const startAttr = ordered && first.start !== 1 ? ` start="${first.start}"` : "";
+  const items = [];
+  let index = start;
+
+  while (index < lines.length) {
+    const item = listLine(lines[index]);
+    if (!item || item.indent < baseIndent) break;
+    if (item.indent > baseIndent) {
+      if (!items.length) break;
+      const child = readListBlock(lines, index, item.indent);
+      if (!child) break;
+      items[items.length - 1] = items[items.length - 1].replace(/<\/li>$/, `${child.html}</li>`);
+      index = child.next;
+      continue;
+    }
+    if (item.ordered !== ordered) break;
+    const task = item.content.match(/^\[([ xX])\]\s*(.*)$/);
+    if (task) {
+      const checked = task[1].toLowerCase() === "x" ? " checked" : "";
+      items.push(`<li class="task-item"><input type="checkbox"${checked}>${inlineMarkdown(task[2])}</li>`);
+    } else {
+      items.push(`<li>${inlineMarkdown(item.content)}</li>`);
+    }
+    index += 1;
+  }
+
+  return { html: `<${tag}${startAttr}>${items.join("")}</${tag}>`, next: index };
+}
+
 function parseFenceInfo(value) {
   const info = String(value ?? "").trim();
   let title = "";
@@ -612,24 +664,10 @@ function markdownToHTML(markdown) {
       continue;
     }
 
-    const listMatch = line.match(/^\s*([-*+]|\d+[.)])\s+(.+)$/);
-    if (listMatch) {
-      const ordered = /^\d/.test(listMatch[1]);
-      const tag = ordered ? "ol" : "ul";
-      const items = [];
-      while (index < lines.length) {
-        const item = lines[index].match(/^\s*([-*+]|\d+[.)])\s+(.+)$/);
-        if (!item || /^\d/.test(item[1]) !== ordered) break;
-        const task = item[2].match(/^\[([ xX])\]\s*(.*)$/);
-        if (task) {
-          const checked = task[1].toLowerCase() === "x" ? " checked" : "";
-          items.push(`<li class="task-item"><input type="checkbox"${checked}>${inlineMarkdown(task[2])}</li>`);
-        } else {
-          items.push(`<li>${inlineMarkdown(item[2])}</li>`);
-        }
-        index += 1;
-      }
-      html.push(`<${tag}>${items.join("")}</${tag}>`);
+    const list = readListBlock(lines, index);
+    if (list) {
+      html.push(list.html);
+      index = list.next;
       continue;
     }
 
@@ -689,6 +727,31 @@ function tableToMarkdown(table, escapeText) {
   return [normalized[0], separator, ...normalized.slice(1)].map(row => `| ${row.join(" | ")} |`).join("\n");
 }
 
+function listToMarkdown(list, escapeText, depth = 0) {
+  const ordered = list.tagName === "OL";
+  const start = ordered ? normalizedOrderedListStart(list.getAttribute("start")) : 1;
+  const indent = "    ".repeat(depth);
+  const items = [...list.children].filter(item => item.tagName === "LI").flatMap((item, index) => {
+    const marker = ordered ? `${start + index}.` : "-";
+    const task = item.querySelector(':scope > input[type="checkbox"]');
+    const nestedLists = [];
+    const text = [...item.childNodes].filter(child => {
+      if (child === task) return false;
+      if (child.nodeType === Node.ELEMENT_NODE && /^(UL|OL)$/.test(child.tagName)) {
+        nestedLists.push(child);
+        return false;
+      }
+      return true;
+    }).map(child => inlineNodeToMarkdown(child, escapeText)).join("").trim();
+    const checkbox = task ? `[${task.checked ? "x" : " "}] ` : "";
+    return [
+      `${indent}${marker} ${checkbox}${text}`.trimEnd(),
+      ...nestedLists.map(child => listToMarkdown(child, escapeText, depth + 1))
+    ];
+  });
+  return items.join("\n");
+}
+
 function editorToMarkdown(root, { escapeText = true } = {}) {
   const blocks = [];
   for (const node of root.childNodes) {
@@ -729,14 +792,7 @@ function editorToMarkdown(root, { escapeText = true } = {}) {
         break;
       }
       case "UL": case "OL": {
-        const ordered = element.tagName === "OL";
-        const items = [...element.children].map((item, index) => {
-          const task = item.querySelector(':scope > input[type="checkbox"]');
-          const text = [...item.childNodes].filter(child => child !== task).map(child => inlineNodeToMarkdown(child, escapeText)).join("").trim();
-          if (task) return `- [${task.checked ? "x" : " "}] ${text}`;
-          return `${ordered ? `${index + 1}.` : "-"} ${text}`;
-        });
-        blocks.push(items.join("\n"));
+        blocks.push(listToMarkdown(element, escapeText));
         break;
       }
       case "PRE": {
@@ -1297,6 +1353,7 @@ function renderDocument(document, announce = false) {
   state.titleTouched = false;
   sourceEditor.value = state.markdown;
   write.innerHTML = markdownToHTML(state.markdown) || "<p><br></p>";
+  refreshOrderedListCounters(write);
   updateFindMatches();
   updateHeadingFoldControls(write);
   enhanceRawHTML(write);
@@ -1456,6 +1513,7 @@ function applyDocumentAssets(root, document = activeDocument(), { refreshMissing
 
 function syncFromWrite() {
   updateHeadingFoldControls(write);
+  refreshOrderedListCounters(write);
   state.markdown = editorToMarkdown(write);
   sourceEditor.value = state.markdown;
   const document = activeDocument();
@@ -1918,6 +1976,61 @@ function selectionAtStart(element) {
     return false;
   }
   return head.toString().replaceAll(caretMarker, "") === "";
+}
+
+function refreshOrderedListCounters(root = write) {
+  root.querySelectorAll?.("ol").forEach(list => {
+    list.style.counterReset = `mory-list ${normalizedOrderedListStart(list.getAttribute("start")) - 1}`;
+  });
+}
+
+function currentListItem() {
+  const selection = window.getSelection();
+  if (!selection?.isCollapsed || !selection.rangeCount || !write.contains(selection.anchorNode)) return null;
+  const element = selection.anchorNode.nodeType === Node.ELEMENT_NODE ? selection.anchorNode : selection.anchorNode.parentElement;
+  const item = element?.closest?.("li");
+  return item && write.contains(item) ? item : null;
+}
+
+function directChildList(item, tagName) {
+  return [...item.children].find(child => child.tagName === tagName) ?? null;
+}
+
+function indentListItem(item) {
+  const list = item.parentElement;
+  const previous = item.previousElementSibling;
+  if (!list || !/^(UL|OL)$/.test(list.tagName) || previous?.tagName !== "LI") return false;
+  let childList = directChildList(previous, list.tagName);
+  if (!childList) {
+    childList = document.createElement(list.tagName.toLowerCase());
+    previous.append(childList);
+  }
+  childList.append(item);
+  return true;
+}
+
+function outdentListItem(item) {
+  const list = item.parentElement;
+  const parentItem = list?.parentElement;
+  if (!list || !/^(UL|OL)$/.test(list.tagName) || parentItem?.tagName !== "LI") return false;
+  parentItem.after(item);
+  if (!list.children.length) list.remove();
+  return true;
+}
+
+function handleListTab(event) {
+  if (state.sourceMode || event.key !== "Tab" || event.metaKey || event.ctrlKey || event.altKey) return false;
+  const item = currentListItem();
+  if (!item) return false;
+  event.preventDefault();
+  beginEditorHistory(event.shiftKey ? "list-outdent" : "list-indent", { force: true });
+  const changed = event.shiftKey ? outdentListItem(item) : indentListItem(item);
+  if (changed) {
+    refreshOrderedListCounters(write);
+    syncFromWrite();
+    updateFocusLine();
+  }
+  return true;
 }
 
 function selectedTableCell(table) {
@@ -3260,6 +3373,7 @@ function renderMarkdownBlockAtCaret() {
   enhanceRawHTML(template.content);
   block.replaceWith(template.content);
   restoreRenderCaret();
+  refreshOrderedListCounters(write);
   enhanceTables(write);
   applyDocumentAssets(write);
   return true;
@@ -3274,6 +3388,7 @@ function renderMarkdownDocumentAtCaret() {
     markdown = markdown.replace(closingFenceWithCaret, `$1$2\n\n${renderCaretMarker}`);
   }
   write.innerHTML = markdownToHTML(markdown) || "<p><br></p>";
+  refreshOrderedListCounters(write);
   enhanceRawHTML(write);
   enhanceTables(write);
   enhanceCalendars(write);
@@ -5407,7 +5522,7 @@ const calendarExportCSS = `
 `;
 
 const exportBaseCSS = `
-*{box-sizing:border-box}html,body{margin:0;min-height:100%}body{background:#fff;color:#2c2c2b}.editor-scroll{min-height:100vh;padding:1px 0}.write{width:min(calc(100% - 72px),820px);margin:48px auto 72px;font-size:17px;line-height:1.8}.write h1,.write h2,.write h3,.write h4,.write h5,.write h6{margin:1.7em 0 .65em;line-height:1.35}.write h1{margin-top:.7em;padding-bottom:.28em;border-bottom:1px solid #ddd;font-size:2em}.write h2{padding-bottom:.24em;border-bottom:1px solid #e5e5e5;font-size:1.55em}.write h3{font-size:1.24em}.write p{margin:.75em 0}.write a{text-decoration:none}.write code{padding:.14em .35em;border-radius:3px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.84em}.write pre{position:relative;margin:1.1em 0;padding:16px 18px;overflow:auto;border-radius:4px;line-height:1.55}.write pre[data-title]:not([data-title=""]){padding-top:36px}.write pre[data-title]:not([data-title=""])::before{content:attr(data-title);position:absolute;top:8px;left:18px;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;font-size:10px;font-weight:600;opacity:.6}.write pre code{padding:0;background:transparent}.write .hljs-comment,.write .hljs-quote{color:#6a737d;font-style:italic}.write .hljs-keyword,.write .hljs-selector-tag,.write .hljs-type{color:#8250df;font-weight:600}.write .hljs-title,.write .hljs-section,.write .hljs-function{color:#0550ae}.write .hljs-string,.write .hljs-attr,.write .hljs-symbol{color:#0a3069}.write .hljs-number,.write .hljs-literal,.write .hljs-built_in{color:#953800}.write blockquote{margin:1.1em 0;padding:.1em 1.1em;border-left:3px solid}.write ul,.write ol{padding-left:1.6em}.write li{margin:.24em 0}.write hr{margin:2.2em 0;border:0;border-top:1px solid}.write table{width:100%;margin:1.2em 0;border-collapse:collapse;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;font-size:.88em}.write th,.write td{min-width:80px;padding:7px 10px;border:1px solid;text-align:left}.write img{max-width:100%}.write .task-item{list-style:none;margin-left:-1.4em}.write input[type=checkbox]{margin-right:.55em}.mermaid-diagram{margin:1.5em 0;padding:16px;overflow:auto;text-align:center}.mermaid-diagram svg{display:block;max-width:100%;height:auto;margin:auto}${calendarExportCSS}@page{margin:18mm 17mm}@media print{.editor-scroll{background:transparent!important}.write{width:auto;margin:0}.mermaid-diagram,.calendar-block{break-inside:avoid}}`;
+*{box-sizing:border-box}html,body{margin:0;min-height:100%}body{background:#fff;color:#2c2c2b}.editor-scroll{min-height:100vh;padding:1px 0}.write{width:min(calc(100% - 72px),820px);margin:48px auto 72px;font-size:17px;line-height:1.8}.write h1,.write h2,.write h3,.write h4,.write h5,.write h6{margin:1.7em 0 .65em;line-height:1.35}.write h1{margin-top:.7em;padding-bottom:.28em;border-bottom:1px solid #ddd;font-size:2em}.write h2{padding-bottom:.24em;border-bottom:1px solid #e5e5e5;font-size:1.55em}.write h3{font-size:1.24em}.write p{margin:.75em 0}.write a{text-decoration:none}.write code{padding:.14em .35em;border-radius:3px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.84em}.write pre{position:relative;margin:1.1em 0;padding:16px 18px;overflow:auto;border-radius:4px;line-height:1.55}.write pre[data-title]:not([data-title=""]){padding-top:36px}.write pre[data-title]:not([data-title=""])::before{content:attr(data-title);position:absolute;top:8px;left:18px;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;font-size:10px;font-weight:600;opacity:.6}.write pre code{padding:0;background:transparent}.write .hljs-comment,.write .hljs-quote{color:#6a737d;font-style:italic}.write .hljs-keyword,.write .hljs-selector-tag,.write .hljs-type{color:#8250df;font-weight:600}.write .hljs-title,.write .hljs-section,.write .hljs-function{color:#0550ae}.write .hljs-string,.write .hljs-attr,.write .hljs-symbol{color:#0a3069}.write .hljs-number,.write .hljs-literal,.write .hljs-built_in{color:#953800}.write blockquote{margin:1.1em 0;padding:.1em 1.1em;border-left:3px solid}.write ul,.write ol{padding-left:1.6em}.write ol{counter-reset:mory-list;list-style:none}.write ol>li{position:relative;counter-increment:mory-list}.write ol>li::before{content:counters(mory-list,".") ". ";position:absolute;right:calc(100% + .35em);color:#6a737d;font-variant-numeric:tabular-nums;white-space:nowrap}.write li{margin:.24em 0}.write hr{margin:2.2em 0;border:0;border-top:1px solid}.write table{width:100%;margin:1.2em 0;border-collapse:collapse;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;font-size:.88em}.write th,.write td{min-width:80px;padding:7px 10px;border:1px solid;text-align:left}.write img{max-width:100%}.write .task-item{list-style:none;margin-left:-1.4em}.write input[type=checkbox]{margin-right:.55em}.mermaid-diagram{margin:1.5em 0;padding:16px;overflow:auto;text-align:center}.mermaid-diagram svg{display:block;max-width:100%;height:auto;margin:auto}${calendarExportCSS}@page{margin:18mm 17mm}@media print{.editor-scroll{background:transparent!important}.write{width:auto;margin:0}.mermaid-diagram,.calendar-block{break-inside:avoid}}`;
 
 async function readThemeCSS(theme) {
   if (state.themeCSS.has(theme)) return state.themeCSS.get(theme);
@@ -5575,6 +5690,7 @@ async function exportDocument(options = {}) {
   const exportRoot = document.createElement("article");
   exportRoot.className = "write";
   exportRoot.innerHTML = markdownToHTML(state.markdown);
+  refreshOrderedListCounters(exportRoot);
   enhanceRawHTML(exportRoot, { interactive: false });
   enhanceCalendars(exportRoot, { interactive: false });
   applyDocumentAssets(exportRoot);
@@ -5830,6 +5946,7 @@ function handleEditorShortcut(event) {
     }
     return;
   }
+  if (handleListTab(event)) return;
   if (command && event.shiftKey && event.key === "Backspace" && selectedTable) {
     event.preventDefault();
     deleteTableRow(selectedTable);
@@ -5971,10 +6088,15 @@ function handleEditorShortcut(event) {
       beginEditorHistory("markdown-prefix", { force: true });
       const suffix = extractContentAfterCaret(block);
       const list = document.createElement(/^\d/.test(marker) ? "ol" : "ul");
+      if (list.tagName === "OL") {
+        const start = normalizedOrderedListStart(marker);
+        if (start !== 1) list.setAttribute("start", String(start));
+      }
       const item = document.createElement("li");
       appendEditableContent(item, suffix);
       list.append(item);
       block.replaceWith(list);
+      refreshOrderedListCounters(write);
       focusBlockStart(item);
       syncFromWrite();
       updateFocusLine();
