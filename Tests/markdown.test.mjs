@@ -328,6 +328,28 @@ test("handles empty input and right-parenthesis ordered lists", () => {
   assert.equal(markdownToHTML("1) \u4E00\n2) \u4E8C"), "<ol><li>\u4E00</li><li>\u4E8C</li></ol>");
 });
 
+test("renders nested ordered lists with continued decimal numbering", () => {
+  assert.equal(
+    markdownToHTML("3. Three\n    1. Todo\n4. Four"),
+    "<ol start=\"3\"><li>Three<ol><li>Todo</li></ol></li><li>Four</li></ol>"
+  );
+});
+
+test("serializes ordered starts and unordered nested list indentation", () => {
+  globalThis.Node = { TEXT_NODE: 3, ELEMENT_NODE: 1 };
+  const root = element("article", [
+    element("ol", [
+      element("li", ["Three", element("ol", [element("li", ["Todo"])])]),
+      element("li", ["Four"])
+    ], { start: "3" }),
+    element("ul", [
+      element("li", ["Parent", element("ul", [element("li", ["Child"])])]),
+      element("li", ["Peer"])
+    ])
+  ]);
+  assert.equal(editorToMarkdown(root), "3. Three\n    1. Todo\n4. Four\n\n- Parent\n    - Child\n- Peer");
+});
+
 test("serializes default attributes and empty blocks", () => {
   globalThis.Node = { TEXT_NODE: 3, ELEMENT_NODE: 1 };
   const root = element("article", [

@@ -232,6 +232,9 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width:
 .write .code-meta .code-title { flex: 1; }
 .write blockquote { margin: 1.1em 0; padding: .1em 1.1em; border-left: 3px solid var(--line); color: var(--muted); }
 .write ul, .write ol { padding-left: 1.6em; }
+.write ol { counter-reset: mory-list; list-style: none; }
+.write ol > li { position: relative; counter-increment: mory-list; }
+.write ol > li::before { content: counters(mory-list, ".") ". "; position: absolute; right: calc(100% + .35em); color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .write li { margin: .24em 0; }
 .write hr { margin: 2.2em 0; border: 0; border-top: 1px solid var(--line); }
 .write table { width: 100%; margin: 1.2em 0; border-collapse: collapse; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; font-size: .88em; }

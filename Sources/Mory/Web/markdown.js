@@ -1,4 +1,4 @@
-import { isMarkdownFenceEnd, mapMarkdownFences, normalizeMermaidColorTheme, parseCalendarSource, readMarkdownFence, serializeCalendarDocument } from "./editor-features.js";
+import { isMarkdownFenceEnd, mapMarkdownFences, normalizeMermaidColorTheme, normalizedOrderedListStart, parseCalendarSource, readMarkdownFence, serializeCalendarDocument } from "./editor-features.js";
 
 const htmlBlockTags = "address|article|aside|blockquote|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hr|html|legend|li|main|menu|nav|ol|p|pre|search|section|summary|table|tbody|td|tfoot|th|thead|tr|ul";
 const htmlBlockStart = new RegExp(`^ {0,3}(?:<\/?(?:${htmlBlockTags})(?:\\s|/?>)|<!--|<\\?|<![A-Z]|<!\\[CDATA\\[)`, "i");
@@ -102,6 +102,53 @@ function isTableSeparator(line) {
 
 function splitTableRow(line) {
   return line.trim().replace(/^\|/, "").replace(/\|$/, "").split(/(?<!\\)\|/).map(cell => cell.trim().replaceAll("\\|", "|"));
+}
+
+function listLine(line) {
+  const match = String(line ?? "").match(/^([ \t]*)([-*+]|\d+[.)])\s+(.+)$/);
+  if (!match) return null;
+  return {
+    indent: match[1].replaceAll("\t", "    ").length,
+    marker: match[2],
+    ordered: /^\d/.test(match[2]),
+    start: normalizedOrderedListStart(match[2]),
+    content: match[3]
+  };
+}
+
+function readListBlock(lines, start, indent = null) {
+  const first = listLine(lines[start]);
+  if (!first) return null;
+  const baseIndent = indent ?? first.indent;
+  const ordered = first.ordered;
+  const tag = ordered ? "ol" : "ul";
+  const startAttr = ordered && first.start !== 1 ? ` start="${first.start}"` : "";
+  const items = [];
+  let index = start;
+
+  while (index < lines.length) {
+    const item = listLine(lines[index]);
+    if (!item || item.indent < baseIndent) break;
+    if (item.indent > baseIndent) {
+      if (!items.length) break;
+      const child = readListBlock(lines, index, item.indent);
+      if (!child) break;
+      items[items.length - 1] = items[items.length - 1].replace(/<\/li>$/, `${child.html}</li>`);
+      index = child.next;
+      continue;
+    }
+    if (item.ordered !== ordered) break;
+    const task = item.content.match(/^\[([ xX])\]\s*(.*)$/);
+    if (task) {
+      const checked = task[1].toLowerCase() === "x" ? " checked" : "";
+      items.push(`<li class="task-item"><input type="checkbox"${checked}>${inlineMarkdown(task[2])}</li>`);
+    } else {
+      items.push(`<li>${inlineMarkdown(item.content)}</li>`);
+    }
+    index += 1;
+  }
+
+  return { html: `<${tag}${startAttr}>${items.join("")}</${tag}>`, next: index };
 }
 
 function parseFenceInfo(value) {
@@ -217,24 +264,10 @@ export function markdownToHTML(markdown) {
       continue;
     }
 
-    const listMatch = line.match(/^\s*([-*+]|\d+[.)])\s+(.+)$/);
-    if (listMatch) {
-      const ordered = /^\d/.test(listMatch[1]);
-      const tag = ordered ? "ol" : "ul";
-      const items = [];
-      while (index < lines.length) {
-        const item = lines[index].match(/^\s*([-*+]|\d+[.)])\s+(.+)$/);
-        if (!item || /^\d/.test(item[1]) !== ordered) break;
-        const task = item[2].match(/^\[([ xX])\]\s*(.*)$/);
-        if (task) {
-          const checked = task[1].toLowerCase() === "x" ? " checked" : "";
-          items.push(`<li class="task-item"><input type="checkbox"${checked}>${inlineMarkdown(task[2])}</li>`);
-        } else {
-          items.push(`<li>${inlineMarkdown(item[2])}</li>`);
-        }
-        index += 1;
-      }
-      html.push(`<${tag}>${items.join("")}</${tag}>`);
+    const list = readListBlock(lines, index);
+    if (list) {
+      html.push(list.html);
+      index = list.next;
       continue;
     }
 
@@ -294,6 +327,31 @@ function tableToMarkdown(table, escapeText) {
   return [normalized[0], separator, ...normalized.slice(1)].map(row => `| ${row.join(" | ")} |`).join("\n");
 }
 
+function listToMarkdown(list, escapeText, depth = 0) {
+  const ordered = list.tagName === "OL";
+  const start = ordered ? normalizedOrderedListStart(list.getAttribute("start")) : 1;
+  const indent = "    ".repeat(depth);
+  const items = [...list.children].filter(item => item.tagName === "LI").flatMap((item, index) => {
+    const marker = ordered ? `${start + index}.` : "-";
+    const task = item.querySelector(':scope > input[type="checkbox"]');
+    const nestedLists = [];
+    const text = [...item.childNodes].filter(child => {
+      if (child === task) return false;
+      if (child.nodeType === Node.ELEMENT_NODE && /^(UL|OL)$/.test(child.tagName)) {
+        nestedLists.push(child);
+        return false;
+      }
+      return true;
+    }).map(child => inlineNodeToMarkdown(child, escapeText)).join("").trim();
+    const checkbox = task ? `[${task.checked ? "x" : " "}] ` : "";
+    return [
+      `${indent}${marker} ${checkbox}${text}`.trimEnd(),
+      ...nestedLists.map(child => listToMarkdown(child, escapeText, depth + 1))
+    ];
+  });
+  return items.join("\n");
+}
+
 export function editorToMarkdown(root, { escapeText = true } = {}) {
   const blocks = [];
   for (const node of root.childNodes) {
@@ -334,14 +392,7 @@ export function editorToMarkdown(root, { escapeText = true } = {}) {
         break;
       }
       case "UL": case "OL": {
-        const ordered = element.tagName === "OL";
-        const items = [...element.children].map((item, index) => {
-          const task = item.querySelector(':scope > input[type="checkbox"]');
-          const text = [...item.childNodes].filter(child => child !== task).map(child => inlineNodeToMarkdown(child, escapeText)).join("").trim();
-          if (task) return `- [${task.checked ? "x" : " "}] ${text}`;
-          return `${ordered ? `${index + 1}.` : "-"} ${text}`;
-        });
-        blocks.push(items.join("\n"));
+        blocks.push(listToMarkdown(element, escapeText));
         break;
       }
       case "PRE": {

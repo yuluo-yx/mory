@@ -1201,7 +1201,7 @@ app.whenReady().then(async () => {
 
     await inspect(window, `(() => {
       const editor = document.querySelector('#write');
-      editor.innerHTML = '<p>- \u65E0\u5E8F\u9879\u76EE</p><p>1. \u6709\u5E8F\u9879\u76EE</p>';
+      editor.innerHTML = '<p>- \u65E0\u5E8F\u9879\u76EE</p><p>6. \u6709\u5E8F\u9879\u76EE</p>';
       for (const paragraph of [...editor.children]) {
         const range = document.createRange();
         range.selectNodeContents(paragraph);
@@ -1211,7 +1211,28 @@ app.whenReady().then(async () => {
         paragraph.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: '\u76EE' }));
       }
     })()`);
-    await expect(window, "dash and numeric markers convert to toolbar-equivalent lists", "document.querySelector('#write > ul > li')?.textContent === '\u65E0\u5E8F\u9879\u76EE' && document.querySelector('#write > ol > li')?.textContent === '\u6709\u5E8F\u9879\u76EE' && window.Mory.getMarkdown().includes('- \u65E0\u5E8F\u9879\u76EE') && window.Mory.getMarkdown().includes('1. \u6709\u5E8F\u9879\u76EE')");
+    await expect(window, "dash and numeric markers convert to toolbar-equivalent lists", "document.querySelector('#write > ul > li')?.textContent === '\u65E0\u5E8F\u9879\u76EE' && document.querySelector('#write > ol[start=\"6\"] > li')?.textContent === '\u6709\u5E8F\u9879\u76EE' && window.Mory.getMarkdown().includes('- \u65E0\u5E8F\u9879\u76EE') && window.Mory.getMarkdown().includes('6. \u6709\u5E8F\u9879\u76EE')");
+
+    await inspect(window, `(() => {
+      window.Mory.loadMarkdown('3. Three\\n4. Four\\n\\n- Parent\\n- Child');
+      const focusItem = item => {
+        const range = document.createRange();
+        range.selectNodeContents(item);
+        range.collapse(false);
+        getSelection().removeAllRanges();
+        getSelection().addRange(range);
+        document.querySelector('#write').focus();
+      };
+      focusItem(document.querySelector('#write > ol > li:nth-child(2)'));
+      document.querySelector('#write').dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Tab' }));
+      focusItem(document.querySelector('#write > ul > li:nth-child(2)'));
+      document.querySelector('#write').dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Tab' }));
+      window.__listTabMarkdown = window.Mory.getMarkdown();
+      focusItem(document.querySelector('#write > ol > li > ol > li'));
+      document.querySelector('#write').dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Tab', shiftKey: true }));
+      window.__listShiftTabMarkdown = window.Mory.getMarkdown();
+    })()`);
+    await expect(window, "Tab indents ordered and unordered list items while Shift-Tab restores ordered peers", "window.__listTabMarkdown === '3. Three\\n    1. Four\\n\\n- Parent\\n    - Child' && window.__listShiftTabMarkdown === '3. Three\\n4. Four\\n\\n- Parent\\n    - Child' && document.querySelector('#write > ul > li > ul > li')?.textContent === 'Child'");
 
     await inspect(window, `(() => {
       window.Mory.loadMarkdown('\u4FDD\u7559\u7684\u539F\u6587');
@@ -1428,7 +1449,7 @@ app.whenReady().then(async () => {
       document.querySelector('.calendar-range-quick-editor .calendar-quick-colors [data-calendar-color="blue"]').click();
     })()`);
     await click(window, ".calendar-range-quick-editor > footer .primary-button");
-    await expect(window, "drag-created ranges render continuously and persist without the full editor", "(() => { const markdown = window.Mory.getMarkdown(); return document.querySelectorAll('#write .calendar-range-bar[data-calendar-color=\"blue\"]').length === 3 && markdown.includes('Direct planning') && markdown.includes(window.__calendarTestDates.day28) && markdown.includes(window.__calendarTestDates.day30); })()");
+    await expectEventually(window, "drag-created ranges render continuously and persist without the full editor", "(() => { const markdown = window.Mory.getMarkdown(); return document.querySelectorAll('#write .calendar-range-bar[data-calendar-color=\"blue\"]').length === 3 && markdown.includes('Direct planning') && markdown.includes(window.__calendarTestDates.day28) && markdown.includes(window.__calendarTestDates.day30); })()");
     await inspect(window, `(() => { const cell = document.querySelector('.calendar-day-cell:has(.calendar-day-items)'); window.__calendarCellHeight = cell.getBoundingClientRect().height; cell.querySelector('summary').click(); })()`);
     await expect(window, "expanded date items do not resize the calendar grid", "(() => { const cell = document.querySelector('.calendar-day-cell:has(.calendar-day-items)'); return cell.querySelector('details').open && cell.getBoundingClientRect().height === window.__calendarCellHeight; })()");
     await inspect(window, `(() => { const markdown = window.Mory.getMarkdown(); window.Mory.loadMarkdown(markdown); })()`);

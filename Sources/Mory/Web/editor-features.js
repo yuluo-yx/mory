@@ -89,6 +89,11 @@ export function replaceTextMatches(source, matches, replacement) {
   return parts.join("");
 }
 
+export function normalizedOrderedListStart(value) {
+  const number = Number.parseInt(String(value ?? ""), 10);
+  return Number.isSafeInteger(number) && number > 0 ? number : 1;
+}
+
 export function rebaseSavedAssetPaths(markdown, changes = {}) {
   const source = String(markdown);
   const mappings = Object.entries(changes ?? {}).filter(([from, to]) => from && typeof to === "string" && from !== to);
