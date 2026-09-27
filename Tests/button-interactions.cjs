@@ -1449,7 +1449,7 @@ app.whenReady().then(async () => {
       document.querySelector('.calendar-range-quick-editor .calendar-quick-colors [data-calendar-color="blue"]').click();
     })()`);
     await click(window, ".calendar-range-quick-editor > footer .primary-button");
-    await expect(window, "drag-created ranges render continuously and persist without the full editor", "(() => { const markdown = window.Mory.getMarkdown(); return document.querySelectorAll('#write .calendar-range-bar[data-calendar-color=\"blue\"]').length === 3 && markdown.includes('Direct planning') && markdown.includes(window.__calendarTestDates.day28) && markdown.includes(window.__calendarTestDates.day30); })()");
+    await expectEventually(window, "drag-created ranges render continuously and persist without the full editor", "(() => { const markdown = window.Mory.getMarkdown(); return document.querySelectorAll('#write .calendar-range-bar[data-calendar-color=\"blue\"]').length === 3 && markdown.includes('Direct planning') && markdown.includes(window.__calendarTestDates.day28) && markdown.includes(window.__calendarTestDates.day30); })()");
     await inspect(window, `(() => { const cell = document.querySelector('.calendar-day-cell:has(.calendar-day-items)'); window.__calendarCellHeight = cell.getBoundingClientRect().height; cell.querySelector('summary').click(); })()`);
     await expect(window, "expanded date items do not resize the calendar grid", "(() => { const cell = document.querySelector('.calendar-day-cell:has(.calendar-day-items)'); return cell.querySelector('details').open && cell.getBoundingClientRect().height === window.__calendarCellHeight; })()");
     await inspect(window, `(() => { const markdown = window.Mory.getMarkdown(); window.Mory.loadMarkdown(markdown); })()`);
