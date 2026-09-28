@@ -26,6 +26,7 @@
     "pretest:mac-graph": "npm run build:web",
     "test:mac-graph": "bash scripts/test-macos-graph.sh",
     "test:mac-drag": "bash scripts/test-macos-drag.sh",
+    "test:mac-about": "bash scripts/test-macos-about.sh",
     "test:mac-workspace-watcher": "bash scripts/test-macos-workspace-watcher.sh",
     "test:mac-menu-localization": "bash scripts/test-macos-menu-localization.sh",
     "test:mac-recent-documents": "bash scripts/test-macos-recent-documents.sh",

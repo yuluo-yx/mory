@@ -236,10 +236,12 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     private var dragStartPointer: NSPoint?
     private var dragStartWindowOrigin: NSPoint?
     private var interfaceLocale = "zh-CN"
-    private lazy var hostLocalizer = HostLocalizer(url: [
-        Bundle.main.resourceURL?.appendingPathComponent("Web/host-messages.json"),
+    private lazy var hostLocalizer = HostLocalizer(url: AppResourceLocator.existingURL(
+        from: Bundle.main.resourceURL,
+        relativePath: "Web/host-messages.json"
+    ) {
         Bundle.module.url(forResource: "host-messages", withExtension: "json", subdirectory: "Web")
-    ].compactMap { $0 }.first { FileManager.default.fileExists(atPath: $0.path) })
+    })
     private var launchRequest = LaunchRequest()
     private var pendingOpenURL: URL?
     private var cliExportStarted = false
@@ -331,11 +333,12 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     }
 
     private func loadEditor() {
-        let packagedURL = Bundle.main.resourceURL?
-            .appendingPathComponent("Web", isDirectory: true)
-            .appendingPathComponent("index.html", isDirectory: false)
-        let resourceURL = packagedURL.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
-            ?? Bundle.module.url(forResource: "index", withExtension: "html", subdirectory: "Web")
+        let resourceURL = AppResourceLocator.existingURL(
+            from: Bundle.main.resourceURL,
+            relativePath: "Web/index.html"
+        ) {
+            Bundle.module.url(forResource: "index", withExtension: "html", subdirectory: "Web")
+        }
         guard let resourceURL else {
             presentError("找不到编辑器资源 Web/index.html")
             return
@@ -350,8 +353,32 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
                 presentError("编辑器脚本加载失败，请重新安装当前版本。")
                 return
             }
-            runWindowDragSmokeIfRequested()
+            if !runAboutPanelSmokeIfRequested() {
+                runWindowDragSmokeIfRequested()
+            }
         }
+    }
+
+    @discardableResult
+    private func runAboutPanelSmokeIfRequested() -> Bool {
+        guard ProcessInfo.processInfo.environment["MORY_ABOUT_SMOKE"] == "1" else { return false }
+        guard let appMenu = NSApp.mainMenu?.items.first?.submenu,
+              let aboutItemIndex = appMenu.items.firstIndex(where: { $0.action == #selector(showAbout) }) else {
+            fputs("macOS About panel smoke test failed: About menu item not found.\n", stderr)
+            Darwin.exit(1)
+        }
+        appMenu.performActionForItem(at: aboutItemIndex)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            guard let self else { return }
+            let aboutPanelIsVisible = NSApp.windows.contains { $0 !== window && $0.isVisible }
+            guard aboutPanelIsVisible else {
+                fputs("macOS About panel smoke test failed: no visible About panel.\n", stderr)
+                Darwin.exit(1)
+            }
+            print("macOS About panel smoke test passed.")
+            NSApplication.shared.terminate(nil)
+        }
+        return true
     }
 
     private func runWindowDragSmokeIfRequested() {

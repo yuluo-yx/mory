@@ -63,6 +63,7 @@ test-macos:
 	$(NPM) run test:mac-ime
 	$(NPM) run test:mac-graph
 	$(NPM) run test:mac-drag
+	$(NPM) run test:mac-about
 	$(NPM) run test:mac-workspace-watcher
 	$(NPM) run test:mac-menu-localization
 	$(NPM) run test:mac-recent-documents
@@ -76,6 +77,7 @@ package-macos: verify
 	$(NPM) run test:mac-ime
 	$(NPM) run test:mac-graph
 	$(NPM) run test:mac-drag
+	$(NPM) run test:mac-about
 	$(NPM) run test:mac-workspace-watcher
 	$(NPM) run test:mac-menu-localization
 	$(NPM) run test:mac-recent-documents
