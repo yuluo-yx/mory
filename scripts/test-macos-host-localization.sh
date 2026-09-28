@@ -9,7 +9,8 @@ if { [[ "$SDK_PATH" == *"CommandLineTools/SDKs/MacOSX26"* ]] || [[ "$SDK_LINK_TA
 fi
 mkdir -p "$PROJECT_DIR/.build" "$PROJECT_DIR/.cache/clang"
 env CLANG_MODULE_CACHE_PATH="$PROJECT_DIR/.cache/clang" SDKROOT="$SDK_PATH" swiftc \
-  -sdk "$SDK_PATH" "$PROJECT_DIR/Sources/Mory/HostLocalizer.swift" "$PROJECT_DIR/Sources/Mory/WorkspaceManager.swift" \
+  -sdk "$SDK_PATH" "$PROJECT_DIR/Sources/Mory/AppResourceLocator.swift" \
+  "$PROJECT_DIR/Sources/Mory/HostLocalizer.swift" "$PROJECT_DIR/Sources/Mory/WorkspaceManager.swift" \
   "$PROJECT_DIR/Tests/MacHostLocalizationSmoke.swift" -o "$PROJECT_DIR/.build/mory-host-localization"
 cd "$PROJECT_DIR"
 "$PROJECT_DIR/.build/mory-host-localization"
