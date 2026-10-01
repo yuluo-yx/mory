@@ -63,6 +63,12 @@ test("preserves inline and block HTML as inert placeholders before browser sanit
   assert.equal(inlineMarkdown("`<span>literal</span>`"), "<code>&lt;span&gt;literal&lt;/span&gt;</code>");
 });
 
+test("renders controlled color spans as editable inline styles", () => {
+  const html = inlineMarkdown('<span style="color: #C9504B; background-color: #FFF1A8">**Alert**</span>');
+  assert.match(html, /<span data-mory-text-color="#c9504b" data-mory-background-color="#fff1a8" style="color: #c9504b; background-color: #fff1a8"><strong>Alert<\/strong><\/span>/);
+  assert.doesNotMatch(html, /mory-raw-html/);
+});
+
 test("ends raw HTML blocks at their closing tag before adjacent Markdown", () => {
   const html = markdownToHTML([
     "<div alt=\"entry-title\">",
@@ -305,6 +311,17 @@ test("round-trips raw HTML wrappers and private-use icon entities", () => {
     element("div", [], { class: "mory-raw-html mory-raw-html-block", dataset: { rawHtml: blockSource } })
   ]);
   assert.equal(editorToMarkdown(root), `> ${inlineSource} contact@example.com\n\n## &#xe618; Experience\n\n${blockSource}`);
+});
+
+test("serializes editable inline text and background colors", () => {
+  globalThis.Node = { TEXT_NODE: 3, ELEMENT_NODE: 1 };
+  const root = element("article", [
+    element("p", [
+      "Status ",
+      element("span", [element("strong", ["Alert"])], { style: "color: #c9504b; background-color: #fff1a8" })
+    ])
+  ]);
+  assert.equal(editorToMarkdown(root), 'Status <span style="color: #c9504b; background-color: #fff1a8">**Alert**</span>');
 });
 
 test("covers inline boundaries required by themed exports", () => {

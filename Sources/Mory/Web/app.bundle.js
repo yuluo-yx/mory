@@ -425,6 +425,40 @@ function rawHTMLPlaceholder(source, inline = false) {
   return `<${tag} class="mory-raw-html-placeholder mory-raw-html-${kind}" data-raw-html="${escapeHTML(source)}" contenteditable="false"></${tag}>`;
 }
 
+function normalizedInlineColor(value) {
+  const match = String(value ?? "").trim().match(/^#(?:[\da-f]{3}|[\da-f]{6})$/i);
+  return match ? match[0].toLowerCase() : "";
+}
+
+function readHTMLAttribute(source, name) {
+  const pattern = new RegExp(`\\b${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s"'>]+))`, "i");
+  const match = String(source ?? "").match(pattern);
+  return match ? (match[2] ?? match[3] ?? match[4] ?? "") : "";
+}
+
+function readInlineStyleColor(style, property) {
+  const pattern = new RegExp(`(?:^|;)\\s*${property}\\s*:\\s*(#[\\da-f]{3}|#[\\da-f]{6})\\s*(?:;|$)`, "i");
+  return normalizedInlineColor(String(style ?? "").match(pattern)?.[1] ?? "");
+}
+
+function controlledInlineColorSpan(attributes, body) {
+  const style = readHTMLAttribute(attributes, "style");
+  const color = readInlineStyleColor(style, "color");
+  const background = readInlineStyleColor(style, "background-color");
+  if (!color && !background) return "";
+  const styleParts = [];
+  const dataParts = [];
+  if (color) {
+    styleParts.push(`color: ${color}`);
+    dataParts.push(`data-mory-text-color="${color}"`);
+  }
+  if (background) {
+    styleParts.push(`background-color: ${background}`);
+    dataParts.push(`data-mory-background-color="${background}"`);
+  }
+  return `<span ${dataParts.join(" ")} style="${styleParts.join("; ")}">${inlineMarkdown(body)}</span>`;
+}
+
 function readRawHTMLBlock(lines, start) {
   if (!htmlBlockStart.test(lines[start] || "")) return null;
   const opening = (lines[start] || "").match(/^ {0,3}<([a-z][a-z\d-]*)\b[^>]*>/i);
@@ -459,6 +493,13 @@ function inlineMarkdown(source) {
   protectedSource = protectedSource.replace(/`([^`\n]+)`/g, (_, code) => {
     const token = `\u0000RAW${tokens.length}\u0000`;
     tokens.push(`<code>${escapeHTML(code)}</code>`);
+    return token;
+  });
+  protectedSource = protectedSource.replace(/<span\b([^>]*)>([\s\S]*?)<\/span\s*>/gi, (html, attributes, body) => {
+    const rendered = controlledInlineColorSpan(attributes, body);
+    if (!rendered) return html;
+    const token = `\u0000RAW${tokens.length}\u0000`;
+    tokens.push(rendered);
     return token;
   });
   protectedSource = protectedSource.replace(inlineHTMLPattern, html => {
@@ -705,6 +746,9 @@ function inlineNodeToMarkdown(node, escapeText = true, inCode = false) {
   const element = /** @type {HTMLElement} */ (node);
   if ((element.getAttribute("class") ?? "").split(/\s+/).includes("mory-raw-html")) return element.dataset.rawHtml ?? "";
   const content = [...element.childNodes].map(child => inlineNodeToMarkdown(child, escapeText, inCode || element.tagName === "CODE")).join("");
+  const style = element.getAttribute("style") ?? "";
+  const textColor = normalizedInlineColor(element.dataset?.moryTextColor) || readInlineStyleColor(style, "color");
+  const backgroundColor = normalizedInlineColor(element.dataset?.moryBackgroundColor) || readInlineStyleColor(style, "background-color");
   switch (element.tagName) {
     case "STRONG": case "B": return `**${content}**`;
     case "EM": case "I": return `*${content}*`;
@@ -712,6 +756,12 @@ function inlineNodeToMarkdown(node, escapeText = true, inCode = false) {
     case "CODE": return `\`${content.replaceAll("`", "\\`")}\``;
     case "A": return `${element.dataset.markdownImageLink === "true" ? "!" : ""}[${content}](${element.getAttribute("href") ?? ""})`;
     case "IMG": return `![${element.getAttribute("alt") ?? ""}](${element.dataset.markdownSrc || element.getAttribute("src") || ""})`;
+    case "SPAN": {
+      const styleParts = [];
+      if (textColor) styleParts.push(`color: ${textColor}`);
+      if (backgroundColor) styleParts.push(`background-color: ${backgroundColor}`);
+      return styleParts.length ? `<span style="${styleParts.join("; ")}">${content}</span>` : content;
+    }
     case "BR": return "  \n";
     case "INPUT": return element.getAttribute("type") === "checkbox" ? `[${/** @type {HTMLInputElement} */ (element).checked ? "x" : " "}] ` : "";
     default: return content;
@@ -1074,6 +1124,7 @@ let calendarInsertRange = null;
 let calendarQuickEditor = null;
 let calendarDrag = null;
 let headingFoldTarget = null;
+let savedToolbarSelection = null;
 let sessionInitialized = false;
 let recoveryWarningShown = false;
 let recentWorkspaceIds = null;
@@ -1103,13 +1154,25 @@ const bundledThemeAssets = {
     "LapisCV-Icon.ttf"
   ]
 };
+const inlineColorSwatches = {
+  text: [
+    ["red", "#c9504b"], ["amber", "#bd7b22"], ["green", "#39825e"], ["blue", "#397db5"],
+    ["violet", "#7659b4"], ["gray", "#70777c"], ["ink", "#2c2c2b"], ["soft", "#8b8b87"]
+  ],
+  background: [
+    ["yellow", "#fff1a8"], ["amber", "#ffe1ad"], ["green", "#d8f0d2"], ["blue", "#dceeff"],
+    ["violet", "#eadfff"], ["rose", "#f8d8d6"], ["gray", "#ededeb"], ["mint", "#d7efe4"]
+  ]
+};
 const bundledThemeAssetData = new Map();
 const appearanceMedia = window.matchMedia("(prefers-color-scheme: dark)");
 const englishText = {
   "文件": "Files", "大纲": "Outline", "工作区": "Workspace", "文档还没有标题": "No headings yet",
   "本地工作区": "Local workspace", "未命名": "Untitled", "未命名.md": "Untitled.md", "已保存": "Saved", "未保存": "Unsaved",
   "查找": "Find", "替换为": "Replace with", "替换": "Replace", "全部替换": "Replace all", "上一个": "Previous", "下一个": "Next", "关闭": "Close",
-  "加粗（⌘B）": "Bold (⌘B)", "斜体（⌘I）": "Italic (⌘I)", "删除线": "Strikethrough", "行内代码": "Inline code",
+  "加粗（⌘B）": "Bold (⌘B)", "斜体（⌘I）": "Italic (⌘I)", "删除线": "Strikethrough", "行内代码": "Inline code", "字体颜色": "Text color", "背景色": "Highlight color",
+  "红色字体": "Red text", "琥珀色字体": "Amber text", "绿色字体": "Green text", "蓝色字体": "Blue text", "紫色字体": "Violet text", "灰色字体": "Gray text", "墨色字体": "Ink text", "柔和字体": "Soft text",
+  "黄色背景": "Yellow highlight", "琥珀色背景": "Amber highlight", "绿色背景": "Green highlight", "蓝色背景": "Blue highlight", "紫色背景": "Violet highlight", "玫瑰色背景": "Rose highlight", "灰色背景": "Gray highlight", "薄荷色背景": "Mint highlight",
   "引用": "Quote", "无序列表": "Bulleted list", "有序列表": "Numbered list", "任务列表": "Task list", "链接（⌘K）": "Link (⌘K)", "表格": "Table", "插入日历": "Insert calendar", "一键优化排版": "Optimize typography", "分隔线": "Horizontal rule",
   "知识图谱": "Knowledge graph", "源代码模式（⌘/）": "Source mode (⌘/)", "导出文档": "Export document",
   "专注模式": "Focus mode", "打字机模式": "Typewriter mode", "正在读取工作区…": "Reading workspace…", "筛选文稿": "Filter notes", "刷新": "Refresh",
@@ -1215,6 +1278,7 @@ function applyLocale(next = state.locale) {
   updateDocumentBacklinks();
   enhanceCalendars(write);
   updateHeadingFoldControls(write);
+  if ($("#color-popover").classList.contains("is-open")) renderInlineColorPalette($("#color-popover").dataset.colorKind || "text");
   updateMermaidWorkbenchLocale(write);
   if ($("#knowledge-graph").classList.contains("is-open")) updateGraphLabels();
   bridge({ type: "localeChanged", locale: state.locale });
@@ -4337,6 +4401,98 @@ function toggleSource(force) {
   requestAnimationFrame(() => (next ? sourceEditor : write).focus());
 }
 
+function inlineColorLabel(kind, name) {
+  const labels = {
+    text: {
+      red: "红色字体", amber: "琥珀色字体", green: "绿色字体", blue: "蓝色字体",
+      violet: "紫色字体", gray: "灰色字体", ink: "墨色字体", soft: "柔和字体"
+    },
+    background: {
+      yellow: "黄色背景", amber: "琥珀色背景", green: "绿色背景", blue: "蓝色背景",
+      violet: "紫色背景", rose: "玫瑰色背景", gray: "灰色背景", mint: "薄荷色背景"
+    }
+  };
+  return localized(labels[kind]?.[name] || name);
+}
+
+function saveToolbarSelection() {
+  const selection = window.getSelection();
+  savedToolbarSelection = selection?.rangeCount && write.contains(selection.anchorNode) && write.contains(selection.focusNode)
+    ? selection.getRangeAt(0).cloneRange()
+    : null;
+}
+
+function restoreToolbarSelection() {
+  if (!savedToolbarSelection || !savedToolbarSelection.startContainer.isConnected || !savedToolbarSelection.endContainer.isConnected) return false;
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(savedToolbarSelection);
+  return true;
+}
+
+function renderInlineColorPalette(kind = "text") {
+  const popover = $("#color-popover");
+  popover.innerHTML = "";
+  popover.dataset.colorKind = kind;
+  inlineColorSwatches[kind].forEach(([name, value]) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.colorValue = value;
+    button.style.setProperty("--swatch-color", value);
+    const label = inlineColorLabel(kind, name);
+    button.title = label;
+    button.setAttribute("aria-label", label);
+    popover.append(button);
+  });
+}
+
+function closeInlineColorPopover() {
+  const popover = $("#color-popover");
+  popover.classList.remove("is-open");
+  popover.setAttribute("aria-hidden", "true");
+}
+
+function openInlineColorPopover(kind, button) {
+  saveToolbarSelection();
+  renderInlineColorPalette(kind);
+  const popover = $("#color-popover");
+  const rect = button.getBoundingClientRect();
+  popover.style.left = `${Math.max(8, rect.left - 136)}px`;
+  popover.style.top = `${Math.min(innerHeight - 80, Math.max(8, rect.top - 7))}px`;
+  popover.classList.add("is-open");
+  popover.setAttribute("aria-hidden", "false");
+  hideToolbarTooltip();
+}
+
+function applyInlineColor(kind, value) {
+  if (state.sourceMode) toggleSource(false);
+  restoreToolbarSelection();
+  const selection = window.getSelection();
+  if (!selection?.rangeCount) return;
+  const range = selection.getRangeAt(0);
+  if (range.collapsed || !write.contains(range.commonAncestorContainer)) return;
+  write.focus();
+  beginEditorHistory(`command-${kind}-color`, { force: true });
+  const span = document.createElement("span");
+  if (kind === "background") {
+    span.dataset.moryBackgroundColor = value;
+    span.style.backgroundColor = value;
+    document.documentElement.style.setProperty("--active-inline-background", value);
+  } else {
+    span.dataset.moryTextColor = value;
+    span.style.color = value;
+    document.documentElement.style.setProperty("--active-inline-color", value);
+  }
+  span.append(range.extractContents());
+  range.insertNode(span);
+  range.selectNodeContents(span);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  savedToolbarSelection = range.cloneRange();
+  closeInlineColorPopover();
+  syncFromWrite();
+}
+
 function execute(command) {
   if (command === "typography") {
     optimizeActiveDocumentTypography();
@@ -6110,10 +6266,27 @@ $$('.tab').forEach(tab => tab.addEventListener("click", () => {
   if (tab.dataset.panel === "outline") updateOutline();
 }));
 
-$("#toolbar").addEventListener("mousedown", event => event.preventDefault());
+$("#toolbar").addEventListener("mousedown", event => {
+  saveToolbarSelection();
+  event.preventDefault();
+});
 $("#toolbar").addEventListener("click", event => {
+  const colorButton = event.target.closest("button[data-color-menu]");
+  if (colorButton) {
+    openInlineColorPopover(colorButton.dataset.colorMenu, colorButton);
+    return;
+  }
   const button = event.target.closest("button[data-command]");
-  if (button) execute(button.dataset.command);
+  if (button) {
+    closeInlineColorPopover();
+    execute(button.dataset.command);
+  }
+});
+$("#color-popover").addEventListener("mousedown", event => event.preventDefault());
+$("#color-popover").addEventListener("click", event => {
+  const button = event.target.closest("button[data-color-value]");
+  if (!button) return;
+  applyInlineColor($("#color-popover").dataset.colorKind || "text", button.dataset.colorValue);
 });
 function showToolbarTooltip(button) {
   const tooltip = $("#toolbar-tooltip");
@@ -6667,8 +6840,13 @@ document.addEventListener("keydown", event => {
       event.preventDefault();
       return;
     }
-    closePathSuggestions(); closeFileContextMenu(); toggleEntryOperation(false); closeImagePreview(); closeQuickOpen(); closeFind(); closeCalendarQuickEditor(); closeCalendarEditor(); togglePreferences(false); toggleExportDialog(false); toggleKnowledgeGraph(false);
+    closePathSuggestions(); closeInlineColorPopover(); closeFileContextMenu(); toggleEntryOperation(false); closeImagePreview(); closeQuickOpen(); closeFind(); closeCalendarQuickEditor(); closeCalendarEditor(); togglePreferences(false); toggleExportDialog(false); toggleKnowledgeGraph(false);
   }
+});
+document.addEventListener("mousedown", event => {
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.closest("#color-popover, #toolbar [data-color-menu]")) return;
+  closeInlineColorPopover();
 });
 document.addEventListener("pointermove", event => {
   if (!tableResize || event.pointerId !== tableResize.pointerId) return;

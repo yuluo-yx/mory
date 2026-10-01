@@ -25,6 +25,40 @@ function rawHTMLPlaceholder(source, inline = false) {
   return `<${tag} class="mory-raw-html-placeholder mory-raw-html-${kind}" data-raw-html="${escapeHTML(source)}" contenteditable="false"></${tag}>`;
 }
 
+function normalizedInlineColor(value) {
+  const match = String(value ?? "").trim().match(/^#(?:[\da-f]{3}|[\da-f]{6})$/i);
+  return match ? match[0].toLowerCase() : "";
+}
+
+function readHTMLAttribute(source, name) {
+  const pattern = new RegExp(`\\b${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s"'>]+))`, "i");
+  const match = String(source ?? "").match(pattern);
+  return match ? (match[2] ?? match[3] ?? match[4] ?? "") : "";
+}
+
+function readInlineStyleColor(style, property) {
+  const pattern = new RegExp(`(?:^|;)\\s*${property}\\s*:\\s*(#[\\da-f]{3}|#[\\da-f]{6})\\s*(?:;|$)`, "i");
+  return normalizedInlineColor(String(style ?? "").match(pattern)?.[1] ?? "");
+}
+
+function controlledInlineColorSpan(attributes, body) {
+  const style = readHTMLAttribute(attributes, "style");
+  const color = readInlineStyleColor(style, "color");
+  const background = readInlineStyleColor(style, "background-color");
+  if (!color && !background) return "";
+  const styleParts = [];
+  const dataParts = [];
+  if (color) {
+    styleParts.push(`color: ${color}`);
+    dataParts.push(`data-mory-text-color="${color}"`);
+  }
+  if (background) {
+    styleParts.push(`background-color: ${background}`);
+    dataParts.push(`data-mory-background-color="${background}"`);
+  }
+  return `<span ${dataParts.join(" ")} style="${styleParts.join("; ")}">${inlineMarkdown(body)}</span>`;
+}
+
 function readRawHTMLBlock(lines, start) {
   if (!htmlBlockStart.test(lines[start] || "")) return null;
   const opening = (lines[start] || "").match(/^ {0,3}<([a-z][a-z\d-]*)\b[^>]*>/i);
@@ -59,6 +93,13 @@ export function inlineMarkdown(source) {
   protectedSource = protectedSource.replace(/`([^`\n]+)`/g, (_, code) => {
     const token = `\u0000RAW${tokens.length}\u0000`;
     tokens.push(`<code>${escapeHTML(code)}</code>`);
+    return token;
+  });
+  protectedSource = protectedSource.replace(/<span\b([^>]*)>([\s\S]*?)<\/span\s*>/gi, (html, attributes, body) => {
+    const rendered = controlledInlineColorSpan(attributes, body);
+    if (!rendered) return html;
+    const token = `\u0000RAW${tokens.length}\u0000`;
+    tokens.push(rendered);
     return token;
   });
   protectedSource = protectedSource.replace(inlineHTMLPattern, html => {
@@ -305,6 +346,9 @@ function inlineNodeToMarkdown(node, escapeText = true, inCode = false) {
   const element = /** @type {HTMLElement} */ (node);
   if ((element.getAttribute("class") ?? "").split(/\s+/).includes("mory-raw-html")) return element.dataset.rawHtml ?? "";
   const content = [...element.childNodes].map(child => inlineNodeToMarkdown(child, escapeText, inCode || element.tagName === "CODE")).join("");
+  const style = element.getAttribute("style") ?? "";
+  const textColor = normalizedInlineColor(element.dataset?.moryTextColor) || readInlineStyleColor(style, "color");
+  const backgroundColor = normalizedInlineColor(element.dataset?.moryBackgroundColor) || readInlineStyleColor(style, "background-color");
   switch (element.tagName) {
     case "STRONG": case "B": return `**${content}**`;
     case "EM": case "I": return `*${content}*`;
@@ -312,6 +356,12 @@ function inlineNodeToMarkdown(node, escapeText = true, inCode = false) {
     case "CODE": return `\`${content.replaceAll("`", "\\`")}\``;
     case "A": return `${element.dataset.markdownImageLink === "true" ? "!" : ""}[${content}](${element.getAttribute("href") ?? ""})`;
     case "IMG": return `![${element.getAttribute("alt") ?? ""}](${element.dataset.markdownSrc || element.getAttribute("src") || ""})`;
+    case "SPAN": {
+      const styleParts = [];
+      if (textColor) styleParts.push(`color: ${textColor}`);
+      if (backgroundColor) styleParts.push(`background-color: ${backgroundColor}`);
+      return styleParts.length ? `<span style="${styleParts.join("; ")}">${content}</span>` : content;
+    }
     case "BR": return "  \n";
     case "INPUT": return element.getAttribute("type") === "checkbox" ? `[${/** @type {HTMLInputElement} */ (element).checked ? "x" : " "}] ` : "";
     default: return content;

@@ -1637,6 +1637,32 @@ app.whenReady().then(async () => {
     await click(window, "#toolbar button[data-command='bold']");
     await expect(window, "format button is clickable", "document.querySelector('#write strong, #write b') !== null");
 
+    await inspect(window, `window.Mory.loadMarkdown('# \u989C\u8272\u6D4B\u8BD5\\n\\n\u9700\u8981\u67D3\u8272\u7684\u6BB5\u843D')`);
+    await inspect(window, `(() => {
+      const paragraph = document.querySelector('#write p');
+      const range = document.createRange();
+      range.selectNodeContents(paragraph);
+      const selection = getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    })()`);
+    await click(window, "#text-color-button");
+    await click(window, "#color-popover button[data-color-value='#c9504b']");
+    await expect(window, "toolbar text color applies to selected text and persists to Markdown", "document.querySelector('#write span[data-mory-text-color=\"#c9504b\"]')?.textContent === '\u9700\u8981\u67D3\u8272\u7684\u6BB5\u843D' && window.Mory.getMarkdown().includes('<span style=\"color: #c9504b\">\u9700\u8981\u67D3\u8272\u7684\u6BB5\u843D</span>')");
+
+    await inspect(window, `window.Mory.loadMarkdown('# \u80CC\u666F\u8272\u6D4B\u8BD5\\n\\n\u9700\u8981\u6807\u8BB0\u7684\u6BB5\u843D')`);
+    await inspect(window, `(() => {
+      const paragraph = document.querySelector('#write p');
+      const range = document.createRange();
+      range.selectNodeContents(paragraph);
+      const selection = getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    })()`);
+    await click(window, "#background-color-button");
+    await click(window, "#color-popover button[data-color-value='#fff1a8']");
+    await expect(window, "toolbar background color applies to selected text and persists to Markdown", "document.querySelector('#write span[data-mory-background-color=\"#fff1a8\"]')?.textContent === '\u9700\u8981\u6807\u8BB0\u7684\u6BB5\u843D' && window.Mory.getMarkdown().includes('<span style=\"background-color: #fff1a8\">\u9700\u8981\u6807\u8BB0\u7684\u6BB5\u843D</span>')");
+
     if (errors.length) throw new Error(`Renderer errors: ${errors.join(" | ")}`);
     process.stdout.write(JSON.stringify({ status: "passed", interactions: interactionCount, rendererErrors: 0, dpiStableTypography: true, tableRowColumnDeletion: true, bundledThemeFonts: true, lapisCVResumeTheme: true, multipleUntitledDocuments: true, draftSwitchingPreservesContent: true, removableUntitledDocuments: true, savedDocumentTrash: true, deleteCancellation: true, activeDocumentCloseFallback: true, lastCloseCreatesBlankDocument: true, emptyWorkspacePlaceholder: true, nonEmptyWorkspaceAutoOpen: true, deletedWorkspaceFileReconciled: true, headingEnterCreatesParagraph: true, headingSectionFolding: true, compositionHeadingRendering: true, immediateCompositionEnter: true, separateConsecutiveHeadings: true, staleHeadingRecovery: true, liveBold: true, pastedMarkdownRendering: true, liveFencedCode: true, multiLineFencedCode: true, fencedCodeExit: true, doubleEnterCodeExit: true, codeMetadataNavigation: true, liveInlineCode: true, instantHeading: true, liveUnsavedOutline: true, workspaceCreationOrder: true, stableOpenedFilePosition: true, statusbarSetting: true, zoomedStatusbar: true, readableSidebarContrast: true, coherentDarkDocument: true, readableGroupedPreferences: true, iconOnlyToolbar: true, hoverTooltip: true, sidebarSearchRemoved: true, verticalFloatingToolbar: true, singleSettingsEntry: true, macTrafficLightSafeArea: true, screenshot: screenshotPath, preferencesScreenshot: preferencesScreenshotPath, codeMetaScreenshot: codeMetaScreenshotPath, lapisCVScreenshot: lapisCVScreenshotPath, darkThemeScreenshot: darkThemeScreenshotPath, mermaidScreenshot: mermaidScreenshotPath, mermaidExpandedScreenshot: mermaidExpandedScreenshotPath, mermaidNarrowScreenshot: mermaidNarrowScreenshotPath, calendarDirectScreenshot: calendarDirectScreenshotPath }, null, 2) + "\n");
   } catch (error) {
