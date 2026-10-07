@@ -95,6 +95,7 @@ The installed native macOS app requests the association through the system API a
 On Windows, the button opens Default apps: search for `.md` and choose Mory. Install Mory first if it is not listed; portable builds may require selecting the executable manually.
 The macOS Electron compatibility host displays Finder instructions: select an `.md` file, open Get Info, choose Mory under Open with, then click Change All.
 This is a system-wide file association, not a workspace preference. It does not modify documents or associate `.txt` files. Change the default application again in the operating system to undo it.
+The native macOS bundle also declares the Mory icon for Markdown documents, separately from plain text files. Finder may retain an older cached icon briefly after an update; reopen the containing folder after launching the updated app. Files with custom icons can retain their own artwork.
 
 Launching Mory starts a blank document without reopening the previous workspace. The introduction appears only on first use when no workspace records exist; use **Help > User Guide** to open it again. Opening a Markdown file replaces the untouched startup page.
 

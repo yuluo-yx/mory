@@ -57,6 +57,7 @@ test-e2e:
 verify: check test-unit test-go test-e2e
 
 test-macos:
+	$(NPM) run test:mac-document-icons
 	$(NPM) run test:mac-web
 	$(NPM) run test:mac-lifecycle
 	$(NPM) run test:mac-typing
@@ -71,6 +72,7 @@ test-macos:
 
 package-macos: verify
 	$(NPM) run build:mac
+	$(NPM) run test:mac-document-icons
 	$(NPM) run test:mac-web
 	$(NPM) run test:mac-lifecycle
 	$(NPM) run test:mac-typing

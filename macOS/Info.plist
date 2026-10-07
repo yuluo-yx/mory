@@ -10,8 +10,8 @@
   <key>CFBundleDisplayName</key><string>Mory</string>
   <key>CFBundleIconFile</key><string>icon.icns</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.5.5</string>
-  <key>CFBundleVersion</key><string>12</string>
+  <key>CFBundleShortVersionString</key><string>0.5.6</string>
+  <key>CFBundleVersion</key><string>13</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSHighResolutionCapable</key><true/>
@@ -19,10 +19,18 @@
   <array>
     <dict>
       <key>CFBundleTypeName</key><string>Markdown Document</string>
+      <key>CFBundleTypeIconFile</key><string>icon.icns</string>
       <key>CFBundleTypeRole</key><string>Editor</string>
       <key>LSHandlerRank</key><string>Alternate</string>
       <key>CFBundleTypeExtensions</key>
-      <array><string>md</string><string>markdown</string><string>mmd</string><string>mdown</string><string>mkd</string><string>txt</string></array>
+      <array><string>md</string><string>markdown</string><string>mmd</string><string>mdown</string><string>mkd</string></array>
+    </dict>
+    <dict>
+      <key>CFBundleTypeName</key><string>Plain Text Document</string>
+      <key>CFBundleTypeRole</key><string>Editor</string>
+      <key>LSHandlerRank</key><string>Alternate</string>
+      <key>CFBundleTypeExtensions</key>
+      <array><string>txt</string></array>
     </dict>
   </array>
 </dict>
