@@ -83,16 +83,23 @@ final class MacDocumentLifecycleSmoke: NSObject, WKNavigationDelegate, WKScriptM
     }
 
     private func start() {
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1180, height: 790), styleMask: [.borderless], backing: .buffered, defer: false)
+        loadFreshPage()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 45) { self.finish("Document lifecycle smoke timed out") }
+    }
+
+    private func loadFreshPage() {
+        webView?.navigationDelegate = nil
+        webView?.configuration.userContentController.removeScriptMessageHandler(forName: "mory")
+        webView?.stopLoading()
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
         configuration.userContentController.add(self, name: "mory")
         webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 1180, height: 790), configuration: configuration)
         webView.navigationDelegate = self
-        window = NSWindow(contentRect: webView.frame, styleMask: [.borderless], backing: .buffered, defer: false)
         window.contentView = webView
         let index = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("Sources/Mory/Web/index.html")
         webView.loadFileURL(index, allowingReadAccessTo: index.deletingLastPathComponent())
-        DispatchQueue.main.asyncAfter(deadline: .now() + 45) { self.finish("Document lifecycle smoke timed out") }
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {}
@@ -110,9 +117,8 @@ final class MacDocumentLifecycleSmoke: NSObject, WKNavigationDelegate, WKScriptM
                     finish("Document lifecycle failed: \(String(describing: value))")
                 }
                 print("macOS document lifecycle passed: \((result["passed"] as? [String] ?? []).count) scenarios")
-                _ = try await webView.evaluateJavaScript("localStorage.clear()")
                 startupPhase = 1
-                webView.reload()
+                loadFreshPage()
             } catch { finish(error.localizedDescription) }
         }
     }
@@ -121,7 +127,11 @@ final class MacDocumentLifecycleSmoke: NSObject, WKNavigationDelegate, WKScriptM
         let script: String
         switch startupPhase {
         case 1:
-            script = "window.Mory.initializeSession(); return window.Mory.getMarkdown().includes('Mory')"
+            script = """
+            const fresh = localStorage.getItem('mory.introductionSeen') === null && localStorage.getItem('mory.recovery') === null;
+            window.Mory.initializeSession();
+            return fresh && window.Mory.getMarkdown().includes('Mory');
+            """
         case 2:
             script = """
             window.Mory.initializeSession();
@@ -137,20 +147,31 @@ final class MacDocumentLifecycleSmoke: NSObject, WKNavigationDelegate, WKScriptM
             window.Mory.initializeSession();
             const documents = [...document.querySelectorAll('#file-list .file-item')].map(item => window.Mory.getDocumentSnapshot(item.dataset.documentId));
             const valid = window.Mory.getMarkdown() === '' && documents.length === 2 && documents.some(item => item.markdown === 'Native recovered notes');
-            localStorage.clear();
             return valid;
             """
         default:
             script = "window.Mory.initializeSession({hasWorkspaceRecords:true}); return window.Mory.getMarkdown() === ''"
         }
-        let result = try await webView.callAsyncJavaScript(script, arguments: [:], in: nil, contentWorld: .page)
-        guard result as? Bool == true else { finish("Native startup phase \(startupPhase) failed") }
+        let diagnosticScript = """
+        const before = {
+            introductionSeen: localStorage.getItem('mory.introductionSeen'),
+            recovery: localStorage.getItem('mory.recovery'),
+            legacyDraft: localStorage.getItem('mory.draft')
+        };
+        const valid = (() => { \(script) })();
+        return {valid, before, markdown: window.Mory.getMarkdown(), documents: document.querySelectorAll('#file-list .file-item').length};
+        """
+        let result = try await webView.callAsyncJavaScript(diagnosticScript, arguments: [:], in: nil, contentWorld: .page)
+        guard let details = result as? [String: Any], details["valid"] as? Bool == true else {
+            finish("Native startup phase \(startupPhase) failed: \(String(describing: result))")
+        }
         if startupPhase == 4 {
             print("macOS startup passed: first use, blank relaunch, immediate recovery, workspace-history migration")
             Darwin.exit(0)
         }
         startupPhase += 1
-        webView.reload()
+        if startupPhase == 4 { loadFreshPage() }
+        else { webView.reload() }
     }
 
     private func finish(_ error: String) -> Never {
