@@ -7,6 +7,20 @@ const { spawnSync } = require("node:child_process");
 
 const root = path.join(__dirname, "..");
 
+test("native first-use smoke isolates storage while recovery phases preserve their session", () => {
+  const source = fs.readFileSync(path.join(root, "Tests", "MacDocumentLifecycleSmoke.swift"), "utf8");
+  const freshPage = source.split("private func loadFreshPage()")[1]?.split("func userContentController")[0];
+  assert.ok(freshPage, "First-use scenarios must create an isolated page");
+  assert.match(freshPage, /configuration\.websiteDataStore = \.nonPersistent\(\)/);
+  assert.match(freshPage, /webView = WKWebView\(/);
+  assert.match(freshPage, /removeScriptMessageHandler\(forName: "mory"\)/);
+  assert.doesNotMatch(source, /localStorage\.clear\(\)/);
+  assert.match(source, /startupPhase = 1\s+loadFreshPage\(\)/);
+  assert.match(source, /if startupPhase == 4 \{ loadFreshPage\(\) \}\s+else \{ webView\.reload\(\) \}/);
+  assert.match(source, /const fresh = localStorage\.getItem\('mory\.introductionSeen'\) === null/);
+  assert.match(source, /return \{valid, before, markdown:/);
+});
+
 test("native default Markdown association uses the content type and forwards system errors", () => {
   const source = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
   const handler = source.split('case "setDefaultMarkdownApp":')[1]?.split('case "workspaceState":')[0];
