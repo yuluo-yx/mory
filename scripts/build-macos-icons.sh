@@ -37,5 +37,5 @@ render_icon 512 icon_256x256@2x.png
 render_icon 512 icon_512x512.png
 render_icon 1024 icon_512x512@2x.png
 
-node "$PROJECT_DIR/scripts/build-icns.mjs" "$ICONSET_PATH" "$ICNS_PATH"
+iconutil --convert icns --output "$ICNS_PATH" "$ICONSET_PATH"
 echo "Mory macOS icon generated: $ICNS_PATH"

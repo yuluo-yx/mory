@@ -382,7 +382,13 @@ test("the macOS bundle declares and generates a complete multi-size ICNS icon", 
   assert.match(build, /\.build\/icons\/icon\.icns/);
   assert.match(iconBuild, /icon_16x16\.png/);
   assert.match(iconBuild, /icon_512x512@2x\.png/);
-  assert.match(iconBuild, /build-icns\.mjs/);
+  assert.match(iconBuild, /iconutil --convert icns --output/);
+  assert.doesNotMatch(iconBuild, /build-icns\.mjs|legacy-png-icns/);
+  const iconSmoke = fs.readFileSync(path.join(root, "scripts", "test-macos-document-icons.sh"), "utf8");
+  const nativeIconSmoke = fs.readFileSync(path.join(root, "Tests", "MacDocumentIconSmoke.swift"), "utf8");
+  assert.match(iconSmoke, /MacDocumentIconSmoke\.swift/);
+  assert.match(nativeIconSmoke, /NSWorkspace\.shared\.icon\(forFile:/);
+  assert.match(nativeIconSmoke, /\[16, 32, 64, 128, 256\]/);
   assert.match(windowsPackage, /assets[\\/]mory-icon\.png/);
   assert.match(host, /options\[\.applicationIcon\] = icon/);
   assert.match(iconSVG, /viewBox="0 0 1024 1024"/);
