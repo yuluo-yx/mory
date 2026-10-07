@@ -1167,6 +1167,10 @@ const inlineColorSwatches = {
 const bundledThemeAssetData = new Map();
 const appearanceMedia = window.matchMedia("(prefers-color-scheme: dark)");
 const englishText = {
+  "默认 Markdown 应用": "Default Markdown app",
+  "使用 Mory 打开所有 .md 文件": "Open all .md files with Mory",
+  "更改系统文件关联，可能需要在系统界面确认": "Change the system file association; system confirmation may be required",
+  "设为默认应用": "Set as default app",
   "文件": "Files", "大纲": "Outline", "工作区": "Workspace", "文档还没有标题": "No headings yet",
   "本地工作区": "Local workspace", "未命名": "Untitled", "未命名.md": "Untitled.md", "已保存": "Saved", "未保存": "Unsaved",
   "查找": "Find", "替换为": "Replace with", "替换": "Replace", "全部替换": "Replace all", "上一个": "Previous", "下一个": "Next", "关闭": "Close",
@@ -1265,6 +1269,7 @@ function applyLocale(next = state.locale) {
     for (const [name, value] of Object.entries(originals)) if (value) element.setAttribute(name, localized(value));
   });
   $("#language-select").value = state.locale;
+  renderDefaultAppStatus();
   localStorage.setItem("mory.locale", state.locale);
   renderFiles();
   updateDerivedState();
@@ -6726,6 +6731,34 @@ $("#calendar-delete").addEventListener("click", () => {
 });
 $("#calendar-dialog").addEventListener("mousedown", event => { if (event.target === $("#calendar-dialog")) closeCalendarEditor(); });
 $("#preferences-close").addEventListener("click", () => togglePreferences(false));
+function renderDefaultAppStatus() {
+  const status = $("#default-app-status");
+  const messages = {
+    changed: ["已将 Mory 设为 .md 文件的默认应用。", "Mory is now the default app for .md files."],
+    settings: ["请在系统默认应用设置中搜索 .md 并选择 Mory；如果未列出，请先安装 Mory。", "In system Default apps, search for .md and choose Mory. Install Mory first if it is not listed."],
+    finder: ["请在 Finder 中选中一个 .md 文件，打开“显示简介”，在“打开方式”中选择 Mory，然后点击“全部更改”。", "In Finder, select an .md file, open Get Info, choose Mory under Open with, then click Change All."],
+    error: ["未能更改默认应用。请使用已安装的桌面应用重试，或在系统中手动更改文件关联。", "Could not change the default app. Use the installed desktop app and try again, or change the association in system settings."]
+  };
+  status.textContent = messages[status.dataset.result]?.[state.locale === "en" ? 1 : 0] || "";
+}
+
+$("#default-app-button").addEventListener("click", async () => {
+  const button = $("#default-app-button");
+  const status = $("#default-app-status");
+  button.disabled = true;
+  delete status.dataset.result;
+  renderDefaultAppStatus();
+  try {
+    const result = await hostRequest("setDefaultMarkdownApp");
+    if (!["changed", "settings", "finder"].includes(result?.status)) throw new Error("Unexpected default-app response");
+    status.dataset.result = result.status;
+  } catch {
+    status.dataset.result = "error";
+  } finally {
+    renderDefaultAppStatus();
+    button.disabled = false;
+  }
+});
 $("#quick-open").addEventListener("mousedown", event => { if (event.target === $("#quick-open")) closeQuickOpen(); });
 $("#preferences").addEventListener("mousedown", event => { if (event.target === $("#preferences")) togglePreferences(false); });
 $("#quick-open-input").addEventListener("input", event => renderQuickResults(visibleFileEntries(), event.target.value));

@@ -379,6 +379,8 @@ func (host *Host) Request(method string, args map[string]any) (result any, err e
 			return nil, errors.New("仅支持打开 HTTP、HTTPS 和邮件链接")
 		}
 		return map[string]bool{"opened": true}, host.platform.OpenURL(value)
+	case "setDefaultMarkdownApp":
+		return map[string]string{"status": "settings"}, host.platform.OpenURL("ms-settings:defaultapps")
 	case "documentImage":
 		return readDocumentImage(host.workspaces.activeRoot(), stringValue(args, "path"))
 	case "copyText":

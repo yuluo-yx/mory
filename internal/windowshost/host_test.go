@@ -33,6 +33,21 @@ type fakePlatform struct {
 	recent           []string
 }
 
+func TestDefaultMarkdownAppOpensSystemSettings(t *testing.T) {
+	platform := &fakePlatform{}
+	host := New(platform, t.TempDir(), t.TempDir())
+	result, err := host.Request("setDefaultMarkdownApp", map[string]any{"url": "https://example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(platform.urls) != 1 || platform.urls[0] != "ms-settings:defaultapps" {
+		t.Fatalf("unexpected settings URLs: %v", platform.urls)
+	}
+	if result.(map[string]string)["status"] != "settings" {
+		t.Fatalf("unexpected result: %v", result)
+	}
+}
+
 func (platform *fakePlatform) ChooseDirectory(string) (string, error) {
 	return platform.chosenDirectory, nil
 }

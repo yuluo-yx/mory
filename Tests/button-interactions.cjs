@@ -205,6 +205,10 @@ app.whenReady().then(async () => {
             return Promise.resolve({ copied: true });
           }
           if (method === 'revealFile') return Promise.resolve({ revealed: true });
+          if (method === 'setDefaultMarkdownApp') {
+            if (window.__defaultAppFailure) return Promise.reject(new Error('Launch failed'));
+            return Promise.resolve({ status: window.__defaultAppStatus || 'settings' });
+          }
           if (method === 'chooseThemeFolder') return Promise.resolve({ directory: '/themes', themes: [{ id: 'user-folder-test', name: '\u76EE\u5F55\u4E3B\u9898', css: '#write{word-spacing:2px}' }] });
           return Promise.reject(new Error('The test host does not implement this request'));
         }
@@ -601,6 +605,20 @@ app.whenReady().then(async () => {
 
     await click(window, "#settings-button");
     await expect(window, "settings button is clickable", "document.querySelector('#preferences').classList.contains('is-open')");
+    await inspect(window, "document.querySelector('#language-select').value = 'en'; document.querySelector('#language-select').dispatchEvent(new Event('change', { bubbles: true }))");
+    await expect(window, "default app action is localized", "document.querySelector('#default-app-button').textContent === 'Set as default app'");
+    await click(window, "#default-app-button");
+    await expectEventually(window, "default app action requests system settings without claiming success", "window.__lastHostRequest.method === 'setDefaultMarkdownApp' && document.querySelector('#default-app-status').textContent.includes('search for .md') && !document.querySelector('#default-app-button').disabled");
+    await inspect(window, "window.__defaultAppStatus = 'changed'");
+    await click(window, "#default-app-button");
+    await expectEventually(window, "confirmed association change is reported", "document.querySelector('#default-app-status').textContent === 'Mory is now the default app for .md files.'");
+    await inspect(window, "window.__defaultAppStatus = 'finder'");
+    await click(window, "#default-app-button");
+    await expectEventually(window, "compatibility host explains changing all Markdown files", "document.querySelector('#default-app-status').textContent.includes('Change All')");
+    await inspect(window, "window.__defaultAppFailure = true");
+    await click(window, "#default-app-button");
+    await expectEventually(window, "failed default app request allows retry", "document.querySelector('#default-app-status').textContent.includes('Could not change') && !document.querySelector('#default-app-button').disabled");
+    await inspect(window, "window.__defaultAppFailure = false; document.querySelector('#language-select').value = 'zh-CN'; document.querySelector('#language-select').dispatchEvent(new Event('change', { bubbles: true }))");
     await expect(window, "settings dialog presents readable grouped controls without horizontal overflow", "(() => { const card = document.querySelector('.preferences-card'); const scroll = document.querySelector('.preferences-scroll'); const title = document.querySelector('.preferences-card h2'); const rowTitle = document.querySelector('.settings-list .setting-row strong'); const select = document.querySelector('.settings-list select'); const cardRect = card.getBoundingClientRect(); return cardRect.width >= 780 && cardRect.height >= 680 && scroll.scrollWidth <= scroll.clientWidth && parseFloat(getComputedStyle(title).fontSize) >= 24 && parseFloat(getComputedStyle(rowTitle).fontSize) >= 14 && parseFloat(getComputedStyle(select).height) >= 36 && document.querySelectorAll('.settings-list .setting-row').length === 8; })()");
     await inspect(window, "(() => { const theme = document.querySelector('#document-theme-select'); theme.value = 'newsprint'; theme.dispatchEvent(new Event('change', { bubbles: true })); })()");
     await expect(window, "resume template action stays hidden for document themes without templates", "document.querySelector('#resume-template-button').hidden && getComputedStyle(document.querySelector('#resume-template-button')).display === 'none'");

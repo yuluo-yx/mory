@@ -999,6 +999,16 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     private func handleHostRequest(id: String, method: String, arguments: [String: Any]) {
         do {
             switch method {
+            case "setDefaultMarkdownApp":
+                guard Bundle.main.bundleURL.pathExtension == "app",
+                      let markdownType = UTType(filenameExtension: "md") else {
+                    throw NSError(domain: "Mory", code: 1, userInfo: [NSLocalizedDescriptionKey: "Run the installed Mory application to change file associations."])
+                }
+                NSWorkspace.shared.setDefaultApplication(at: Bundle.main.bundleURL, toOpen: markdownType) { [weak self] error in
+                    Task { @MainActor in
+                        self?.answerHostRequest(id: id, result: ["status": "changed"], error: error)
+                    }
+                }
             case "workspaceState":
                 answerHostRequest(id: id, result: workspaceManager.state())
             case "chooseLocalWorkspace":
@@ -1249,7 +1259,7 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     }
 
     @objc private func showAbout() {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.5.4"
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.5.5"
         var options: [NSApplication.AboutPanelOptionKey: Any] = [
             .applicationName: "Mory",
             .applicationVersion: version,
