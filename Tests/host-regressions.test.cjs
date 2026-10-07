@@ -7,6 +7,17 @@ const { spawnSync } = require("node:child_process");
 
 const root = path.join(__dirname, "..");
 
+test("native default Markdown association uses the content type and forwards system errors", () => {
+  const source = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
+  const handler = source.split('case "setDefaultMarkdownApp":')[1]?.split('case "workspaceState":')[0];
+  assert.ok(handler, "The native host must handle the default-app request");
+  assert.match(handler, /Bundle\.main\.bundleURL\.pathExtension == "app"/);
+  assert.match(handler, /UTType\(filenameExtension: "md"\)/);
+  assert.match(handler, /setDefaultApplication\(at: Bundle\.main\.bundleURL, toOpen: markdownType\)/);
+  assert.match(handler, /answerHostRequest\(id: id, result: \["status": "changed"\], error: error\)/);
+  assert.doesNotMatch(handler, /toOpenFileAt/);
+});
+
 test("DMG unmount retries only busy devices and preserves terminal failures", { skip: process.platform !== "darwin" }, () => {
   const script = fs.readFileSync(path.join(root, "scripts", "package-macos-release.sh"), "utf8");
   const detachFunction = script.match(/^detach_image\(\) \{[\s\S]*?^\}/m)?.[0];

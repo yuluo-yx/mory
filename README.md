@@ -88,6 +88,14 @@ make windows-build-x64 windows-build-arm64
 
 ## Startup and workspaces
 
+### Default Markdown app
+
+Open Preferences → Default Markdown app → Set as default app to associate `.md` files with Mory.
+The installed native macOS app requests the association through the system API and reports any rejection without claiming success.
+On Windows, the button opens Default apps: search for `.md` and choose Mory. Install Mory first if it is not listed; portable builds may require selecting the executable manually.
+The macOS Electron compatibility host displays Finder instructions: select an `.md` file, open Get Info, choose Mory under Open with, then click Change All.
+This is a system-wide file association, not a workspace preference. It does not modify documents or associate `.txt` files. Change the default application again in the operating system to undo it.
+
 Launching Mory starts a blank document without reopening the previous workspace. The introduction appears only on first use when no workspace records exist; use **Help > User Guide** to open it again. Opening a Markdown file replaces the untouched startup page.
 
 Use **File > Recent Workspaces** to reopen a workspace. Mory remembers its last visited document; a first visit or a missing last document starts blank. Missing workspace folders produce an error instead of being recreated. Removing an entry or clearing this menu does not delete workspace settings or files.

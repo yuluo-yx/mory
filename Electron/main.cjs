@@ -1,4 +1,5 @@
 const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } = require("electron");
+const { setDefaultMarkdownApp } = require("./default-app.cjs");
 const nativeFS = require("node:fs");
 const fs = require("node:fs/promises");
 const { spawn } = require("node:child_process");
@@ -280,6 +281,8 @@ async function handleWorkspaceRequest(method, args = {}) {
   switch (method) {
     case "workspaceState":
       return workspaceManager.state();
+    case "setDefaultMarkdownApp":
+      return setDefaultMarkdownApp(process.platform, shell);
     case "chooseLocalWorkspace": {
       const result = await dialog.showOpenDialog(mainWindow, { properties: ["openDirectory", "createDirectory"] });
       if (result.canceled || !result.filePaths[0]) return { canceled: true };
