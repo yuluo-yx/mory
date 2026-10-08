@@ -1,6 +1,6 @@
 {
   "name": "mory-markdown-editor",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "author": "Mory Contributors",
   "private": true,
   "description": "A cross-platform Markdown editor combining native desktop hosts with a shared web editor",
@@ -17,7 +17,7 @@
     "check:language": "node scripts/check-development-language.mjs",
     "pretest:mac-web": "npm run build:web",
     "test:mac-web": "bash scripts/test-macos-web.sh",
-    "test:mac-document-icons": "MORY_TEST_APP_BUNDLE=dist/macos/Mory.app node --test Tests/mac-document-icons.test.cjs",
+    "test:mac-document-icons": "bash scripts/test-macos-document-icons.sh",
     "pretest:mac-typing": "npm run build:web",
     "test:mac-typing": "bash scripts/test-macos-typing.sh",
     "pretest:mac-ime": "npm run build:web",

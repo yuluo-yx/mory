@@ -4,7 +4,7 @@ import process from "node:process";
 
 const [iconsetPath, outputPath] = process.argv.slice(2);
 if (!iconsetPath || !outputPath) {
-  throw new Error("Usage: node scripts/build-icns.mjs <iconset-directory> <output.icns>");
+  throw new Error("Usage: node Tests/fixtures/legacy-png-icns.mjs <iconset-directory> <output.icns>");
 }
 
 const images = [
