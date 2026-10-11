@@ -764,6 +764,29 @@ app.whenReady().then(async () => {
     window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Space" });
     await wait(100);
     await expect(window, "a double-hash marker renders a level-two heading immediately", "document.querySelector('#write > h2') !== null && !document.querySelector('#write').textContent.includes('##')");
+    await window.webContents.insertText("1.");
+    window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Space" });
+    window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Space" });
+    await inspect(window, "document.execCommand('insertText', false, ' ')");
+    await wait(100);
+    await expect(window, "an ordered marker inside a heading does not replace the heading", "document.querySelector('#write > h2')?.textContent.replaceAll('\\u00a0', ' ') === '1. ' && !document.querySelector('#write > ol') && window.Mory.getMarkdown() === '## 1.'");
+
+    await inspect(window, `(() => {
+      window.Mory.loadMarkdown('');
+      const paragraph = document.querySelector('#write p');
+      const range = document.createRange();
+      range.setStart(paragraph, 0);
+      range.collapse(true);
+      const selection = getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      paragraph.focus?.();
+      document.querySelector('#write').focus();
+    })()`);
+    await window.webContents.insertText("##");
+    window.webContents.sendInputEvent({ type: "keyDown", keyCode: "Space" });
+    window.webContents.sendInputEvent({ type: "keyUp", keyCode: "Space" });
+    await wait(100);
     await window.webContents.insertText("\u672A\u4FDD\u5B58\u6807\u9898");
     await wait(80);
     await click(window, ".tab[data-panel='outline']");

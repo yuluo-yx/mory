@@ -6214,7 +6214,7 @@ function handleEditorShortcut(event) {
     let block = selection.anchorNode;
     if (block?.nodeType === Node.TEXT_NODE) block = block.parentElement;
     while (block && block.parentElement !== write) block = block.parentElement;
-    if (!(block instanceof HTMLElement)) return;
+    if (!(block instanceof HTMLElement) || !block.matches("p, div")) return;
     const prefix = document.createRange();
     prefix.selectNodeContents(block);
     try {
