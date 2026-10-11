@@ -1432,7 +1432,7 @@ function renderDocument(document, announce = false) {
   applyDocumentAssets(write, document);
   highlightCodeBlocks(write);
   if ($("#find-panel").classList.contains("is-open")) updateFindMatches();
-  else clearFindHighlights();
+  else if (write.querySelector(".find-highlight")) clearFindHighlights();
   $("#save-state").textContent = localized(state.dirty ? "未保存" : "已保存");
   $("#save-state").classList.toggle("is-visible", state.dirty);
   updateDerivedState();
