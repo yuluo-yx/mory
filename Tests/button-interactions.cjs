@@ -841,6 +841,34 @@ app.whenReady().then(async () => {
     await wait(80);
     await expect(window, "Chinese IME commits render a full-line heading immediately", "document.querySelector('#write > h1')?.textContent === '\u4E2D\u6587\u8F93\u5165\u6807\u9898' && !document.querySelector('#write').textContent.includes('#')");
 
+    const rootBoundaryComposition = await inspect(window, `(() => {
+      window.Mory.loadMarkdown('');
+      const editor = document.querySelector('#write');
+      editor.innerHTML = '<h1><br></h1>';
+      editor.focus();
+      const range = document.createRange();
+      range.setStart(editor, 1);
+      range.collapse(true);
+      getSelection().removeAllRanges();
+      getSelection().addRange(range);
+      editor.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+      editor.firstElementChild.textContent = 'ni hao';
+      editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertCompositionText', data: 'ni hao', isComposing: true }));
+      editor.innerHTML = '<br>';
+      // Chromium clears WebKit-specific input types, so preserve them in this cross-host fixture.
+      const deletion = new InputEvent('input', { bubbles: true, isComposing: true });
+      Object.defineProperty(deletion, 'inputType', { value: 'deleteCompositionText' });
+      editor.dispatchEvent(deletion);
+      const commit = new InputEvent('beforeinput', { bubbles: true, cancelable: true, data: '\u4F60\u597D', isComposing: true });
+      Object.defineProperty(commit, 'inputType', { value: 'insertFromComposition' });
+      editor.dispatchEvent(commit);
+      if (!commit.defaultPrevented) editor.innerHTML = '<b>\u4F60\u597D</b>';
+      editor.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '\u4F60\u597D' }));
+      editor.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Enter' }));
+      return { html: editor.innerHTML, markdown: window.Mory.getMarkdown(), prevented: commit.defaultPrevented };
+    })()`);
+    await expect(window, `WebKit IME at an empty heading root boundary preserves the heading and Enter paragraph: ${JSON.stringify(rootBoundaryComposition)}`, "document.querySelector('#write > h1')?.textContent === '\u4F60\u597D' && document.querySelector('#write > h1 + p') !== null && window.Mory.getMarkdown().startsWith('# \u4F60\u597D')");
+
     const immediateCompositionEnter = await inspect(window, `(() => {
       window.Mory.loadMarkdown('');
       const paragraph = document.querySelector('#write > p');

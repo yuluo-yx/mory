@@ -1958,8 +1958,15 @@ function beginComposition(event) {
   writeComposing = true;
   pendingCodeExit = null;
   recentCompositionCommit = null;
-  const block = writeBlockForNode(event.target) || currentWriteBlock();
   const selection = window.getSelection();
+  let block = writeBlockForNode(event.target) || currentWriteBlock();
+  if (!block && selection?.isCollapsed && selection.anchorNode === write) {
+    // WebKit may anchor a new composition outside the BR in an empty heading.
+    const offset = selection.anchorOffset;
+    block = [write.childNodes[offset - 1], write.childNodes[offset]].find(node =>
+      node instanceof HTMLElement && node.matches("h1, h2, h3, h4, h5, h6") && !node.textContent
+    ) || null;
+  }
   const blockText = (block?.textContent || "").replaceAll(caretMarker, "");
   const isHeadingInput = block?.matches("h1, h2, h3, h4, h5, h6")
     || (block?.matches("p, div") && /^(#{1,6})\s/.test(blockText));
