@@ -1020,14 +1020,16 @@ function restoreHeadingCompositionBlock(composition) {
 
 function handleHeadingCompositionInput(event) {
   const composition = activeComposition;
-  if (!composition || !composition.block.isConnected || !event.cancelable) return false;
+  if (!composition || !event.cancelable) return false;
   if (event.inputType === "deleteCompositionText") {
     // WebKit can remove an empty heading before committing IME text; retain it until composition completes.
     event.preventDefault();
+    if (!composition.block.isConnected) restoreHeadingCompositionBlock(composition);
     return true;
   }
   if (event.inputType !== "insertFromComposition") return false;
   event.preventDefault();
+  if (!composition.block.isConnected) restoreHeadingCompositionBlock(composition);
   const committedText = String(event.data ?? "");
   composition.block.textContent = composition.prefix + committedText + composition.suffix;
   placeTextCaret(composition.block, composition.prefix.length + committedText.length);
