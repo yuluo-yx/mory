@@ -84,6 +84,8 @@ const state = {
   dirty: false,
   findMatches: [],
   findIndex: -1,
+  findPreviewMatches: [],
+  findPreviewIndex: -1,
   findSource: null,
   findQuery: "",
   zoom: 1,
@@ -442,13 +444,13 @@ function renderDocument(document, announce = false) {
   sourceEditor.value = state.markdown;
   write.innerHTML = markdownToHTML(state.markdown) || "<p><br></p>";
   refreshOrderedListCounters(write);
-  updateFindMatches();
   updateHeadingFoldControls(write);
   enhanceRawHTML(write);
   enhanceTables(write);
   enhanceCalendars(write);
   applyDocumentAssets(write, document);
   highlightCodeBlocks(write);
+  if ($("#find-panel").classList.contains("is-open") && !writeComposing) updateFindMatches();
   $("#save-state").textContent = localized(state.dirty ? "未保存" : "已保存");
   $("#save-state").classList.toggle("is-visible", state.dirty);
   updateDerivedState();
@@ -1018,14 +1020,16 @@ function restoreHeadingCompositionBlock(composition) {
 
 function handleHeadingCompositionInput(event) {
   const composition = activeComposition;
-  if (!composition || !composition.block.isConnected || !event.cancelable) return false;
+  if (!composition || !event.cancelable) return false;
   if (event.inputType === "deleteCompositionText") {
     // WebKit can remove an empty heading before committing IME text; retain it until composition completes.
     event.preventDefault();
+    if (!composition.block.isConnected) restoreHeadingCompositionBlock(composition);
     return true;
   }
   if (event.inputType !== "insertFromComposition") return false;
   event.preventDefault();
+  if (!composition.block.isConnected) restoreHeadingCompositionBlock(composition);
   const committedText = String(event.data ?? "");
   composition.block.textContent = composition.prefix + committedText + composition.suffix;
   placeTextCaret(composition.block, composition.prefix.length + committedText.length);
@@ -3422,6 +3426,7 @@ function toggleSource(force) {
   sourceButton.classList.toggle("is-active", next);
   sourceButton.dataset.tooltip = label;
   sourceButton.setAttribute("aria-label", label);
+  if ($("#find-panel").classList.contains("is-open")) updateFindMatches();
   requestAnimationFrame(() => (next ? sourceEditor : write).focus());
 }
 
@@ -3614,9 +3619,59 @@ function showFind() {
 }
 
 function closeFind() {
+  if (!state.sourceMode) clearFindHighlights();
   $("#find-panel").classList.remove("is-open");
   $("#find-panel").setAttribute("aria-hidden", "true");
   (state.sourceMode ? sourceEditor : write).focus();
+}
+
+function clearFindHighlights() {
+  const caret = !state.sourceMode && document.activeElement === write ? editorCaretOffset(write) : null;
+  write.querySelectorAll(".find-highlight").forEach(highlight => {
+    const parent = highlight.parentNode;
+    if (!parent) return;
+    while (highlight.firstChild) parent.insertBefore(highlight.firstChild, highlight);
+    highlight.remove();
+    parent.normalize();
+  });
+  state.findPreviewMatches = [];
+  state.findPreviewIndex = -1;
+  if (caret !== null) placeEditorCaret(write, caret);
+}
+
+function renderFindHighlights(query) {
+  clearFindHighlights();
+  if (!query) return [];
+  const textNodes = [];
+  const walker = document.createTreeWalker(write, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const parent = node.parentElement;
+      if (!parent || parent.closest(".find-highlight, .table-tools, .code-meta, [contenteditable='false'], [hidden]")) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      return node.nodeValue ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+    }
+  });
+  while (walker.nextNode()) textNodes.push(walker.currentNode);
+
+  const matches = [];
+  for (const node of textNodes) {
+    const nodeMatches = findTextMatches(node.nodeValue || "", query);
+    const highlights = [];
+    for (let index = nodeMatches.length - 1; index >= 0; index -= 1) {
+      const match = nodeMatches[index];
+      const range = document.createRange();
+      range.setStart(node, match.start);
+      range.setEnd(node, match.end);
+      const highlight = document.createElement("span");
+      highlight.className = "find-highlight";
+      highlight.append(range.extractContents());
+      range.insertNode(highlight);
+      highlights.unshift(highlight);
+    }
+    matches.push(...highlights);
+  }
+  return matches;
 }
 
 function updateFindMatches(reset = true) {
@@ -3626,24 +3681,45 @@ function updateFindMatches(reset = true) {
   state.findQuery = query;
   state.findMatches = findTextMatches(state.markdown, query);
   state.findIndex = -1;
-  $("#find-count").textContent = state.findMatches.length ? `0 / ${state.findMatches.length}` : "0 / 0";
+  state.findPreviewIndex = -1;
+  if (state.sourceMode) {
+    clearFindHighlights();
+    state.findPreviewMatches = [];
+  } else {
+    state.findPreviewMatches = renderFindHighlights(query);
+  }
+  const count = state.sourceMode ? state.findMatches.length : state.findPreviewMatches.length;
+  $("#find-count").textContent = count ? `0 / ${count}` : "0 / 0";
 }
 
 function stepFind(direction = 1) {
   updateFindMatches(false);
-  if (!state.findMatches.length) return;
-  if (!state.sourceMode) toggleSource(true);
-  if (!state.findMatches.length) return;
-  state.findIndex = state.findIndex < 0
-    ? (direction < 0 ? state.findMatches.length - 1 : 0)
-    : (state.findIndex + direction + state.findMatches.length) % state.findMatches.length;
-  const { start, end } = state.findMatches[state.findIndex];
-  sourceEditor.focus();
-  sourceEditor.setSelectionRange(start, end);
-  const lineHeight = Number.parseFloat(getComputedStyle(sourceEditor).lineHeight);
-  const line = state.markdown.slice(0, start).split("\n").length;
-  editorScroll.scrollTop = Math.max(0, line * lineHeight - editorScroll.clientHeight / 2);
-  $("#find-count").textContent = `${state.findIndex + 1} / ${state.findMatches.length}`;
+  if (state.sourceMode) {
+    if (!state.findMatches.length) return;
+    state.findIndex = state.findIndex < 0
+      ? (direction < 0 ? state.findMatches.length - 1 : 0)
+      : (state.findIndex + direction + state.findMatches.length) % state.findMatches.length;
+    const { start, end } = state.findMatches[state.findIndex];
+    sourceEditor.focus();
+    sourceEditor.setSelectionRange(start, end);
+    const lineHeight = Number.parseFloat(getComputedStyle(sourceEditor).lineHeight);
+    const line = state.markdown.slice(0, start).split("\n").length;
+    editorScroll.scrollTop = Math.max(0, line * lineHeight - editorScroll.clientHeight / 2);
+    $("#find-count").textContent = `${state.findIndex + 1} / ${state.findMatches.length}`;
+    return;
+  }
+
+  const matches = state.findPreviewMatches;
+  if (!matches.length) return;
+  state.findPreviewIndex = state.findPreviewIndex < 0
+    ? (direction < 0 ? matches.length - 1 : 0)
+    : (state.findPreviewIndex + direction + matches.length) % matches.length;
+  state.findIndex = state.findPreviewIndex;
+  matches.forEach(match => match.classList.remove("is-active"));
+  const active = matches[state.findPreviewIndex];
+  active.classList.add("is-active");
+  active.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+  $("#find-count").textContent = `${state.findPreviewIndex + 1} / ${matches.length}`;
 }
 
 function replaceOne() {
@@ -5805,7 +5881,11 @@ $("#backlink-count").addEventListener("click", () => {
 });
 
 $("#find-input").addEventListener("input", updateFindMatches);
-$("#find-input").addEventListener("keydown", event => { if (event.key === "Enter") stepFind(event.shiftKey ? -1 : 1); });
+$("#find-input").addEventListener("keydown", event => {
+  if (!["Enter", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+  event.preventDefault();
+  stepFind(event.key === "ArrowUp" || (event.key === "Enter" && event.shiftKey) ? -1 : 1);
+});
 $("#find-next").addEventListener("click", () => stepFind(1));
 $("#find-prev").addEventListener("click", () => stepFind(-1));
 $("#find-close").addEventListener("click", closeFind);
