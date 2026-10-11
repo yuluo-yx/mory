@@ -1431,8 +1431,7 @@ function renderDocument(document, announce = false) {
   enhanceCalendars(write);
   applyDocumentAssets(write, document);
   highlightCodeBlocks(write);
-  if ($("#find-panel").classList.contains("is-open")) updateFindMatches();
-  else if (write.querySelector(".find-highlight")) clearFindHighlights();
+  if ($("#find-panel").classList.contains("is-open") && !writeComposing) updateFindMatches();
   $("#save-state").textContent = localized(state.dirty ? "未保存" : "已保存");
   $("#save-state").classList.toggle("is-visible", state.dirty);
   updateDerivedState();
