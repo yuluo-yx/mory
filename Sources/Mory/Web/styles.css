@@ -342,6 +342,8 @@ body.is-resizing-table { cursor: col-resize; user-select: none; }
 .find-panel button:hover { background: var(--code-bg); color: var(--text); }
 .find-panel svg { width: 13px; height: 13px; }
 #find-count { align-self: center; min-width: 42px; color: var(--faint); text-align: center; font-size: 10px; }
+.find-highlight { padding: .04em .08em; border-radius: 3px; background: color-mix(in srgb, var(--accent) 24%, transparent); color: inherit; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+.find-highlight.is-active { background: var(--accent); color: var(--surface); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent); }
 .replace-row { grid-column: 1 / -1; display: none; grid-template-columns: 1fr auto auto; gap: 4px; }
 .replace-row.is-open { display: grid; }
 

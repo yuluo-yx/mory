@@ -467,6 +467,18 @@ app.whenReady().then(async () => {
           && document.querySelector('#write').textContent.trim() === 'fox fox'
           && !document.querySelector('.workspace').classList.contains('source-mode');
       });
+      check('preview search keeps preview mode, highlights matches, and navigates them', () => {
+        prepare('first cat\\n\\nsecond cat\\n\\nthird cat', 'cat', '', false);
+        const highlights = [...document.querySelectorAll('#write .find-highlight')];
+        if (document.querySelector('.workspace').classList.contains('source-mode')) return false;
+        if (highlights.length !== 3 || count() !== '0 / 3') return false;
+        click('#find-next');
+        if (count() !== '1 / 3' || document.querySelectorAll('#write .find-highlight.is-active').length !== 1) return false;
+        click('#find-next');
+        if (count() !== '2 / 3') return false;
+        click('#find-prev');
+        return count() === '1 / 3' && document.querySelectorAll('#write .find-highlight.is-active').length === 1;
+      });
       check('single replacement is undoable and redoable', () => {
         prepare('cat dog', 'cat', 'fox');
         click('#replace-one');
