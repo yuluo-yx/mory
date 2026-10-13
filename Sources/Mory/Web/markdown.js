@@ -413,7 +413,7 @@ export function editorToMarkdown(root, { escapeText = true } = {}) {
     if (node.nodeType !== Node.ELEMENT_NODE) continue;
     const element = /** @type {HTMLElement} */ (node);
     const classNames = (element.getAttribute("class") ?? "").split(/\s+/);
-    if (classNames.includes("code-meta") || classNames.includes("table-tools")) continue;
+    if (classNames.includes("code-meta") || classNames.includes("code-tools") || classNames.includes("table-tools")) continue;
     if (classNames.includes("mory-raw-html")) {
       blocks.push(element.dataset.rawHtml ?? "");
       continue;

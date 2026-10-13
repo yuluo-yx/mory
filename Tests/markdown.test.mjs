@@ -218,6 +218,18 @@ class FakeElement {
 
 const element = (tag, children = [], attributes = {}) => new FakeElement(tag, children, attributes);
 
+test("serializes folded code in full and ignores its view-only controls", () => {
+  globalThis.Node = { TEXT_NODE: 3, ELEMENT_NODE: 1 };
+  const root = element("article", [
+    element("div", [element("button", ["Expand code block"])], { class: "code-tools", contenteditable: "false" }),
+    element("pre", [element("code", ["first\nsecond\nthird"])], {
+      class: "is-code-folded", contenteditable: "false", dataset: { language: "txt", title: "sample.txt" }
+    }),
+    element("p", ["After"])
+  ]);
+  assert.equal(editorToMarkdown(root), '```txt title="sample.txt"\nfirst\nsecond\nthird\n```\n\nAfter');
+});
+
 test("preserves escaped heading intent through rendering and serialization", () => {
   globalThis.Node = { TEXT_NODE: 3, ELEMENT_NODE: 1 };
   for (let level = 1; level <= 6; level += 1) {
