@@ -813,7 +813,7 @@ function editorToMarkdown(root, { escapeText = true } = {}) {
     if (node.nodeType !== Node.ELEMENT_NODE) continue;
     const element = /** @type {HTMLElement} */ (node);
     const classNames = (element.getAttribute("class") ?? "").split(/\s+/);
-    if (classNames.includes("code-meta") || classNames.includes("table-tools")) continue;
+    if (classNames.includes("code-meta") || classNames.includes("code-tools") || classNames.includes("table-tools")) continue;
     if (classNames.includes("mory-raw-html")) {
       blocks.push(element.dataset.rawHtml ?? "");
       continue;
@@ -1096,6 +1096,7 @@ try {
 let changeTimer;
 let toastTimer;
 let mermaidSequence = 0;
+let codeBlockSequence = 0;
 let mermaidQueue = Promise.resolve();
 let expandedMermaidDiagram = null;
 const mermaidInputTimers = new WeakMap();
@@ -1214,6 +1215,7 @@ const englishText = {
   "Mermaid 源码": "Mermaid source", "Mermaid 图表": "Mermaid diagram", "Mermaid 无法渲染": "Mermaid could not render", "Mermaid 运行时未加载": "Mermaid runtime is unavailable",
   "收起源码": "Collapse source", "展开源码": "Expand source", "放大编辑框": "Expand editor", "退出放大": "Exit expanded view",
   "折叠标题内容": "Collapse section", "展开标题内容": "Expand section",
+  "折叠代码块": "Collapse code block", "展开代码块": "Expand code block",
   "未打开工作区": "No workspace open", "打开的文稿": "Open documents", "选择工作区以浏览目录": "Choose a workspace to browse its files",
   "恢复的文稿.md": "Recovered note.md", "无法打开工作区，请检查目录是否存在或从最近记录中移除。": "Unable to open workspace. Check its location or remove it from recent entries.",
   "无法保存恢复副本，请及时保存文稿。": "Unable to store recovery copies. Please save your documents.",
@@ -1284,6 +1286,7 @@ function applyLocale(next = state.locale) {
   updateThemeFontWarning();
   updateDocumentBacklinks();
   enhanceCalendars(write);
+  enhanceCodeBlocks(write);
   updateHeadingFoldControls(write);
   if ($("#color-popover").classList.contains("is-open")) renderInlineColorPalette($("#color-popover").dataset.colorKind || "text");
   updateMermaidWorkbenchLocale(write);
@@ -1429,8 +1432,9 @@ function renderDocument(document, announce = false) {
   enhanceRawHTML(write);
   enhanceTables(write);
   enhanceCalendars(write);
+  enhanceCodeBlocks(write);
   applyDocumentAssets(write, document);
-  highlightCodeBlocks(write);
+  highlightCodeBlocks(write, true);
   if ($("#find-panel").classList.contains("is-open") && !writeComposing) updateFindMatches();
   $("#save-state").textContent = localized(state.dirty ? "未保存" : "已保存");
   $("#save-state").classList.toggle("is-visible", state.dirty);
@@ -1583,6 +1587,7 @@ function applyDocumentAssets(root, document = activeDocument(), { refreshMissing
 }
 
 function syncFromWrite() {
+  enhanceCodeBlocks(write);
   updateHeadingFoldControls(write);
   refreshOrderedListCounters(write);
   state.markdown = editorToMarkdown(write);
@@ -1763,8 +1768,7 @@ function textOffsetWithin(element, node, offset) {
   return range.toString().replaceAll(caretMarker, "").length;
 }
 
-function placeTextCaret(element, offset) {
-  const selection = window.getSelection();
+function textPointAtOffset(element, offset) {
   const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
   let remaining = Math.max(0, offset);
   let target = element;
@@ -1781,6 +1785,12 @@ function placeTextCaret(element, offset) {
     target = node;
     targetOffset = length;
   }
+  return [target, targetOffset];
+}
+
+function placeTextCaret(element, offset) {
+  const selection = window.getSelection();
+  const [target, targetOffset] = textPointAtOffset(element, offset);
   const caret = document.createRange();
   caret.setStart(target, targetOffset);
   caret.collapse(true);
@@ -3277,6 +3287,55 @@ function deleteTableBeforeCaret(event) {
   return true;
 }
 
+function updateCodeFoldButton(block, button) {
+  const expanded = !block.classList.contains("is-code-folded");
+  const label = localized(expanded ? "折叠代码块" : "展开代码块");
+  // Replace the text node so static localization cannot restore an obsolete state label.
+  if (button.textContent !== label) button.textContent = label;
+  button.setAttribute("aria-label", label);
+  button.setAttribute("aria-expanded", String(expanded));
+}
+
+function enhanceCodeBlocks(root = write) {
+  root.querySelectorAll(":scope > .code-tools").forEach(tools => {
+    if (!tools.nextElementSibling?.matches("pre")) tools.remove();
+  });
+  root.querySelectorAll(":scope > pre").forEach(block => {
+    let tools = block.previousElementSibling;
+    if (!tools?.matches(".code-tools")) {
+      tools = document.createElement("div");
+      tools.className = "code-tools";
+      tools.contentEditable = "false";
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "code-fold-toggle";
+      if (!block.id) block.id = `mory-code-${++codeBlockSequence}`;
+      button.setAttribute("aria-controls", block.id);
+      button.addEventListener("click", event => {
+        event.preventDefault();
+        event.stopPropagation();
+        const folded = block.classList.toggle("is-code-folded");
+        // Keep all code in the DOM for serialization, but prevent edits to clipped lines.
+        if (folded) {
+          const selection = window.getSelection();
+          if (selection?.rangeCount && selection.getRangeAt(0).intersectsNode(block)) selection.removeAllRanges();
+          block.contentEditable = "false";
+          const meta = block.nextElementSibling;
+          if (meta?.matches(".code-meta")) meta.hidden = true;
+          block.scrollTop = 0;
+        } else block.removeAttribute("contenteditable");
+        updateCodeFoldButton(block, button);
+        button.focus({ preventScroll: true });
+      });
+      // Let native button activation handle Enter/Space rather than editor shortcuts.
+      button.addEventListener("keydown", event => event.stopPropagation());
+      tools.append(button);
+      block.before(tools);
+    }
+    updateCodeFoldButton(block, tools.querySelector(".code-fold-toggle"));
+  });
+}
+
 function paragraphAfterCode(block) {
   let paragraph = block.nextElementSibling;
   if (paragraph?.matches(".code-meta")) paragraph = paragraph.nextElementSibling;
@@ -3379,7 +3438,6 @@ function moveRenderCaretPastInlineSyntax(source) {
   const movePastMatch = pattern => source = source.replace(pattern, match => match.replace(renderCaretMarker, "") + renderCaretMarker);
   movePastMatch(/!?\[[^\]\n]*\ue000\]\([^\n)]*\)/);
   for (const pattern of [
-    /`[^`\n]+\ue000`/,
     /\*\*[^*\n]+\ue000\*\*/,
     /__[^_\n]+\ue000__/,
     /~~[^~\n]+\ue000~~/,
@@ -3400,11 +3458,14 @@ function restoreRenderCaret() {
     const valueWithoutMarker = value.replaceAll(renderCaretMarker, "");
     const needsInlineBoundary = !valueWithoutMarker && node.previousSibling instanceof HTMLElement
       && node.previousSibling.matches("code, strong, b, em, i, del, s, strike, a");
-    node.nodeValue = value.replaceAll(renderCaretMarker, needsInlineBoundary ? caretMarker : "");
+    // A whitespace-only inline span needs a visible editing position in WebKit and Chromium.
+    const needsCodeBoundary = !valueWithoutMarker.trim() && Boolean(node.parentElement?.closest("code"));
+    const needsBoundary = needsInlineBoundary || needsCodeBoundary;
+    node.nodeValue = value.replaceAll(renderCaretMarker, needsBoundary ? caretMarker : "");
     if (restored) continue;
     const selection = window.getSelection();
     const caret = document.createRange();
-    caret.setStart(node, markerIndex + (needsInlineBoundary ? caretMarker.length : 0));
+    caret.setStart(node, markerIndex + (needsBoundary ? caretMarker.length : 0));
     caret.collapse(true);
     selection?.removeAllRanges();
     selection?.addRange(caret);
@@ -3438,14 +3499,19 @@ function renderMarkdownBlockAtCaret() {
   if (closeFencedCodeAtCaret(block)) return true;
   if (block.matches("pre, ul, ol, table")) return false;
 
+  const anchor = window.getSelection()?.anchorNode;
+  const anchorElement = anchor?.nodeType === Node.TEXT_NODE ? anchor.parentElement : anchor;
+  // Code content is literal, even when it contains valid Markdown or HTML syntax.
+  if (anchorElement?.closest?.("code")) return false;
+
   const text = block.textContent ?? "";
   const rawHeading = !block.dataset.literalHeading && block.matches("p, div") && /^(#{1,6})\s+\S/.test(text);
   const rawList = block.matches("p, div") && /^\s*(?:[-*+]|\d+[.)])\s+\S/.test(text);
   const rawInline = /`[^`\n]+`|\*\*[^*\n]+\*\*|__[^_\n]+__|~~[^~\n]+~~|(^|[^*])\*[^*\n]+\*(?!\*)|(^|[^_])_[^_\n]+_(?!_)|!?\[[^\]\n]+\]\([^\n)]+\)|<\/?[A-Za-z][^>]*>/.test(text);
   if (!rawHeading && !rawList && !rawInline) return false;
   if (!insertRenderCaretMarker()) return false;
-  let source = block.textContent || "";
-  if (block.dataset.literalHeading) source = source.replace(/^(#{1,6})(?=\s)/, "\\$1");
+  // Preserve existing inline elements when rendering newly typed Markdown beside them.
+  let source = editorToMarkdown({ childNodes: [block] }, { escapeText: false });
   source = moveRenderCaretPastInlineSyntax(source);
   const html = markdownToHTML(source);
   const template = document.createElement("template");
@@ -3472,6 +3538,7 @@ function renderMarkdownDocumentAtCaret() {
   enhanceRawHTML(write);
   enhanceTables(write);
   enhanceCalendars(write);
+  enhanceCodeBlocks(write);
   if (hasCaret && !restoreRenderCaret()) {
     const paragraph = document.createElement("p");
     paragraph.append(document.createElement("br"));
@@ -3537,6 +3604,8 @@ function handleWriteInput(event) {
     syncFromWrite();
     return;
   }
+  // WebKit retains its editing target during beforeinput; do not replace it until input commits.
+  clearSelectedCodeHighlights();
   normalizeWriteRoot();
   const block = currentWriteBlock();
   if (block?.dataset.literalHeading && !/^#{1,6}\s/.test(block.textContent || "")) delete block.dataset.literalHeading;
@@ -3584,6 +3653,7 @@ function syncFromSource(render = false, changed = true) {
     enhanceRawHTML(write);
     enhanceTables(write);
     enhanceCalendars(write);
+    enhanceCodeBlocks(write);
     applyDocumentAssets(write);
     highlightCodeBlocks(write);
     void renderMermaidDiagrams(write, state.documentTheme);
@@ -5439,7 +5509,10 @@ function highlightCodeBlock(block, force = false) {
   if (!block?.matches?.("pre") || block.closest(".mermaid-diagram") || !window.hljs) return false;
   const code = block.querySelector("code");
   if (!code || code.dataset.moryHighlighted === "true") return false;
-  if (!force && block === currentWriteBlock()) return false;
+  const selection = window.getSelection();
+  // Highlighting replaces text nodes, invalidating an in-progress mouse drag anchor.
+  if (!force && selection?.rangeCount && (selection.isCollapsed
+    ? block.contains(selection.anchorNode) : selection.getRangeAt(0).intersectsNode(block))) return false;
   const source = code.textContent || "";
   const language = normalizedCodeLanguage(block.dataset.language);
   try {
@@ -5466,14 +5539,52 @@ function clearCodeHighlight(block) {
   const code = block?.querySelector?.("code");
   if (!code || code.dataset.moryHighlighted !== "true") return false;
   const selection = window.getSelection();
-  const inside = selection?.isCollapsed && selection.rangeCount && code.contains(selection.anchorNode);
-  const offset = inside ? textOffsetWithin(code, selection.anchorNode, selection.anchorOffset) : 0;
+  const bookmark = (node, offset) => code.contains(node)
+    ? { offset: textOffsetWithin(code, node, offset) } : { node, offset };
+  const anchor = selection?.rangeCount ? bookmark(selection.anchorNode, selection.anchorOffset) : null;
+  const focus = selection?.rangeCount ? bookmark(selection.focusNode, selection.focusOffset) : null;
   const source = code.textContent || "";
   code.textContent = source;
   code.className = "";
   delete code.dataset.moryHighlighted;
   delete block.dataset.highlighted;
-  if (inside) placeTextCaret(code, offset);
+  if (anchor && focus) {
+    const resolve = point => point.node ? [point.node, point.offset] : textPointAtOffset(code, point.offset);
+    selection.setBaseAndExtent(...resolve(anchor), ...resolve(focus));
+  }
+  return true;
+}
+
+function clearSelectedCodeHighlights() {
+  const selection = window.getSelection();
+  if (!selection?.rangeCount) return;
+  write.querySelectorAll("pre[data-highlighted='true']").forEach(block => {
+    if (selection.getRangeAt(0).intersectsNode(block)) clearCodeHighlight(block);
+  });
+}
+
+function pasteTextIntoCode(text) {
+  const selection = window.getSelection();
+  if (!selection?.rangeCount) return false;
+  const range = selection.getRangeAt(0);
+  const block = writeBlockForNode(range.startContainer);
+  if (!block?.matches("pre") || !block.isContentEditable || writeBlockForNode(range.endContainer) !== block) return false;
+  const code = block.querySelector("code") || block;
+  if (!code.contains(range.startContainer) || !code.contains(range.endContainer)) return false;
+  const start = textOffsetWithin(code, range.startContainer, range.startOffset);
+  const end = textOffsetWithin(code, range.endContainer, range.endOffset);
+  const source = (code.textContent || "").replaceAll(caretMarker, "");
+  const inserted = text.replace(/\r\n?/g, "\n");
+  beginEditorHistory("paste-code", { force: true });
+  clearCodeHighlight(block);
+  // Bypass native rich-editing and whole-document rendering for literal code paste.
+  // Replace only the selected text, retaining the block, metadata, and undo history.
+  code.textContent = source.slice(0, start) + inserted + source.slice(end);
+  placeTextCaret(code, start + inserted.length);
+  pendingCodeExit = null;
+  syncFromWrite();
+  highlightCodeBlocks(write);
+  updateFocusLine();
   return true;
 }
 
@@ -6554,6 +6665,7 @@ write.addEventListener("paste", event => {
   }
   event.preventDefault();
   const text = event.clipboardData.getData("text/plain");
+  if (pasteTextIntoCode(text)) return;
   const block = currentWriteBlock();
   if (block?.matches("p, div") && !block.textContent) {
     block.textContent = text;
@@ -6584,6 +6696,7 @@ write.addEventListener("drop", event => {
 write.addEventListener("compositionstart", beginComposition);
 write.addEventListener("compositionend", event => {
   writeComposing = false;
+  clearSelectedCodeHighlights();
   normalizeWriteRoot();
   let committedBlock = activeComposition?.block || writeBlockForNode(event.target) || currentWriteBlock();
   recentCompositionCommit = committedBlock instanceof HTMLElement
@@ -6606,8 +6719,6 @@ write.addEventListener("compositionend", event => {
 });
 document.addEventListener("selectionchange", () => {
   if (document.activeElement !== write) return;
-  const block = currentWriteBlock();
-  if (block?.matches("pre[data-highlighted='true']")) clearCodeHighlight(block);
   highlightCodeBlocks(write);
   if ($("#path-suggestions").classList.contains("is-open")) updatePathSuggestions();
 });

@@ -972,7 +972,7 @@ app.whenReady().then(async () => {
       { label: "italic", source: "**", offset: 1, selector: "em", markdown: "*\\u51B3\\u7B56*\\u5373\\u53EF" },
       { label: "underscore italic", source: "__", offset: 1, selector: "em", markdown: "*\\u51B3\\u7B56*\\u5373\\u53EF" },
       { label: "strikethrough", source: "~~~~", offset: 2, selector: "del", markdown: "~~\\u51B3\\u7B56~~\\u5373\\u53EF" },
-      { label: "inline code", source: "``", offset: 1, selector: "code", markdown: "`\\u51B3\\u7B56`\\u5373\\u53EF" },
+      { label: "inline code", source: "``", offset: 1, selector: "code", staysInside: true, markdown: "`\\u51B3\\u7B56\\u5373\\u53EF`" },
       { label: "link", source: "[](https://example.com)", offset: 1, selector: "a", markdown: "[\\u51B3\\u7B56](https://example.com)\\u5373\\u53EF" }
     ];
     for (const testCase of inlineCompositionCases) {
@@ -1007,9 +1007,11 @@ app.whenReady().then(async () => {
         activeParagraph.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertCompositionText', data: '\\u5373\\u53EF', isComposing: true }));
         activeParagraph.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '\\u5373\\u53EF' }));
       })()`);
-      await expect(window, `consecutive Chinese compositions exit ${testCase.label} at its closing Markdown marker`, `(() => {
+      // A pre-existing code delimiter must not move an in-progress composition outside it.
+      const behavior = testCase.staysInside ? 'stay inside' : 'exit';
+      await expect(window, `consecutive Chinese compositions ${behavior} ${testCase.label}`, `(() => {
         const formatted = document.querySelector('#write p ${testCase.selector}');
-        return formatted?.textContent === '\\u51B3\\u7B56'
+        return formatted?.textContent === '${testCase.staysInside ? '\\u51B3\\u7B56\\u5373\\u53EF' : '\\u51B3\\u7B56'}'
           && document.querySelector('#write p')?.textContent === '\\u51B3\\u7B56\\u5373\\u53EF'
           && window.Mory.getMarkdown() === '${testCase.markdown}';
       })()`);
@@ -1669,9 +1671,11 @@ app.whenReady().then(async () => {
     window.webContents.sendInputEvent({ type: "mouseMove", x: 1, y: 1 });
     await wait(50);
     await expect(window, "the heading fold control stays hidden when no rendered heading is hovered", "document.querySelector('#heading-fold-toggle').hidden");
-    const foldHoverPoint = await inspect(window, `(() => {
+    const foldHoverPoint = await inspect(window, `(async () => {
       const heading = [...document.querySelectorAll('#write > h2')].find(item => item.textContent.trim() === 'First child');
-      heading.scrollIntoView({ block: 'center' });
+      // Smooth scrolling would hide the fold control after the hover assertion.
+      heading.scrollIntoView({ block: 'center', behavior: 'instant' });
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const rect = heading.getBoundingClientRect();
       return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
     })()`);

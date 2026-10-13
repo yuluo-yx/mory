@@ -226,6 +226,13 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width:
 .write pre[data-title]:not([data-title=""]) { padding-top: 36px; }
 .write pre[data-title]:not([data-title=""])::before { content: attr(data-title); position: absolute; top: 8px; left: 18px; color: var(--faint); font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; font-size: 10px; font-weight: 600; letter-spacing: .02em; }
 .write pre code { padding: 0; color: inherit; background: transparent; }
+.write .code-tools { display: flex; justify-content: flex-end; margin: 1.1em 0 0; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; line-height: 1; user-select: none; }
+.write .code-tools + pre { margin-top: 4px; }
+.write .code-fold-toggle { display: inline-flex; align-items: center; gap: 5px; padding: 4px 6px; border: 1px solid transparent; border-radius: 3px; background: transparent; color: var(--muted); font: inherit; font-size: 11px; cursor: pointer; }
+.write .code-fold-toggle::before { content: ""; width: 6px; height: 6px; border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; transform: translateY(-2px) rotate(45deg); }
+.write .code-fold-toggle[aria-expanded="false"]::before { transform: translateX(-2px) rotate(-45deg); }
+.write .code-fold-toggle:hover, .write .code-fold-toggle:focus-visible { border-color: var(--line-soft); background: var(--code-bg); color: var(--accent); }
+#write pre.is-code-folded { min-height: 0; max-height: 6.5em; overflow: hidden; }
 .write .hljs-comment, .write .hljs-quote { color: #6a737d; font-style: italic; }
 .write .hljs-keyword, .write .hljs-selector-tag, .write .hljs-type { color: #8250df; font-weight: 600; }
 .write .hljs-title, .write .hljs-section, .write .hljs-function { color: #0550ae; }

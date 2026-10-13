@@ -267,6 +267,64 @@ final class MacTypingSmoke: NSObject, NSApplicationDelegate, WKNavigationDelegat
                 return
             }
             print("macOS WKWebView empty nested heading passed: \(result)")
+            testNativeCodePaste()
+        }
+    }
+
+    private func testNativeCodePaste() {
+        Task { @MainActor in
+            do {
+                try await webView.evaluateJavaScript("""
+                (() => {
+                  window.Mory.loadMarkdown('Before\\n\\n```js title="sample.js"\\nconst first = 1;\\nconst last = 2;\\n```\\n\\nAfter');
+                  const code = document.querySelector('#write pre code');
+                  const text = code.querySelector('.hljs-keyword').firstChild;
+                  getSelection().setBaseAndExtent(text, 2, text, 2);
+                  document.querySelector('#write').focus();
+                })()
+                """)
+                window.makeFirstResponder(webView)
+                let pasteboard = NSPasteboard.general
+                // Materialize all formats before changing the system clipboard.
+                let savedItems = try (pasteboard.pasteboardItems ?? []).map { item in
+                    let saved = NSPasteboardItem()
+                    for type in item.types {
+                        guard let data = item.data(forType: type) else {
+                            throw NSError(domain: "MacTypingSmoke", code: 1,
+                                          userInfo: [NSLocalizedDescriptionKey: "Cannot preserve a clipboard format"])
+                        }
+                        saved.setData(data, forType: type)
+                    }
+                    return saved
+                }
+                pasteboard.clearContents()
+                let inserted = "\t# literal\n\n**literal** <span>\n"
+                pasteboard.setString(inserted, forType: .string)
+                let clipboardChange = pasteboard.changeCount
+                defer {
+                    // Do not overwrite a user's newer copy made during the smoke test.
+                    if pasteboard.changeCount == clipboardChange {
+                        pasteboard.clearContents()
+                        if !savedItems.isEmpty { pasteboard.writeObjects(savedItems) }
+                    }
+                }
+                webView.perform(NSSelectorFromString("paste:"), with: nil)
+                let value = try await webView.callAsyncJavaScript("""
+                await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+                return { markdown: window.Mory.getMarkdown(), count: document.querySelectorAll('#write pre').length };
+                """, arguments: [:], in: nil, contentWorld: .page)
+                let expected = "Before\n\n```js title=\"sample.js\"\nco\t# literal\n\n**literal** <span>\nnst first = 1;\nconst last = 2;\n```\n\nAfter"
+                guard let result = value as? [String: Any],
+                      result["markdown"] as? String == expected,
+                      result["count"] as? Int == 1 else {
+                    throw NSError(domain: "MacTypingSmoke", code: 2,
+                                  userInfo: [NSLocalizedDescriptionKey: "Native code paste changed literal lines or split the block: \(String(describing: value))"])
+                }
+                print("macOS WKWebView native multiline clipboard paste passed")
+            } catch {
+                finish(failure: "Native code paste failed: \(error.localizedDescription)")
+                return
+            }
             NSApplication.shared.terminate(nil)
         }
     }
