@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { app, BrowserWindow, clipboard, ClipboardItem } = require('electron');
+const { snapshotClipboard } = require('./clipboard-snapshot.cjs');
 
 async function runNativeCodeInteractions(window) {
   const evaluate = script => window.webContents.executeJavaScript(script, true);
@@ -69,9 +70,7 @@ async function runNativeCodeInteractions(window) {
   process.stdout.write('Native code interactions passed: forward/backward mouse drag and Enter/Space folding\n');
 
   // Restore every clipboard representation, not just plain text, after native paste.
-  const savedClipboard = await Promise.all((await clipboard.read()).map(async item =>
-    new ClipboardItem(Object.fromEntries(await Promise.all(item.types.map(async type =>
-      [type, await item.getType(type)]))))));
+  const savedClipboard = await snapshotClipboard(clipboard, ClipboardItem);
   const inserted = '\t# literal\n\n**literal** <span>\n';
   try {
     await evaluate(`(() => {

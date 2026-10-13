@@ -1671,9 +1671,11 @@ app.whenReady().then(async () => {
     window.webContents.sendInputEvent({ type: "mouseMove", x: 1, y: 1 });
     await wait(50);
     await expect(window, "the heading fold control stays hidden when no rendered heading is hovered", "document.querySelector('#heading-fold-toggle').hidden");
-    const foldHoverPoint = await inspect(window, `(() => {
+    const foldHoverPoint = await inspect(window, `(async () => {
       const heading = [...document.querySelectorAll('#write > h2')].find(item => item.textContent.trim() === 'First child');
-      heading.scrollIntoView({ block: 'center' });
+      // Smooth scrolling would hide the fold control after the hover assertion.
+      heading.scrollIntoView({ block: 'center', behavior: 'instant' });
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const rect = heading.getBoundingClientRect();
       return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
     })()`);
