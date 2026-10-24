@@ -67,6 +67,8 @@ async function click(window, selector) {
   let hittable = false;
   for (let attempt = 0; attempt < 3 && !hittable; attempt += 1) {
     // Deferred panel layout may move a control after the first scroll on slower renderers.
+    // Offscreen renderers can collapse the toolbar dock between attempts, so reveal it each time.
+    await revealToolbarFor(window, selector);
     target = await locate();
     window.webContents.sendInputEvent({ type: "mouseMove", x: target.x, y: target.y });
     await wait(60);
@@ -82,7 +84,8 @@ async function click(window, selector) {
         y,
         viewport: { width: innerWidth, height: innerHeight },
         panelTop: expected.closest('.calendar-quick-editor')?.style.top,
-        hittable: Boolean(actual && (expected === actual || expected.contains(actual))),
+        hittable: Boolean(actual && (expected === actual || expected.contains(actual)))
+          && (!expected.closest("#toolbar") || document.querySelector("#toolbar-dock").classList.contains("is-open")),
         hit: actual?.id || actual?.dataset?.command || actual?.className || actual?.tagName
       };
     })()`);
@@ -1741,7 +1744,7 @@ app.whenReady().then(async () => {
       selection.addRange(range);
     })()`);
     await click(window, "#toolbar button[data-command='bold']");
-    await expect(window, "format button is clickable", "document.querySelector('#write strong, #write b') !== null");
+    await expectEventually(window, "format button is clickable", "document.querySelector('#write strong, #write b') !== null");
 
     await inspect(window, `window.Mory.loadMarkdown('# \u989C\u8272\u6D4B\u8BD5\\n\\n\u9700\u8981\u67D3\u8272\u7684\u6BB5\u843D')`);
     await inspect(window, `(() => {

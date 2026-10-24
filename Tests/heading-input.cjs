@@ -107,7 +107,9 @@ app.whenReady().then(async () => {
   // Hidden Windows windows may stop producing animation frames unless rendered offscreen.
   const window = new BrowserWindow({ width: 1180, height: 790, show: false, webPreferences: { offscreen: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
   let phase = 'loading the editor';
-  const timeout = setTimeout(() => { process.stderr.write(`Heading input timed out while ${phase}\n`); app.exit(1); }, 45000);
+  // Slow-frame runs spend about 35 seconds in 160 ms frames alone, so they receive a larger budget.
+  const budget = process.argv.includes('--slow-frames') ? 90000 : 45000;
+  const timeout = setTimeout(() => { process.stderr.write(`Heading input timed out while ${phase}\n`); app.exit(1); }, budget);
   try {
     await window.loadFile(process.env.MORY_WEB_INDEX || path.join(__dirname, '../Sources/Mory/Web/index.html'));
     await window.webContents.executeJavaScript('document.fonts.ready');
