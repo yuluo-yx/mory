@@ -153,11 +153,34 @@ test("macOS and Windows hosts watch workspaces recursively and refresh atomic sn
   const electron = fs.readFileSync(path.join(root, "Electron", "workspace-watcher.cjs"), "utf8");
   const macOS = fs.readFileSync(path.join(root, "Sources", "Mory", "WorkspaceWatcher.swift"), "utf8");
   assert.match(electron, /fs\.watch\(nextRoot, \{ recursive: true \}/);
-  assert.match(electron, /setInterval\(scheduleRefresh, pollIntervalMs\)/);
-  assert.match(electron, /Promise\.resolve\(onChange\(\)\)/);
+  assert.match(electron, /setInterval\(\(\) => \{ void poll\(\); \}, pollIntervalMs\)/);
+  assert.match(electron, /onChange\(\)\)\.catch\(onError\)/);
   assert.match(macOS, /FSEventStreamCreate\(/);
   assert.match(macOS, /kFSEventStreamCreateFlagFileEvents/);
   assert.match(macOS, /kFSEventStreamCreateFlagWatchRoot/);
+  assert.match(macOS, /WorkspaceWatcher\.isRelevant\(path:/);
+});
+
+test("macOS scans local workspaces off the main thread and coalesces refreshes", () => {
+  const app = fs.readFileSync(path.join(root, "Sources", "Mory", "MoryApp.swift"), "utf8");
+  const refresh = app.split("private func refreshWorkspace()")[1]?.split("private func answerHostRequest")[0];
+  assert.ok(refresh, "The native host must refresh workspace snapshots");
+  assert.match(refresh, /guard !workspaceScanInFlight else \{\s+workspaceScanPending = true/);
+  assert.match(refresh, /workspaceScanQueue\.async/);
+  assert.match(refresh, /manager\.snapshot\(root: root\)/);
+  assert.doesNotMatch(refresh, /workspaceManager\.documents\(\)/);
+  const documents = app.split('case "workspaceDocuments":')[1]?.split("case ")[0];
+  assert.match(documents, /workspaceScanQueue\.async/);
+});
+
+test("the web editor avoids rereading all notes and rebuilding the graph on unrelated updates", () => {
+  const web = fs.readFileSync(path.join(root, "Sources", "Mory", "Web", "app.js"), "utf8");
+  const setFiles = web.split("function setWorkspaceFiles(")[1]?.split("function compareWorkspaceFiles")[0];
+  assert.match(setFiles, /if \(filesSignature !== workspaceKnowledgeFilesSignature\)/);
+  const changed = web.split("function markChanged()")[1]?.split("function updateDerivedState")[0];
+  assert.match(changed, /if \(activeDocumentKnowledgeChanged\(\)\) rebuildWorkspaceKnowledge\(\)/);
+  const files = web.split("function renderFiles()")[1]?.split("function renderQuickResults")[0];
+  assert.match(files, /\$\("#quick-open"\)\.classList\.contains\("is-open"\)/);
 });
 
 test("macOS and Windows move deleted documents to the system trash", () => {
@@ -442,10 +465,24 @@ test("desktop release metadata stays aligned with the package version", () => {
 
 test("release CI uses the module toolchain and can update an existing release", () => {
   const workflow = fs.readFileSync(path.join(root, ".github", "workflows", "build-binaries.yml"), "utf8");
-  assert.equal((workflow.match(/go-version: "1\.26\.6"/g) || []).length, 2);
+  const activeWorkflow = workflow.split("\n").filter(line => !line.trimStart().startsWith("#")).join("\n");
+  assert.equal((activeWorkflow.match(/go-version: "1\.26\.6"/g) || []).length, 1);
+  assert.match(activeWorkflow, /run: make ci-macos/);
+  assert.match(workflow, /if gh release view "\$RELEASE_TAG"/);
   assert.match(workflow, /if gh release view "\$RELEASE_TAG"/);
   assert.match(workflow, /gh release upload "\$RELEASE_TAG" release-assets\/\* --clobber/);
   assert.match(workflow, /gh release edit "\$RELEASE_TAG" --title "Mory \$\{package_version\}" --latest/);
+});
+
+test("release CI publishes macOS builds only while Windows releases are paused", () => {
+  const workflow = fs.readFileSync(path.join(root, ".github", "workflows", "build-binaries.yml"), "utf8");
+  const activeWorkflow = workflow.split("\n").filter(line => !line.trimStart().startsWith("#")).join("\n");
+  assert.doesNotMatch(activeWorkflow, /^\s{2}windows:/m);
+  assert.doesNotMatch(activeWorkflow, /make ci-windows/);
+  assert.match(activeWorkflow, /needs:\n\s+- macos\n\s+runs-on:/);
+  assert.match(activeWorkflow, /"Mory-\$\{package_version\}-macos-arm64\.dmg"/);
+  assert.match(activeWorkflow, /"Mory-\$\{package_version\}-macos-x64\.zip"/);
+  assert.doesNotMatch(activeWorkflow, /Mory-(Setup|Portable)-/);
 });
 
 test("bundled fonts use a stable MIME type in standalone exports", () => {

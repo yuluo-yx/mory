@@ -228,6 +228,9 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     private var workspaceManager: WorkspaceManager!
     private var recentWorkspaces: [[String: String]] = []
     private var workspaceWatcher: WorkspaceWatcher!
+    private let workspaceScanQueue = DispatchQueue(label: "app.mory.workspace-scan", qos: .userInitiated)
+    private var workspaceScanInFlight = false
+    private var workspaceScanPending = false
     private var themeManager: ThemeManager!
     private var editorReady = false
     private var pendingDocument: [String: Any]?
@@ -977,14 +980,37 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
 
     private func refreshWorkspace() {
         guard workspaceManager.isOpen else { return }
-        do {
-            workspaceWatcher?.start(at: workspaceManager.activeRoot)
+        let root = workspaceManager.activeRoot
+        workspaceWatcher?.start(at: root)
+        // Coalesce bursts of watcher events and host mutations into at most one queued follow-up scan.
+        guard !workspaceScanInFlight else {
+            workspaceScanPending = true
+            return
+        }
+        workspaceScanInFlight = true
+        let manager = workspaceManager!
+        workspaceScanQueue.async { [weak self] in
+            let result = Result { try manager.snapshot(root: root) }
+            DispatchQueue.main.async { self?.finishWorkspaceScan(root: root, result: result) }
+        }
+    }
+
+    private func finishWorkspaceScan(root: URL, result: Result<(files: [[String: Any]], directories: [[String: Any]]), Error>) {
+        workspaceScanInFlight = false
+        if workspaceScanPending || !workspaceManager.isOpen || workspaceManager.activeRoot != root {
+            // A newer change or a workspace switch arrived during the scan; publish only the latest tree.
+            workspaceScanPending = false
+            refreshWorkspace()
+            return
+        }
+        switch result {
+        case .success(let snapshot):
             sendJSON(function: "window.Mory.setWorkspaceSnapshot", value: [
                 "state": workspaceManager.state(),
-                "files": try workspaceManager.documents(),
-                "directories": try workspaceManager.directories()
+                "files": snapshot.files,
+                "directories": snapshot.directories
             ])
-        } catch {
+        case .failure(let error):
             presentError("无法读取工作区：\(error.localizedDescription)")
         }
     }
@@ -1125,7 +1151,17 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
                 NSWorkspace.shared.activateFileViewerSelecting([source])
                 answerHostRequest(id: id, result: ["revealed": true])
             case "workspaceDocuments":
-                answerHostRequest(id: id, result: try workspaceManager.documentContents())
+                let manager = workspaceManager!
+                let root = workspaceManager.activeRoot
+                // Reading every note can take noticeable time in large workspaces; keep the editor responsive.
+                workspaceScanQueue.async { [weak self] in
+                    do {
+                        let documents = try manager.documentContents(root: root)
+                        DispatchQueue.main.async { self?.answerHostRequest(id: id, result: documents) }
+                    } catch {
+                        DispatchQueue.main.async { self?.answerHostRequest(id: id, error: error) }
+                    }
+                }
             case "listThemes":
                 answerHostRequest(id: id, result: try themeManager.list())
             case "importTheme":
@@ -1259,7 +1295,7 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     }
 
     @objc private func showAbout() {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.5.8"
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.5.9"
         var options: [NSApplication.AboutPanelOptionKey: Any] = [
             .applicationName: "Mory",
             .applicationVersion: version,

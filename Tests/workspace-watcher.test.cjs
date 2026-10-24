@@ -66,3 +66,48 @@ test("watches desktop workspaces for create, rename, and delete events", async t
   assert.equal(watcher.root, path.resolve(root));
   assert.deepEqual(snapshots.at(-1), []);
 });
+
+test("ignores hidden workspace paths such as Git metadata", () => {
+  const { isRelevantWorkspaceEvent } = require("../Electron/workspace-watcher.cjs");
+  assert.equal(isRelevantWorkspaceEvent(".git/index"), false);
+  assert.equal(isRelevantWorkspaceEvent("notes\\.DS_Store"), false);
+  assert.equal(isRelevantWorkspaceEvent("notes/today.md"), true);
+  assert.equal(isRelevantWorkspaceEvent(null), true);
+});
+
+test("signature polling refreshes only when the workspace signature changes", async t => {
+  let current = "a";
+  let refreshes = 0;
+  const watcher = createWorkspaceWatcher({
+    debounceMs: 5,
+    pollIntervalMs: 20,
+    signature: async () => current,
+    onChange: () => { refreshes += 1; }
+  });
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "mory-signature-"));
+  t.after(async () => {
+    watcher.stop();
+    await fs.rm(root, { recursive: true, force: true });
+  });
+  watcher.start(root);
+  await new Promise(resolve => setTimeout(resolve, 200));
+  // The first poll publishes the initial state; unchanged signatures must not repeat it.
+  assert.equal(refreshes, 1);
+  current = "b";
+  await new Promise(resolve => setTimeout(resolve, 120));
+  assert.equal(refreshes, 2);
+});
+
+test("workspace signatures track visible entries and skip hidden metadata", async t => {
+  const { workspaceSignature } = require("../Electron/workspaces.cjs");
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "mory-signature-tree-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await fs.mkdir(path.join(root, "notes"));
+  await fs.writeFile(path.join(root, "notes", "a.md"), "# A");
+  const initial = await workspaceSignature(root);
+  await fs.mkdir(path.join(root, ".git"));
+  await fs.writeFile(path.join(root, ".git", "HEAD"), "ref");
+  assert.equal(await workspaceSignature(root), initial);
+  await fs.writeFile(path.join(root, "notes", "a.md"), "# A changed");
+  assert.notEqual(await workspaceSignature(root), initial);
+});

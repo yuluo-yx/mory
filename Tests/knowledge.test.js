@@ -42,3 +42,14 @@ test("short wiki links do not create ambiguous edges for duplicate names", () =>
   ]);
   assert.equal(graph.edges.length, 0);
 });
+
+test("knowledge signatures change only for titles and links", async () => {
+  const { documentKnowledgeSignature, workspaceFilesSignature } = await import("../Sources/Mory/Web/knowledge.js");
+  const base = documentKnowledgeSignature("# Title\nBody [[target]]");
+  assert.equal(documentKnowledgeSignature("# Title\nEdited body text [[target]]"), base);
+  assert.notEqual(documentKnowledgeSignature("# Other\nBody [[target]]"), base);
+  assert.notEqual(documentKnowledgeSignature("# Title\nBody [[target]] [next](next.md)"), base);
+  const files = [{ path: "/w/a.md", updatedAt: 1, size: 2 }];
+  assert.equal(workspaceFilesSignature(files), workspaceFilesSignature([{ ...files[0], images: [] }]));
+  assert.notEqual(workspaceFilesSignature(files), workspaceFilesSignature([{ ...files[0], updatedAt: 3 }]));
+});

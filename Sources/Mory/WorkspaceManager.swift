@@ -107,6 +107,20 @@ struct WorkspaceConfig: Codable {
     }
 }
 
+private let workspaceDocumentExtensions: Set<String> = ["md", "markdown", "mmd", "mdown", "mkd", "txt", "text"]
+private let workspaceImageExtensions: Set<String> = ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"]
+
+private struct CachedDocumentHeading {
+    let modifiedAt: Date?
+    let size: Int?
+    let heading: String?
+}
+
+private struct WorkspaceDirectoryListing {
+    let directories: Set<String>
+    let assetDirectories: Set<String>
+}
+
 private struct WorkspaceStore: Codable {
     var version = 1
     var activeId: String
@@ -122,6 +136,8 @@ final class WorkspaceManager: @unchecked Sendable {
     private(set) var activeId = ""
     private(set) var isOpen = false
     private(set) var hasWorkspaceRecords = false
+    private let headingLock = NSLock()
+    private var headingCache: [String: CachedDocumentHeading] = [:]
 
     init(supportRoot: URL? = nil) throws {
         if let supportRoot {
@@ -201,21 +217,60 @@ final class WorkspaceManager: @unchecked Sendable {
     }
 
     func documents() throws -> [[String: Any]] {
-        let keys: [URLResourceKey] = [.isRegularFileKey, .isDirectoryKey, .isHiddenKey, .creationDateKey, .contentModificationDateKey, .fileSizeKey]
-        guard let enumerator = fileManager.enumerator(at: activeRoot, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]) else { return [] }
-        let extensions = Set(["md", "markdown", "mmd", "mdown", "mkd", "txt", "text"])
-        var result: [[String: Any]] = []
-        for case let url as URL in enumerator where extensions.contains(url.pathExtension.lowercased()) {
+        try snapshot(root: activeRoot).files
+    }
+
+    func directories() throws -> [[String: Any]] {
+        try snapshot(root: activeRoot).directories
+    }
+
+    /// Scans a local workspace in a single pass and returns sorted document and directory entries.
+    /// The scan only reads the file system and the lock-protected heading cache, so hosts may run it off the main thread.
+    func snapshot(root: URL) throws -> (files: [[String: Any]], directories: [[String: Any]]) {
+        let keys: [URLResourceKey] = [.isRegularFileKey, .isDirectoryKey, .creationDateKey, .contentModificationDateKey, .fileSizeKey]
+        guard let enumerator = fileManager.enumerator(at: root, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]) else { return ([], []) }
+        // The enumerator may report symlink-resolved URLs (for example `/private/var` for `/var`).
+        let rootPrefixes = Set([root.path, root.standardizedFileURL.path, root.resolvingSymlinksInPath().path, realPath(root.path)].map { $0 + "/" })
+            .sorted { $0.count > $1.count }
+        func relativePath(_ url: URL) -> String {
+            let path = url.path
+            guard let prefix = rootPrefixes.first(where: { path.hasPrefix($0) }) else { return path }
+            return String(path.dropFirst(prefix.count))
+        }
+        var listings: [String: WorkspaceDirectoryListing] = [:]
+        func listing(for directory: URL) -> WorkspaceDirectoryListing {
+            let key = directory.path
+            if let cached = listings[key] { return cached }
+            let next = directoryListing(directory)
+            listings[key] = next
+            return next
+        }
+        var files: [[String: Any]] = []
+        var directories: [[String: Any]] = []
+        var assetPrefixes: [String] = []
+        var documentPaths = Set<String>()
+        for case let url as URL in enumerator {
             let values = try url.resourceValues(forKeys: Set(keys))
-            if values.isRegularFile == true {
-                let relative = url.path.replacingOccurrences(of: activeRoot.path + "/", with: "")
-                // Prefer creationDate on desktop filesystems and use metadata change time as a stable fallback.
-                let createdAt = (values.creationDate ?? values.contentModificationDate ?? .distantFuture).timeIntervalSince1970 * 1_000
+            let relative = relativePath(url)
+            // Prefer creationDate on desktop filesystems and use metadata change time as a stable fallback.
+            let createdAt = (values.creationDate ?? values.contentModificationDate ?? .distantFuture).timeIntervalSince1970 * 1_000
+            if values.isDirectory == true {
+                // Companion asset directories and their descendants stay out of the directory tree.
+                if assetPrefixes.contains(where: { relative.hasPrefix($0) }) { continue }
+                if listing(for: url.deletingLastPathComponent()).assetDirectories.contains(url.lastPathComponent) {
+                    assetPrefixes.append(relative + "/")
+                    continue
+                }
+                directories.append(["name": relative, "path": url.path, "createdAt": createdAt])
+            } else if values.isRegularFile == true, workspaceDocumentExtensions.contains(url.pathExtension.lowercased()) {
+                documentPaths.insert(url.path)
                 let updatedAt = (values.contentModificationDate ?? values.creationDate ?? .distantPast).timeIntervalSince1970 * 1_000
-                result.append(["name": relative, "path": url.path, "createdAt": createdAt, "updatedAt": updatedAt, "size": values.fileSize ?? 0, "images": documentImages(for: url)])
+                let images = documentImages(for: url, siblingDirectories: listing(for: url.deletingLastPathComponent()).directories)
+                files.append(["name": relative, "path": url.path, "createdAt": createdAt, "updatedAt": updatedAt, "size": values.fileSize ?? 0, "images": images])
             }
         }
-        return result.sorted {
+        pruneHeadingCache(rootPrefixes: rootPrefixes, keeping: documentPaths)
+        let sortedFiles = files.sorted {
             let leftTime = $0["createdAt"] as? Double ?? .greatestFiniteMagnitude
             let rightTime = $1["createdAt"] as? Double ?? .greatestFiniteMagnitude
             if leftTime != rightTime { return leftTime < rightTime }
@@ -225,26 +280,10 @@ final class WorkspaceManager: @unchecked Sendable {
             if nameOrder != .orderedSame { return nameOrder == .orderedAscending }
             return ($0["path"] as? String ?? "") < ($1["path"] as? String ?? "")
         }
-    }
-
-    func directories() throws -> [[String: Any]] {
-        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isHiddenKey, .creationDateKey, .contentModificationDateKey]
-        guard let enumerator = fileManager.enumerator(at: activeRoot, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles]) else { return [] }
-        var result: [[String: Any]] = []
-        for case let url as URL in enumerator {
-            let values = try url.resourceValues(forKeys: keys)
-            guard values.isDirectory == true else { continue }
-            if isCompanionAssetDirectory(url) {
-                enumerator.skipDescendants()
-                continue
-            }
-            let relative = url.path.replacingOccurrences(of: activeRoot.path + "/", with: "")
-            let createdAt = (values.creationDate ?? values.contentModificationDate ?? .distantFuture).timeIntervalSince1970 * 1_000
-            result.append(["name": relative, "path": url.path, "createdAt": createdAt])
-        }
-        return result.sorted {
+        let sortedDirectories = directories.sorted {
             ($0["name"] as? String ?? "").localizedStandardCompare($1["name"] as? String ?? "") == .orderedAscending
         }
+        return (sortedFiles, sortedDirectories)
     }
 
     func createDirectory(relativePath: String) throws -> [String: Any] {
@@ -427,8 +466,8 @@ final class WorkspaceManager: @unchecked Sendable {
         ]
     }
 
-    func documentContents() throws -> [[String: Any]] {
-        try documents().compactMap { document in
+    func documentContents(root: URL? = nil) throws -> [[String: Any]] {
+        try snapshot(root: root ?? activeRoot).files.compactMap { document in
             guard let path = document["path"] as? String, let attributes = try? fileManager.attributesOfItem(atPath: path),
                   ((attributes[.size] as? NSNumber)?.intValue ?? 0) <= 2 * 1024 * 1024,
                   let markdown = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
@@ -462,15 +501,16 @@ final class WorkspaceManager: @unchecked Sendable {
         return url
     }
 
-    private func documentImages(for documentURL: URL) -> [[String: Any]] {
-        let supported = Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"])
+    private func documentImages(for documentURL: URL, siblingDirectories: Set<String>) -> [[String: Any]] {
+        // Without sibling directories no asset folder can exist, so the document never needs to be read.
+        guard !siblingDirectories.isEmpty else { return [] }
         let keys: Set<URLResourceKey> = [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey]
         var images: [[String: Any]] = []
         var visited = Set<String>()
-        for directory in documentAssetDirectories(for: documentURL) {
+        for directory in documentAssetDirectories(for: documentURL) where siblingDirectories.contains(directory.lastPathComponent) {
             guard (try? validateContainedURL(root: documentURL.deletingLastPathComponent(), candidate: directory)) != nil else { continue }
             guard let enumerator = fileManager.enumerator(at: directory, includingPropertiesForKeys: Array(keys), options: [.skipsHiddenFiles]) else { continue }
-            for case let url as URL in enumerator where supported.contains(url.pathExtension.lowercased()) && !visited.contains(url.path) {
+            for case let url as URL in enumerator where workspaceImageExtensions.contains(url.pathExtension.lowercased()) && !visited.contains(url.path) {
                 guard let values = try? url.resourceValues(forKeys: keys), values.isRegularFile == true else { continue }
                 visited.insert(url.path)
                 let name = url.path.replacingOccurrences(of: directory.path + "/", with: "")
@@ -482,7 +522,34 @@ final class WorkspaceManager: @unchecked Sendable {
         return images.sorted { ($0["name"] as? String ?? "").localizedStandardCompare($1["name"] as? String ?? "") == .orderedAscending }
     }
 
+    /// Returns the first level-one heading, reusing the cached value while the file size and modification date are unchanged.
     private func firstLevelHeading(for documentURL: URL) -> String? {
+        let key = documentURL.path
+        let values = try? documentURL.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+        headingLock.lock()
+        let cached = headingCache[key]
+        headingLock.unlock()
+        if let values, let cached, cached.modifiedAt == values.contentModificationDate, cached.size == values.fileSize {
+            return cached.heading
+        }
+        let heading = readFirstLevelHeading(documentURL)
+        if let values {
+            headingLock.lock()
+            headingCache[key] = CachedDocumentHeading(modifiedAt: values.contentModificationDate, size: values.fileSize, heading: heading)
+            headingLock.unlock()
+        }
+        return heading
+    }
+
+    private func pruneHeadingCache(rootPrefixes: [String], keeping documentPaths: Set<String>) {
+        headingLock.lock()
+        headingCache = headingCache.filter { entry in
+            documentPaths.contains(entry.key) || !rootPrefixes.contains { entry.key.hasPrefix($0) }
+        }
+        headingLock.unlock()
+    }
+
+    private func readFirstLevelHeading(_ documentURL: URL) -> String? {
         guard let markdown = try? String(contentsOf: documentURL, encoding: .utf8),
               let expression = try? NSRegularExpression(pattern: #"(?m)^#\s+(.+?)\s*#*\s*$"#) else { return nil }
         var fence: String?
@@ -515,17 +582,28 @@ final class WorkspaceManager: @unchecked Sendable {
         return directories.filter { seen.insert($0.standardizedFileURL.path).inserted }
     }
 
-    private func isCompanionAssetDirectory(_ directory: URL) -> Bool {
+    /// Lists one directory's child folder names and the subset owned by sibling documents as asset folders.
+    private func directoryListing(_ directory: URL) -> WorkspaceDirectoryListing {
         guard let entries = try? fileManager.contentsOfDirectory(
-            at: directory.deletingLastPathComponent(),
-            includingPropertiesForKeys: [.isRegularFileKey],
+            at: directory,
+            includingPropertiesForKeys: [.isDirectoryKey, .isRegularFileKey, .contentModificationDateKey, .fileSizeKey],
             options: [.skipsHiddenFiles]
-        ) else { return false }
-        let documentExtensions = Set(["md", "markdown", "mmd", "mdown", "mkd", "txt", "text"])
-        return entries.contains { entry in
-            documentExtensions.contains(entry.pathExtension.lowercased())
-                && documentAssetDirectories(for: entry).contains { $0.standardizedFileURL == directory.standardizedFileURL }
+        ) else { return WorkspaceDirectoryListing(directories: [], assetDirectories: []) }
+        var directories = Set<String>()
+        var documents: [URL] = []
+        for entry in entries {
+            let values = try? entry.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey])
+            if values?.isDirectory == true { directories.insert(entry.lastPathComponent) }
+            else if values?.isRegularFile == true, workspaceDocumentExtensions.contains(entry.pathExtension.lowercased()) { documents.append(entry) }
         }
+        guard !directories.isEmpty else { return WorkspaceDirectoryListing(directories: [], assetDirectories: []) }
+        var assetDirectories = Set<String>()
+        for document in documents {
+            for candidate in documentAssetDirectories(for: document) where directories.contains(candidate.lastPathComponent) {
+                assetDirectories.insert(candidate.lastPathComponent)
+            }
+        }
+        return WorkspaceDirectoryListing(directories: directories, assetDirectories: assetDirectories)
     }
 
     func importImage(arguments: [String: Any]) throws -> [String: String] {
@@ -711,6 +789,12 @@ func validateContainedTree(root: URL, candidate: URL) throws {
     for child in try FileManager.default.contentsOfDirectory(at: candidate, includingPropertiesForKeys: nil) {
         try validateContainedTree(root: root, candidate: child)
     }
+}
+
+private func realPath(_ path: String) -> String {
+    guard let pointer = realpath(path, nil) else { return path }
+    defer { free(pointer) }
+    return String(cString: pointer)
 }
 
 func workspaceError(_ message: String) -> NSError {

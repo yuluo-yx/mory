@@ -131,4 +131,20 @@ export function buildKnowledgeGraph(documents = []) {
   return { nodes, edges };
 }
 
+/**
+ * Summarizes the parts of a note that affect the knowledge graph: its title and outgoing references.
+ * Edits that keep this signature unchanged cannot change nodes, edges, or backlinks.
+ */
+export function documentKnowledgeSignature(markdown) {
+  const references = documentReferences(markdown).map(reference => `${reference.type}:${reference.target}`);
+  return JSON.stringify([graphTitle({ markdown, name: "" }), references]);
+}
+
+/**
+ * Summarizes workspace file metadata so hosts can skip reading every note when nothing changed on disk.
+ */
+export function workspaceFilesSignature(files = []) {
+  return files.map(file => `${file.path || file.name}\u0000${file.updatedAt ?? ""}\u0000${file.size ?? ""}`).join("\n");
+}
+
 export { documentReferences, normalizeGraphPath };

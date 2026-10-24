@@ -1,5 +1,5 @@
 import { documentStats, editorToMarkdown, escapeHTML, markdownToHTML } from "./markdown.js";
-import { buildKnowledgeGraph } from "./knowledge.js";
+import { buildKnowledgeGraph, documentKnowledgeSignature, workspaceFilesSignature } from "./knowledge.js";
 import {
   calendarColors,
   calendarDateFromKey,
@@ -31,6 +31,11 @@ const $$ = selector => [...document.querySelectorAll(selector)];
 const write = $("#write");
 const sourceEditor = $("#source-editor");
 const workspace = $(".workspace");
+// The formatting toolbar stays collapsed into a corner button and expands on hover, focus, or an explicit pin.
+const toolbarDock = $("#toolbar-dock");
+const toolbarDockTrigger = $("#toolbar-dock-trigger");
+let toolbarDockCollapseTimer = null;
+let toolbarDockPinned = false;
 const editorScroll = $("#editor-scroll");
 const headingFoldToggle = $("#heading-fold-toggle");
 const nativeMacHost = Boolean(window.webkit?.messageHandlers?.mory);
@@ -129,6 +134,13 @@ let activeComposition = null;
 let writeComposing = false;
 let hostRequestSequence = 0;
 let workspaceKnowledgeRequest = 0;
+// Metadata signature of the last workspace file list whose note contents were loaded for the graph.
+let workspaceKnowledgeFilesSignature = "";
+// Per-document title and link signatures used to skip graph rebuilds for edits that cannot change links.
+const documentKnowledgeSignatures = new Map();
+// Last tree label of the active document, so typing re-renders the file tree only when the label changes.
+let derivedFileTreeLabel = "";
+let workspaceFilePathCache = { files: null, paths: new Set() };
 let markdownNormalizationFrame = 0;
 let documentAssetTimer = 0;
 let documentAssetRequest = 0;
@@ -203,6 +215,7 @@ const englishText = {
   "知识图谱": "Knowledge graph", "源代码模式（⌘/）": "Source mode (⌘/)", "导出文档": "Export document",
   "专注模式": "Focus mode", "打字机模式": "Typewriter mode", "正在读取工作区…": "Reading workspace…", "筛选文稿": "Filter notes", "刷新": "Refresh",
   "当前工作区还没有可显示的文稿": "There are no notes to display in this workspace", "当前文稿": "Current note", "工作区文稿": "Workspace note", "文稿链接关系图": "Note connection graph",
+  "格式工具栏": "Formatting toolbar",
   "正向": "Outgoing", "反向": "Backlink", "滚轮缩放 · 单击查看关系 · 双击打开": "Wheel to zoom · Click for connections · Double-click to open", "图谱缩放比例": "Graph zoom level", "选择文稿": "Select a note", "收起关系": "Hide connections",
   "链接到": "Links to", "被链接": "Linked from", "没有正向链接": "No outgoing links", "没有反向链接": "No backlinks", "反向链接": "Backlinks",
   "当前文稿的反向链接": "Backlinks for the current note", "篇文稿引用当前文稿": "notes link to this note", "没有文稿引用当前文稿": "No notes link to this note",
@@ -2698,8 +2711,8 @@ function markChanged() {
   bridge({ type: "changed", ...documentSnapshot(document?.id) });
   changeTimer = setTimeout(() => {
     updateDerivedState();
-    rebuildWorkspaceKnowledge();
-    persistRecovery();
+    // Recovery was persisted synchronously above; only rebuild the graph when titles or links changed.
+    if (activeDocumentKnowledgeChanged()) rebuildWorkspaceKnowledge();
   }, 180);
 }
 
@@ -2714,7 +2727,31 @@ function updateDerivedState() {
     $("#document-title").value = title;
     bridge({ type: "title", value: title, dirty: state.dirty });
   }
-  if (documentDisplayNameTracksHeading(activeDocument())) renderFiles();
+  const active = activeDocument();
+  if (documentDisplayNameTracksHeading(active)) {
+    const label = `${active?.id || ""}\u0000${documentDisplayName(active)}\u0000${active?.dirty ? 1 : 0}`;
+    if (label !== derivedFileTreeLabel) {
+      derivedFileTreeLabel = label;
+      renderFiles();
+    }
+  }
+}
+
+function activeDocumentKnowledgeChanged() {
+  const document = activeDocument();
+  if (!document) return false;
+  const signature = documentKnowledgeSignature(document.markdown);
+  if (documentKnowledgeSignatures.get(document.id) === signature) return false;
+  documentKnowledgeSignatures.set(document.id, signature);
+  return true;
+}
+
+function workspaceFilePathSet() {
+  // state.files is replaced rather than mutated, so identity tracks when the path index must be rebuilt.
+  if (workspaceFilePathCache.files !== state.files) {
+    workspaceFilePathCache = { files: state.files, paths: new Set(state.files.map(item => item.path)) };
+  }
+  return workspaceFilePathCache.paths;
 }
 
 function updateOutline() {
@@ -2739,7 +2776,7 @@ function fileEntryKey(file) {
 }
 
 function fileParentKey(file) {
-  if (!file.path || !state.files.some(item => item.path === file.path)) return "";
+  if (!file.path || !workspaceFilePathSet().has(file.path)) return "";
   const parts = String(file.name || "").replaceAll("\\", "/").split("/").filter(Boolean);
   return parts.slice(0, -1).join("/");
 }
@@ -3269,8 +3306,9 @@ function buildWorkspaceTree(entries) {
     const node = ensureDirectory(parts, paths);
     Object.assign(node, directory, { directories: node.directories, files: node.files });
   });
+  const workspacePaths = workspaceFilePathSet();
   entries.forEach(file => {
-    const parts = file.path && state.files.some(item => item.path === file.path)
+    const parts = file.path && workspacePaths.has(file.path)
       ? String(file.name || "").replaceAll("\\", "/").split("/").filter(Boolean)
       : [documentDisplayName(file)];
     ensureDirectory(parts.slice(0, -1)).files.push(file);
@@ -3459,7 +3497,8 @@ function renderFiles() {
     [...tree.directories.values()].sort(compareWorkspaceDirectories).forEach(directory => renderDirectoryNode(list, directory, 0));
   }
   pendingDrafts.forEach(file => renderFileEntry(list, file, 0));
-  renderQuickResults(entries);
+  // Quick Open renders its own results when opened; refreshing a hidden list wastes work on every tree update.
+  if ($("#quick-open").classList.contains("is-open")) renderQuickResults(entries, $("#quick-open-input").value);
 }
 
 function renderQuickResults(files = visibleFileEntries(), query = "") {
@@ -3556,6 +3595,32 @@ function closeInlineColorPopover() {
   const popover = $("#color-popover");
   popover.classList.remove("is-open");
   popover.setAttribute("aria-hidden", "true");
+  scheduleToolbarDockCollapse();
+}
+
+function setToolbarDockOpen(open) {
+  clearTimeout(toolbarDockCollapseTimer);
+  toolbarDockCollapseTimer = null;
+  toolbarDock.classList.toggle("is-open", open);
+  toolbarDock.classList.toggle("is-pinned", open && toolbarDockPinned);
+  toolbarDockTrigger.setAttribute("aria-expanded", String(open));
+  if (!open) hideToolbarTooltip();
+}
+
+function toolbarDockShouldStayOpen() {
+  return toolbarDockPinned
+    || toolbarDock.matches(":hover")
+    || toolbarDock.contains(document.activeElement)
+    || $("#color-popover").classList.contains("is-open");
+}
+
+function scheduleToolbarDockCollapse() {
+  clearTimeout(toolbarDockCollapseTimer);
+  // A short grace period lets the pointer cross small gaps without the toolbar flickering closed.
+  toolbarDockCollapseTimer = setTimeout(() => {
+    toolbarDockCollapseTimer = null;
+    if (!toolbarDockShouldStayOpen()) setToolbarDockOpen(false);
+  }, 260);
 }
 
 function openInlineColorPopover(kind, button) {
@@ -4028,7 +4093,12 @@ function setWorkspaceFiles(files = [], { restoreLast = false } = {}) {
     });
   }
   renderFiles();
-  void refreshWorkspaceKnowledge();
+  // Reading every note is expensive; reload contents only when file metadata changed on disk.
+  const filesSignature = `${state.activeWorkspaceId}\u0000${workspaceFilesSignature(state.files)}`;
+  if (filesSignature !== workspaceKnowledgeFilesSignature) {
+    workspaceKnowledgeFilesSignature = filesSignature;
+    void refreshWorkspaceKnowledge();
+  }
   if (lastFile?.path) bridge({ type: "openFile", path: lastFile.path });
 }
 
@@ -4067,6 +4137,8 @@ function resetWorkspaceSession() {
   state.workspaceDocuments = [];
   state.graph = { nodes: [], edges: [] };
   workspaceKnowledgeRequest += 1;
+  workspaceKnowledgeFilesSignature = "";
+  documentKnowledgeSignatures.clear();
   updateDocumentBacklinks();
   toggleKnowledgeGraph(false);
   state.untitledSequence = 0;
@@ -4245,6 +4317,8 @@ async function refreshWorkspaceKnowledge({ renderGraph = false } = {}) {
     rebuildWorkspaceKnowledge({ renderGraph });
   } catch (error) {
     if (request !== workspaceKnowledgeRequest) return;
+    // Allow the next workspace snapshot to retry after a transient host error.
+    workspaceKnowledgeFilesSignature = "";
     // Preserve the last valid snapshot when a transient host error prevents a refresh.
     rebuildWorkspaceKnowledge({ renderGraph });
     if (renderGraph) toast(locale() === "en" ? `Unable to build graph: ${error.message}` : `无法生成知识图谱：${error.message}`);
@@ -5617,6 +5691,26 @@ $("#toolbar").addEventListener("mouseout", event => {
   if (button && !button.contains(event.relatedTarget)) hideToolbarTooltip();
 });
 $("#toolbar").addEventListener("scroll", hideToolbarTooltip);
+toolbarDock.addEventListener("mouseenter", () => setToolbarDockOpen(true));
+toolbarDock.addEventListener("mouseleave", scheduleToolbarDockCollapse);
+toolbarDock.addEventListener("focusin", () => setToolbarDockOpen(true));
+toolbarDock.addEventListener("focusout", scheduleToolbarDockCollapse);
+toolbarDockTrigger.addEventListener("mousedown", event => event.preventDefault());
+toolbarDockTrigger.addEventListener("click", () => {
+  // Clicking pins the toolbar open for pointer-free or touch use; clicking again releases it.
+  toolbarDockPinned = !toolbarDockPinned;
+  if (toolbarDockPinned) setToolbarDockOpen(true);
+  else {
+    toolbarDock.classList.remove("is-pinned");
+    scheduleToolbarDockCollapse();
+  }
+});
+toolbarDock.addEventListener("keydown", event => {
+  if (event.key !== "Escape" || !toolbarDock.classList.contains("is-open")) return;
+  toolbarDockPinned = false;
+  setToolbarDockOpen(false);
+  toolbarDockTrigger.blur();
+});
 write.addEventListener("mouseover", event => {
   const heading = event.target.closest?.("h1, h2, h3, h4");
   if (heading?.parentElement === write) showHeadingFoldControl(heading);

@@ -102,6 +102,7 @@
         </div>
       </div>
 
+      <div id="toolbar-dock" class="toolbar-dock">
       <div id="toolbar" class="format-bar" aria-label="格式工具栏">
         <button data-command="bold" data-tooltip="加粗（⌘B）" aria-label="加粗（⌘B）"><b aria-hidden="true">B</b></button>
         <button data-command="italic" data-tooltip="斜体（⌘I）" aria-label="斜体（⌘I）"><i aria-hidden="true">I</i></button>
@@ -123,6 +124,8 @@
         <button id="graph-button" class="mode-button" data-tooltip="知识图谱" aria-label="知识图谱"><svg aria-hidden="true"><use href="#i-graph"/></svg></button>
         <button id="source-toggle" class="mode-button" data-tooltip="源代码模式（⌘/）" aria-label="源代码模式（⌘/）"><svg aria-hidden="true"><use href="#i-code"/></svg></button>
         <button id="export-button" class="mode-button export-action" data-tooltip="导出文档" aria-label="导出文档"><svg aria-hidden="true"><use href="#i-export"/></svg></button>
+      </div>
+        <button id="toolbar-dock-trigger" class="toolbar-dock-trigger" type="button" aria-controls="toolbar" aria-expanded="false" aria-label="格式工具栏" title="格式工具栏"><svg aria-hidden="true"><use href="#i-edit"/></svg></button>
       </div>
       <div id="toolbar-tooltip" class="toolbar-tooltip" role="tooltip" aria-hidden="true"></div>
       <div id="color-popover" class="color-popover" aria-hidden="true"></div>

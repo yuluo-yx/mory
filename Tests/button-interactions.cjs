@@ -36,7 +36,23 @@ async function inspect(window, expression) {
   return window.webContents.executeJavaScript(expression, true);
 }
 
+async function revealToolbarFor(window, selector) {
+  // The formatting toolbar is collapsed into a corner button and expands while the pointer rests on it.
+  const insideToolbar = await inspect(window, `Boolean(document.querySelector(${JSON.stringify(selector)})?.closest('#toolbar'))`);
+  if (!insideToolbar) return;
+  if (await inspect(window, "document.querySelector('#toolbar-dock').classList.contains('is-open')")) return;
+  const trigger = await inspect(window, `(() => { const rect = document.querySelector('#toolbar-dock-trigger').getBoundingClientRect(); return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) }; })()`);
+  window.webContents.sendInputEvent({ type: "mouseMove", x: trigger.x, y: trigger.y });
+  await wait(260);
+  // Offscreen renderers without synthesized pointer input still exercise the same DOM handler.
+  if (!await inspect(window, "document.querySelector('#toolbar-dock').classList.contains('is-open')")) {
+    await inspect(window, "document.querySelector('#toolbar-dock').dispatchEvent(new MouseEvent('mouseenter'))");
+    await wait(260);
+  }
+}
+
 async function click(window, selector) {
+  await revealToolbarFor(window, selector);
   const locate = () => inspect(window, `(() => {
     const element = document.querySelector(${JSON.stringify(selector)});
     if (!element) throw new Error(${JSON.stringify(`Element not found: ${selector}`)});
@@ -81,6 +97,7 @@ async function click(window, selector) {
 
 async function hover(window, selector) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
+    await revealToolbarFor(window, selector);
     const point = await inspect(window, `(() => {
       const element = document.querySelector(${JSON.stringify(selector)});
       if (!element) throw new Error(${JSON.stringify(`Element not found: ${selector}`)});
@@ -149,7 +166,11 @@ app.whenReady().then(async () => {
     await loadAndWait(window);
     await expect(window, "application script initializes", "typeof window.Mory === 'object' && document.querySelector('#write').textContent.includes('Mory')");
     await expect(window, "heading buttons are removed", "!document.querySelector('#toolbar [data-command=\"h1\"]') && !document.querySelector('#toolbar [data-command=\"h2\"]') && !document.querySelector('#toolbar [data-command=\"paragraph\"]')");
-    await expect(window, "floating toolbar stays vertical in the lower-right corner", "(() => { const element = document.querySelector('#toolbar'); const bar = element.getBoundingClientRect(); return getComputedStyle(element).flexDirection === 'column' && bar.height > bar.width * 3 && innerWidth - bar.right < 24 && innerHeight - bar.bottom < 52 && document.querySelector('#toolbar #source-toggle') && document.querySelector('#toolbar #export-button'); })()");
+    await expect(window, "formatting toolbar starts collapsed behind a lower-right dock button", "(() => { const trigger = document.querySelector('#toolbar-dock-trigger').getBoundingClientRect(); const bar = getComputedStyle(document.querySelector('#toolbar')); return !document.querySelector('#toolbar-dock').classList.contains('is-open') && bar.visibility === 'hidden' && bar.pointerEvents === 'none' && innerWidth - trigger.right < 24 && innerHeight - trigger.bottom < 60 && document.querySelector('#toolbar-dock-trigger').getAttribute('aria-expanded') === 'false'; })()");
+    await hover(window, "#toolbar-dock-trigger");
+    await expectEventually(window, "hovering the dock button expands a vertical toolbar above it", "(() => { const element = document.querySelector('#toolbar'); const bar = element.getBoundingClientRect(); const trigger = document.querySelector('#toolbar-dock-trigger').getBoundingClientRect(); return document.querySelector('#toolbar-dock').classList.contains('is-open') && getComputedStyle(element).visibility === 'visible' && getComputedStyle(element).flexDirection === 'column' && bar.height > bar.width * 3 && bar.bottom <= trigger.top && innerWidth - bar.right < 24 && document.querySelector('#toolbar-dock-trigger').getAttribute('aria-expanded') === 'true' && document.querySelector('#toolbar #source-toggle') && document.querySelector('#toolbar #export-button'); })()");
+    window.webContents.sendInputEvent({ type: "mouseMove", x: 400, y: 300 });
+    await expectEventually(window, "leaving the dock collapses the toolbar again", "!document.querySelector('#toolbar-dock').classList.contains('is-open') && getComputedStyle(document.querySelector('#toolbar')).pointerEvents === 'none'");
     await expect(window, "toolbar shows icons only by default", "[...document.querySelectorAll('#toolbar button')].every(button => button.dataset.tooltip && button.getAttribute('aria-label') && !/\u5217\u8868|\u6E90\u7801|\u5BFC\u51FA/.test(button.textContent))");
     await inspect(window, "(() => { const read = selector => parseFloat(getComputedStyle(document.querySelector(selector)).fontSize); window.__normalTypography = { write: read('#write'), file: read('.file-item'), tab: read('.tab'), status: read('#statusbar') }; })()");
     window.setSize(2048, 1056);

@@ -8,6 +8,7 @@ private final class WorkspaceWatcherSmoke {
     private let renamed: URL
     private var watcher: WorkspaceWatcher!
     private var stage = 0
+    private var hiddenOnlyPhase = false
 
     init() throws {
         root = fileManager.temporaryDirectory
@@ -19,12 +20,30 @@ private final class WorkspaceWatcherSmoke {
     }
 
     func run() {
+        let roots = ["/notes", "/private/notes"]
+        guard !WorkspaceWatcher.isRelevant(path: "/notes/.git/index", roots: roots),
+              !WorkspaceWatcher.isRelevant(path: "/private/notes/a/.DS_Store", roots: roots),
+              WorkspaceWatcher.isRelevant(path: "/private/notes/a/b.md", roots: roots),
+              WorkspaceWatcher.isRelevant(path: "/notes", roots: roots) else {
+            finish(failure: "macOS FSEvents hidden-path filter classified a path incorrectly")
+            return
+        }
         watcher = WorkspaceWatcher(latency: 0.06) { [weak self] in
             Task { @MainActor in self?.handleChange() }
         }
         watcher.start(at: root)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
             guard let self else { return }
+            // Hidden metadata churn (for example Git) must not trigger a workspace refresh.
+            // Setup events from init may still arrive before this point, so the check starts only now.
+            hiddenOnlyPhase = true
+            let hidden = root.appendingPathComponent(".git", isDirectory: true)
+            try? fileManager.createDirectory(at: hidden, withIntermediateDirectories: true)
+            try? "ref".write(to: hidden.appendingPathComponent("HEAD"), atomically: true, encoding: .utf8)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self] in
+            guard let self else { return }
+            hiddenOnlyPhase = false
             try? "# \u{7B2C}\u{4E00}\u{7BC7}".write(to: first, atomically: true, encoding: .utf8)
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in
@@ -33,6 +52,10 @@ private final class WorkspaceWatcherSmoke {
     }
 
     private func handleChange() {
+        if hiddenOnlyPhase {
+            finish(failure: "macOS FSEvents watcher refreshed for a hidden-path change")
+            return
+        }
         switch stage {
         case 0 where fileManager.fileExists(atPath: first.path):
             stage = 1

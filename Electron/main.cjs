@@ -6,7 +6,7 @@ const { spawn } = require("node:child_process");
 const path = require("node:path");
 const { hostMessage } = require("./host-localization.cjs");
 const { writeAtomicFile } = require("./atomic-file.cjs");
-const { copyWorkspaceEntry, createWorkspaceDirectory, createWorkspaceDocument, createWorkspaceManager, importImage, listDirectories, listDocuments, loadDocumentAssets, moveWorkspaceEntry, readDocumentImage, readWorkspaceDocuments, relocateDocumentAssets, renameWorkspaceEntry, sanitizeSegment, workspaceEntryPath } = require("./workspaces.cjs");
+const { copyWorkspaceEntry, createWorkspaceDirectory, createWorkspaceDocument, createWorkspaceManager, importImage, listDirectories, listDocuments, loadDocumentAssets, moveWorkspaceEntry, readDocumentImage, readWorkspaceDocuments, relocateDocumentAssets, renameWorkspaceEntry, sanitizeSegment, workspaceEntryPath, workspaceSignature } = require("./workspaces.cjs");
 const { createThemeManager } = require("./themes.cjs");
 const { createWorkspaceWatcher } = require("./workspace-watcher.cjs");
 const { addRecentDocument, clearRecentDocuments: clearSystemRecentDocuments, listRecentDocuments } = require("./recent-documents.cjs");
@@ -34,6 +34,7 @@ function showHostDialog(options) {
 }
 const workspaceWatcher = createWorkspaceWatcher({
   onChange: () => refreshWorkspace(),
+  signature: workspaceSignature,
   onError: error => console.error("工作区文件监听失败：", error)
 });
 

@@ -80,11 +80,45 @@ struct MacWorkspaceBoundarySmoke {
                 if workspace.assets(for: target, markdown: saved).count != 1 { failures.append("\(operation) lost image \(index)") }
             }
         }
+        failures.append(contentsOf: try snapshotScanFailures(base: base))
         guard failures.isEmpty else {
             fputs("Workspace boundary failures: \(failures.joined(separator: "; "))\n", stderr)
             exit(1)
         }
         print("macOS asset URL contracts passed: \(contracts.count) fixtures and six rename/Save As scenarios")
         print("macOS workspace boundaries passed: links, safe copy/move, image import, themes, embedding and root alias")
+        print("macOS workspace snapshot scan passed: companion folders, heading folders, images and heading cache refresh")
+    }
+
+    /// Verifies the single-pass snapshot hides companion asset folders and refreshes cached headings after edits.
+    static func snapshotScanFailures(base: URL) throws -> [String] {
+        let files = FileManager.default
+        let root = base.appendingPathComponent("scan")
+        let support = base.appendingPathComponent("scan-support")
+        for directory in [root.appendingPathComponent("Notes/Daily/pic"), root.appendingPathComponent("Notes/Daily-Log"), root.appendingPathComponent("Notes/Plain/inner"), support] {
+            try files.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        try Data("# Daily Log\n".utf8).write(to: root.appendingPathComponent("Notes/Daily.md"))
+        try Data("image".utf8).write(to: root.appendingPathComponent("Notes/Daily/pic/a.png"))
+        try Data("image".utf8).write(to: root.appendingPathComponent("Notes/Daily-Log/b.png"))
+        try Data("text".utf8).write(to: root.appendingPathComponent("Notes/Plain/inner/c.md"))
+        let config = ["id": "scan", "name": "Scan", "provider": "local", "localPath": root.path]
+        try JSONSerialization.data(withJSONObject: ["version": 1, "activeId": "scan", "workspaces": [config]])
+            .write(to: support.appendingPathComponent("workspaces.json"))
+        let workspace = try WorkspaceManager(supportRoot: support)
+        _ = try workspace.activate("scan")
+        var failures: [String] = []
+        let first = try workspace.snapshot(root: root)
+        let directoryNames = Set(first.directories.compactMap { $0["name"] as? String })
+        if directoryNames != ["Notes", "Notes/Plain", "Notes/Plain/inner"] { failures.append("snapshot directories: \(directoryNames.sorted())") }
+        let daily = first.files.first { $0["name"] as? String == "Notes/Daily.md" }
+        let images = Set(((daily?["images"] as? [[String: Any]]) ?? []).compactMap { $0["relative"] as? String })
+        if images != ["Daily/pic/a.png", "Daily-Log/b.png"] { failures.append("snapshot images: \(images.sorted())") }
+        if first.files.count != 2 { failures.append("snapshot file count \(first.files.count)") }
+        // Changing the heading must invalidate the cache so the old heading folder becomes a regular directory.
+        try Data("# Renamed heading with a longer title\n".utf8).write(to: root.appendingPathComponent("Notes/Daily.md"))
+        let second = try workspace.snapshot(root: root)
+        if !second.directories.contains(where: { $0["name"] as? String == "Notes/Daily-Log" }) { failures.append("heading cache was not refreshed") }
+        return failures
     }
 }

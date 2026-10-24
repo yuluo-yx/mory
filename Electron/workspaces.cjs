@@ -186,6 +186,37 @@ async function listDocuments(root) {
   return files.sort(compareDocumentsByCreation);
 }
 
+/**
+ * Builds a cheap change signature from visible entry names, sizes, and modification times.
+ * It stats entries without reading file contents so polling stays inexpensive in large workspaces.
+ */
+async function workspaceSignature(root) {
+  const lines = [];
+  async function visit(directory) {
+    let entries;
+    try { entries = await fs.readdir(directory, { withFileTypes: true }); }
+    catch (error) { if (error.code === "ENOENT" || error.code === "ENOTDIR") return; throw error; }
+    entries.sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue;
+      const fullPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        lines.push(`d:${fullPath}`);
+        await visit(fullPath);
+      } else if (entry.isFile()) {
+        try {
+          const stat = await fs.stat(fullPath);
+          lines.push(`f:${fullPath}:${stat.size}:${stat.mtimeMs}`);
+        } catch (error) {
+          if (error.code !== "ENOENT") throw error;
+        }
+      }
+    }
+  }
+  await visit(root);
+  return lines.join("\n");
+}
+
 async function readDocumentPrefix(documentPath) {
   const handle = await fs.open(documentPath, "r");
   try {
@@ -613,4 +644,4 @@ function runSidecar(executable, payload) {
   });
 }
 
-module.exports = { compareDocumentsByCreation, copyWorkspaceEntry, createWorkspaceDirectory, createWorkspaceDocument, createWorkspaceManager, importImage, listDirectories, listDocumentImages, listDocuments, loadDocumentAssets, markdownImagePaths, moveWorkspaceEntry, readDocumentImage, readWorkspaceDocuments, relocateDocumentAssets, renameWorkspaceEntry, resolveWorkspaceDirectory, sanitizeSegment, storageWorkspace, validateWorkspace, workspaceEntryPath };
+module.exports = { compareDocumentsByCreation, copyWorkspaceEntry, createWorkspaceDirectory, createWorkspaceDocument, createWorkspaceManager, importImage, listDirectories, listDocumentImages, listDocuments, loadDocumentAssets, markdownImagePaths, moveWorkspaceEntry, readDocumentImage, readWorkspaceDocuments, relocateDocumentAssets, renameWorkspaceEntry, resolveWorkspaceDirectory, sanitizeSegment, storageWorkspace, validateWorkspace, workspaceEntryPath, workspaceSignature };
