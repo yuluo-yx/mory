@@ -58,56 +58,58 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  windows:
-    name: Windows x64 and ARM64
-    runs-on: windows-2025
-    timeout-minutes: 45
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-      - name: Set up Go
-        uses: actions/setup-go@v7
-        with:
-          go-version: "1.26.6"
-          cache: true
-      - name: Install GNU Make and NSIS
-        shell: powershell
-        run: |
-          choco install make nsis --yes --no-progress
-          $candidates = @(
-            "${env:ProgramFiles(x86)}\NSIS",
-            "$env:ProgramFiles\NSIS",
-            "$env:ChocolateyInstall\lib"
-          ) | Where-Object { Test-Path $_ }
-          $makensis = $candidates |
-            ForEach-Object { Get-ChildItem $_ -Filter makensis.exe -Recurse -ErrorAction SilentlyContinue } |
-            Select-Object -First 1
-          if (-not $makensis) { throw "makensis.exe was not found after installing NSIS." }
-          $makensis.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          & $makensis.FullName /VERSION
-      - name: Install dependencies
-        run: make install
-      - name: Validate and package
-        run: make ci-windows
-      - name: Upload Windows artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: Mory-windows-x64-arm64
-          path: dist/windows/*.exe
-          if-no-files-found: error
-          retention-days: 14
+  # Windows builds are paused until the Windows release has users again.
+  # Restore this job, the release dependency, and the Windows assets below to re-enable them.
+  # windows:
+  #   name: Windows x64 and ARM64
+  #   runs-on: windows-2025
+  #   timeout-minutes: 45
+  #   steps:
+  #     - name: Check out repository
+  #       uses: actions/checkout@v7
+  #     - name: Set up Node.js
+  #       uses: actions/setup-node@v7
+  #       with:
+  #         node-version: 22
+  #         cache: npm
+  #     - name: Set up Go
+  #       uses: actions/setup-go@v7
+  #       with:
+  #         go-version: "1.26.6"
+  #         cache: true
+  #     - name: Install GNU Make and NSIS
+  #       shell: powershell
+  #       run: |
+  #         choco install make nsis --yes --no-progress
+  #         $candidates = @(
+  #           "${env:ProgramFiles(x86)}\NSIS",
+  #           "$env:ProgramFiles\NSIS",
+  #           "$env:ChocolateyInstall\lib"
+  #         ) | Where-Object { Test-Path $_ }
+  #         $makensis = $candidates |
+  #           ForEach-Object { Get-ChildItem $_ -Filter makensis.exe -Recurse -ErrorAction SilentlyContinue } |
+  #           Select-Object -First 1
+  #         if (-not $makensis) { throw "makensis.exe was not found after installing NSIS." }
+  #         $makensis.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+  #         & $makensis.FullName /VERSION
+  #     - name: Install dependencies
+  #       run: make install
+  #     - name: Validate and package
+  #       run: make ci-windows
+  #     - name: Upload Windows artifact
+  #       uses: actions/upload-artifact@v7
+  #       with:
+  #         name: Mory-windows-x64-arm64
+  #         path: dist/windows/*.exe
+  #         if-no-files-found: error
+  #         retention-days: 14
 
   release:
     name: Publish GitHub Release
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag != '' }}
     needs:
       - macos
-      - windows
+      # - windows
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -137,10 +139,10 @@ jobs:
             "Mory-${package_version}-macos-arm64.zip"
             "Mory-${package_version}-macos-x64.dmg"
             "Mory-${package_version}-macos-x64.zip"
-            "Mory-Setup-${package_version}-x64.exe"
-            "Mory-Portable-${package_version}-x64.exe"
-            "Mory-Setup-${package_version}-arm64.exe"
-            "Mory-Portable-${package_version}-arm64.exe"
+            # "Mory-Setup-${package_version}-x64.exe"
+            # "Mory-Portable-${package_version}-x64.exe"
+            # "Mory-Setup-${package_version}-arm64.exe"
+            # "Mory-Portable-${package_version}-arm64.exe"
           )
           for asset in "${required_assets[@]}"; do
             if [[ ! -f "release-assets/$asset" ]]; then
