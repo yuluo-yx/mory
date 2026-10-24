@@ -65,13 +65,18 @@ async function click(window, selector) {
   })()`);
   let target;
   let hittable = false;
-  for (let attempt = 0; attempt < 3 && !hittable; attempt += 1) {
+  for (let attempt = 0; attempt < 5 && !hittable; attempt += 1) {
     // Deferred panel layout may move a control after the first scroll on slower renderers.
     // Offscreen renderers can collapse the toolbar dock between attempts, so reveal it each time.
     await revealToolbarFor(window, selector);
     target = await locate();
+    if (attempt > 0) {
+      // A deferred re-render can replace the hovered row; leaving and re-entering recomputes hover-only controls.
+      window.webContents.sendInputEvent({ type: "mouseMove", x: 1, y: 1 });
+      await wait(40);
+    }
     window.webContents.sendInputEvent({ type: "mouseMove", x: target.x, y: target.y });
-    await wait(60);
+    await wait(attempt > 0 ? 120 : 60);
     target = await inspect(window, `(() => {
       const expected = document.querySelector(${JSON.stringify(selector)});
       if (!expected) throw new Error(${JSON.stringify(`Element not found: ${selector}`)});
