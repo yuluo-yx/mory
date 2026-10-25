@@ -234,6 +234,10 @@ app.whenReady().then(async () => {
             return Promise.resolve({ copied: true });
           }
           if (method === 'revealFile') return Promise.resolve({ revealed: true });
+          if (method === 'documentImageFile') {
+            window.__imageFileRequests = [...(window.__imageFileRequests || []), args];
+            return Promise.resolve({ path: '/opened/' + (args.src.startsWith('./') ? args.src.slice(2) : args.src) });
+          }
           if (method === 'setDefaultMarkdownApp') {
             if (window.__defaultAppFailure) return Promise.reject(new Error('Launch failed'));
             return Promise.resolve({ status: window.__defaultAppStatus || 'settings' });
@@ -377,6 +381,37 @@ app.whenReady().then(async () => {
     await inspect(window, `document.querySelector(".file-item[data-path='/opened/\u7B2C\u4E00\u7BC7.md']").dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 160, clientY: 180 }))`);
     await click(window, "#file-context-menu [data-entry-action='reveal']");
     await expectEventually(window, "context menu reveals documents in the system file manager", "window.__lastHostRequest.method === 'revealFile' && window.__lastHostRequest.args.path === '/opened/\u7B2C\u4E00\u7BC7.md'");
+    const openImageMenu = selector => inspect(window, `(() => {
+      const image = document.querySelector(${JSON.stringify(selector)});
+      const rect = image.getBoundingClientRect();
+      image.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: rect.left + 2, clientY: rect.top + 2 }));
+    })()`);
+    await inspect(window, `(() => {
+      window.__imageFileRequests = [];
+      window.Mory.loadMarkdown(${JSON.stringify('![cover](./photo_1.svg)\n\n![remote](https://images.example.invalid/remote.png)\n\n![inline](data:image/png;base64,iVBORw0KGgo=)')});
+    })()`);
+    await openImageMenu("#write img[alt='cover']");
+    await expect(window, "local image context menu offers reveal, open, and copy path", "(() => { const menu = document.querySelector('#image-context-menu'); const actions = [...menu.querySelectorAll('[data-image-action]:not([hidden])')].map(button => button.dataset.imageAction); return menu.classList.contains('is-open') && actions.join() === 'reveal,open,copy-path'; })()");
+    await click(window, "#image-context-menu [data-image-action='reveal']");
+    await expectEventually(window, "image context menu reveals the image file", "window.__imageFileRequests.at(-1)?.action === 'reveal' && window.__imageFileRequests.at(-1)?.src === './photo_1.svg' && !document.querySelector('#image-context-menu').classList.contains('is-open')");
+    await openImageMenu("#write img[alt='cover']");
+    await click(window, "#image-context-menu [data-image-action='open']");
+    await expectEventually(window, "image context menu opens the image with its default app", "window.__imageFileRequests.at(-1)?.action === 'open'");
+    await openImageMenu("#write img[alt='cover']");
+    await click(window, "#image-context-menu [data-image-action='copy-path']");
+    await expectEventually(window, "image context menu copies the resolved image path", "window.__imageFileRequests.at(-1)?.action === 'resolve' && window.__copiedTexts.at(-1) === '/opened/photo_1.svg'");
+    await openImageMenu("#write img[alt='remote']");
+    await expect(window, "remote image context menu offers browser and address actions", "[...document.querySelectorAll('#image-context-menu [data-image-action]:not([hidden])')].map(button => button.dataset.imageAction).join() === 'open-link,copy-link'");
+    await click(window, "#image-context-menu [data-image-action='copy-link']");
+    await expectEventually(window, "image context menu copies a remote image address", "window.__copiedTexts.at(-1) === 'https://images.example.invalid/remote.png'");
+    await openImageMenu("#write img[alt='remote']");
+    await click(window, "#image-context-menu [data-image-action='open-link']");
+    await expectEventually(window, "image context menu opens remote images in the browser", "window.__openedExternalURL === 'https://images.example.invalid/remote.png'");
+    await openImageMenu("#write img[alt='inline']");
+    await expect(window, "embedded data images keep the default context menu", "!document.querySelector('#image-context-menu').classList.contains('is-open')");
+    await openImageMenu("#write img[alt='cover']");
+    await inspect(window, "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))");
+    await expect(window, "Escape closes the image context menu", "!document.querySelector('#image-context-menu').classList.contains('is-open') && window.Mory.getMarkdown().startsWith('![cover](./photo_1.svg)')");
     await inspect(window, `document.querySelector(".file-item[data-path='/opened/\u7B2C\u4E00\u7BC7.md']").dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 160, clientY: 180 }))`);
     await click(window, "#file-context-menu [data-entry-action='export']");
     await expectEventually(window, "context menu opens export for the current document", "document.querySelector('#export-dialog').classList.contains('is-open')");

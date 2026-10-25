@@ -33,6 +33,8 @@
     <symbol id="i-maximize-2" viewBox="0 0 24 24"><path d="M15 3h6v6m0-6-7 7M9 21H3v-6m0 6 7-7"/></symbol>
     <symbol id="i-minimize-2" viewBox="0 0 24 24"><path d="M4 14h6v6m0-6-7 7m17-11h-6V4m0 6 7-7"/></symbol>
     <symbol id="i-edit" viewBox="0 0 24 24"><path d="M13.5 6.5 17.5 10.5M4 20l3.7-.8L19 7.9a2.8 2.8 0 0 0-4-4L3.8 15.2z"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="12" height="12" rx="2"/><path d="M15.5 8.5V5.5a2 2 0 0 0-2-2h-8a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h3"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
     <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 3h6l1 4H8zM7 7l1 14h8l1-14M10 11v6M14 11v6"/></symbol>
     <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></symbol>
     <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
@@ -132,6 +134,11 @@
       <div id="path-suggestions" class="path-suggestions" role="listbox" aria-label="工作区路径候选" aria-hidden="true"></div>
       <button id="heading-fold-toggle" class="heading-fold-toggle" type="button" aria-label="折叠标题内容" title="折叠标题内容" hidden><svg aria-hidden="true"><use href="#i-chevron"/></svg></button>
 
+      <div id="disk-change-bar" class="disk-change-bar" role="alert" hidden>
+        <span>此文稿已被其他程序修改，而你还有未保存的修改。</span>
+        <button id="disk-change-reload" type="button">载入磁盘版本</button>
+        <button id="disk-change-keep" type="button">保留我的修改</button>
+      </div>
       <div id="editor-scroll" class="editor-scroll">
         <article id="write" class="write" contenteditable="true" spellcheck="true" aria-label="Markdown 编辑器"></article>
         <textarea id="source-editor" class="source-editor" spellcheck="false" aria-label="Markdown 源代码"></textarea>
@@ -189,6 +196,14 @@
     <button type="button" data-entry-action="export" data-entry-kind="file" role="menuitem">导出…</button>
     <span></span>
     <button type="button" data-entry-action="delete" class="is-danger" role="menuitem">删除文稿</button>
+  </div>
+
+  <div id="image-context-menu" class="context-menu" role="menu" aria-hidden="true">
+    <button type="button" data-image-action="reveal" data-image-kind="local" role="menuitem">在文件管理器中显示</button>
+    <button type="button" data-image-action="open" data-image-kind="local" role="menuitem">用默认应用打开</button>
+    <button type="button" data-image-action="copy-path" data-image-kind="local" role="menuitem">复制图片路径</button>
+    <button type="button" data-image-action="open-link" data-image-kind="remote" role="menuitem">在浏览器中打开</button>
+    <button type="button" data-image-action="copy-link" data-image-kind="remote" role="menuitem">复制图片地址</button>
   </div>
 
   <div id="entry-operation-dialog" class="modal-backdrop" aria-hidden="true">

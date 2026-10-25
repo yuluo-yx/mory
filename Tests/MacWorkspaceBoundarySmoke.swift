@@ -36,6 +36,13 @@ struct MacWorkspaceBoundarySmoke {
         rejects("created through a cyclic link") { _ = try workspace.createDirectory(relativePath: "cycle/child") }
         let assets = workspace.assets(for: root.appendingPathComponent("note.md"), markdown: "![secret](escape/secret.png)")
         if !assets.isEmpty { failures.append("embedded an external image") }
+        let note = root.appendingPathComponent("note.md")
+        rejects("located an external document image") { _ = try workspace.documentImageFile(for: note, reference: "escape/secret.png") }
+        rejects("located a missing document image") { _ = try workspace.documentImageFile(for: note, reference: "inside/missing.png") }
+        rejects("located an image for an unsaved document") { _ = try workspace.documentImageFile(for: nil, reference: "inside/safe.png") }
+        let located = try workspace.documentImageFile(for: note, reference: "./inside/safe.png").standardizedFileURL.path
+        if located != root.appendingPathComponent("inside/safe.png").standardizedFileURL.path { failures.append("located the wrong document image") }
+        if try workspace.documentImageFile(for: note, reference: "/inside/safe.png").lastPathComponent != "safe.png" { failures.append("rejected a workspace-root image") }
         let css = "p { background: url(escape/secret.png) }"
         if try ThemeManager.inlineAssets(in: css, base: root) != css { failures.append("embedded an external theme resource") }
         let destination = root.appendingPathComponent("destination")

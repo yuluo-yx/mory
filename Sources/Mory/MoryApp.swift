@@ -228,6 +228,10 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     private var workspaceManager: WorkspaceManager!
     private var recentWorkspaces: [[String: String]] = []
     private var workspaceWatcher: WorkspaceWatcher!
+    /// Reports edits made to the open document by other programs; the editor decides whether to reload.
+    private lazy var documentDiskMonitor = DocumentDiskMonitor { [weak self] path, markdown in
+        self?.sendJSON(function: "window.Mory.documentChangedOnDisk", value: ["path": path, "markdown": markdown])
+    }
     private let workspaceScanQueue = DispatchQueue(label: "app.mory.workspace-scan", qos: .userInitiated)
     private var workspaceScanInFlight = false
     private var workspaceScanPending = false
@@ -297,6 +301,7 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
 
     func applicationWillTerminate(_ notification: Notification) {
         workspaceWatcher?.stop()
+        documentDiskMonitor.stop()
     }
 
     func application(_ sender: NSApplication, openFiles filenames: [String]) {
@@ -1137,6 +1142,14 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
                 answerHostRequest(id: id, result: ["opened": NSWorkspace.shared.open(url)])
             case "documentImage":
                 answerHostRequest(id: id, result: try workspaceManager.image(at: arguments["path"] as? String ?? ""))
+            case "documentImageFile":
+                let fileURL = try workspaceManager.documentImageFile(for: currentFileURL, reference: arguments["src"] as? String ?? "")
+                switch arguments["action"] as? String {
+                case "reveal": NSWorkspace.shared.activateFileViewerSelecting([fileURL])
+                case "open": guard NSWorkspace.shared.open(fileURL) else { throw workspaceError("图片文件不存在。") }
+                default: break
+                }
+                answerHostRequest(id: id, result: ["path": fileURL.path])
             case "copyText":
                 let pasteboard = NSPasteboard.general
                 pasteboard.clearContents()
@@ -1253,6 +1266,7 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
             currentDocumentName = payload["name"] as? String ?? "未命名.md"
             window.title = currentFileURL?.lastPathComponent ?? "\(currentDocumentName.replacingOccurrences(of: ".md", with: "")) — Mory"
             window.isDocumentEdited = payload["dirty"] as? Bool ?? false
+            documentDiskMonitor.track(currentFileURL)
         case "openFile":
             if let path = payload["path"] as? String { openFile(at: URL(fileURLWithPath: path)) }
         case "title":
@@ -1295,7 +1309,7 @@ final class MoryApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKSc
     }
 
     @objc private func showAbout() {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.5.9"
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.5.10"
         var options: [NSApplication.AboutPanelOptionKey: Any] = [
             .applicationName: "Mory",
             .applicationVersion: version,

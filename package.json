@@ -1,6 +1,6 @@
 {
   "name": "mory-markdown-editor",
-  "version": "0.5.9",
+  "version": "0.5.10",
   "author": "Mory Contributors",
   "private": true,
   "description": "A cross-platform Markdown editor combining native desktop hosts with a shared web editor",
@@ -29,6 +29,7 @@
     "test:mac-drag": "bash scripts/test-macos-drag.sh",
     "test:mac-about": "bash scripts/test-macos-about.sh",
     "test:mac-workspace-watcher": "bash scripts/test-macos-workspace-watcher.sh",
+    "test:mac-document-disk-monitor": "bash scripts/test-macos-document-disk-monitor.sh",
     "test:mac-menu-localization": "bash scripts/test-macos-menu-localization.sh",
     "test:mac-recent-documents": "bash scripts/test-macos-recent-documents.sh",
     "test:mac-launch-request": "bash scripts/test-macos-launch-request.sh",

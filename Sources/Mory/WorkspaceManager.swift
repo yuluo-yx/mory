@@ -653,12 +653,37 @@ final class WorkspaceManager: @unchecked Sendable {
         return [oldBase + "/": newBase + "/"]
     }
 
-    func assets(for documentURL: URL, markdown: String) -> [String: String] {
-        let source = markdown as NSString
-        var assets: [String: String] = [:]
+    /// Resolves a Markdown image reference with the rules used to display document assets.
+    /// Leading slashes address the workspace root; other references are relative to the document.
+    private func documentImageURL(for documentURL: URL, reference relative: String) -> URL? {
         let documentDirectory = documentURL.deletingLastPathComponent().standardizedFileURL
         let configuredRoot = activeRoot.standardizedFileURL
         let root = documentURL.standardizedFileURL.path.hasPrefix(configuredRoot.path + "/") ? configuredRoot : documentDirectory
+        guard !relative.isEmpty, !relative.contains("://"), !relative.hasPrefix("//"), !relative.hasPrefix("data:"), !relative.hasPrefix("file:") else { return nil }
+        let workspaceRelative = relative.hasPrefix("/") || relative.hasPrefix("\\")
+        let local = workspaceRelative ? relative.trimmingCharacters(in: CharacterSet(charactersIn: "/\\")) : relative
+        let fileURL = (workspaceRelative ? root : documentDirectory).appendingPathComponent(local).standardizedFileURL
+        guard fileURL.path.hasPrefix(root.path + "/") else { return nil }
+        guard (try? validateContainedURL(root: root, candidate: fileURL)) != nil else { return nil }
+        return fileURL
+    }
+
+    /// Locates an existing local image referenced by the current document.
+    func documentImageFile(for documentURL: URL?, reference: String) throws -> URL {
+        guard let documentURL else { throw workspaceError("请先保存文稿。") }
+        let relative = reference.removingPercentEncoding ?? reference
+        var isDirectory: ObjCBool = false
+        guard let fileURL = documentImageURL(for: documentURL, reference: relative),
+              workspaceImageExtensions.contains(fileURL.pathExtension.lowercased()),
+              fileManager.fileExists(atPath: fileURL.path, isDirectory: &isDirectory), !isDirectory.boolValue else {
+            throw workspaceError("图片文件不存在。")
+        }
+        return fileURL
+    }
+
+    func assets(for documentURL: URL, markdown: String) -> [String: String] {
+        let source = markdown as NSString
+        var assets: [String: String] = [:]
         let patterns = [
             #"!\[[^\]]*\]\((?:<([^>]+)>|([^\s)]+))(?:\s+["'][^"']*["'])?\)"#,
             #"(?is)<img\b[^>]*\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))"#
@@ -673,12 +698,7 @@ final class WorkspaceManager: @unchecked Sendable {
                 guard let range else { return }
                 let encoded = source.substring(with: range)
                 let relative = encoded.removingPercentEncoding ?? encoded
-                guard !relative.contains("://"), !relative.hasPrefix("//"), !relative.hasPrefix("data:"), !relative.hasPrefix("file:") else { return }
-                let workspaceRelative = relative.hasPrefix("/") || relative.hasPrefix("\\")
-                let local = workspaceRelative ? relative.trimmingCharacters(in: CharacterSet(charactersIn: "/\\")) : relative
-                let fileURL = (workspaceRelative ? root : documentDirectory).appendingPathComponent(local).standardizedFileURL
-                guard fileURL.path.hasPrefix(root.path + "/") else { return }
-                guard (try? validateContainedURL(root: root, candidate: fileURL)) != nil else { return }
+                guard let fileURL = self.documentImageURL(for: documentURL, reference: relative) else { return }
                 guard let data = try? Data(contentsOf: fileURL) else { return }
                 assets[relative.replacingOccurrences(of: "\\", with: "/")] = "data:\(mimeType(for: fileURL));base64,\(data.base64EncodedString())"
             }

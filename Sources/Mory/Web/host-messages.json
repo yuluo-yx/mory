@@ -74,6 +74,8 @@
   "同名条目已经存在": "An entry with this name already exists",
   "同名图片目录已经存在": "An image directory with this name already exists",
   "不支持的图片格式": "Unsupported image format",
+  "请先保存文稿": "Save the document first",
+  "图片文件不存在": "Image file not found",
   "图片超过 50 MB": "The image exceeds 50 MB",
   "图片为空或超过 50 MB": "The image is empty or exceeds 50 MB",
   "图片为空、编码无效或超过 50 MB": "The image is empty, incorrectly encoded, or exceeds 50 MB",
