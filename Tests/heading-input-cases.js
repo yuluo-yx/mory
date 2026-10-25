@@ -108,6 +108,231 @@ async function runHeadingInputCases() {
     await settle();
     check(window.Mory.getMarkdown() === expected, 'Redo did not restore the multiline paste');
   });
+  await run('typed code line breaks survive a later paste', async () => {
+    window.Mory.loadMarkdown('```js\nconst first = 1;\n```\n\nAfter');
+    const code = editor.querySelector('pre code');
+    const walker = document.createTreeWalker(code, NodeFilter.SHOW_TEXT);
+    let last = null;
+    while (walker.nextNode()) last = walker.currentNode;
+    caret(last, last.length);
+    paragraphBreak();
+    document.execCommand('insertText', false, 'const second = 2;');
+    paragraphBreak();
+    paste('const third = 3;\nconst fourth = 4;');
+    await settle();
+    check(window.Mory.getMarkdown() === '```js\nconst first = 1;\nconst second = 2;\nconst third = 3;\nconst fourth = 4;\n```\n\nAfter',
+      'Pasting after typed line breaks merged code lines');
+    check(editor.querySelectorAll('pre').length === 1, 'Pasting after typed line breaks split the code block');
+  });
+  await run('typed code line breaks survive highlighting after the caret leaves code', async () => {
+    window.Mory.loadMarkdown('```js\nconst first = 1;\n```\n\nAfter');
+    const code = editor.querySelector('pre code');
+    const walker = document.createTreeWalker(code, NodeFilter.SHOW_TEXT);
+    let last = null;
+    while (walker.nextNode()) last = walker.currentNode;
+    caret(last, last.length);
+    paragraphBreak();
+    document.execCommand('insertText', false, 'const second = 2;');
+    caret(editor.querySelector('p').firstChild, 0);
+    document.dispatchEvent(new Event('selectionchange'));
+    await settle();
+    check(editor.querySelector('pre').dataset.highlighted === 'true', 'Leaving code did not restore highlighting');
+    check(editor.querySelector('pre code').textContent === 'const first = 1;\nconst second = 2;', 'Highlighting merged typed code lines');
+    check(window.Mory.getMarkdown() === '```js\nconst first = 1;\nconst second = 2;\n```\n\nAfter', 'Highlighting changed code Markdown');
+  });
+  await run('native line break elements in code are read as newlines', async () => {
+    window.Mory.loadMarkdown('```txt\nfirst\n```\n\nAfter');
+    const code = editor.querySelector('pre code');
+    // WebKit and Chromium can leave BR or DIV line nodes after native editing commands.
+    code.innerHTML = 'first<br>second<div>third</div><div><br></div><div>fifth</div>';
+    caret(code.lastChild.firstChild, 5);
+    paste('!');
+    await settle();
+    check(code.textContent === 'first\nsecond\nthird\n\nfifth!', 'Native line nodes were dropped from code');
+    check(window.Mory.getMarkdown() === '```txt\nfirst\nsecond\nthird\n\nfifth!\n```\n\nAfter', 'Native line nodes changed code Markdown');
+  });
+  const pressTab = (shiftKey = false) => {
+    const event = new KeyboardEvent('keydown', { key: 'Tab', shiftKey, bubbles: true, cancelable: true });
+    editor.dispatchEvent(event);
+    return event;
+  };
+  const codeSelection = code => {
+    const range = getSelection().getRangeAt(0);
+    const offset = (node, at) => {
+      const measure = document.createRange();
+      measure.selectNodeContents(code);
+      measure.setEnd(node, at);
+      return measure.toString().replaceAll('​', '').length;
+    };
+    return [offset(range.startContainer, range.startOffset), offset(range.endContainer, range.endOffset)];
+  };
+  await run('Tab in code inserts indentation and keeps focus in the editor', async () => {
+    window.Mory.loadMarkdown('```js\nif (ready) {\nrun();\n}\n```\n\nAfter');
+    const code = editor.querySelector('pre code');
+    code.textContent = 'if (ready) {\nrun();\n}';
+    caret(code.firstChild, 13);
+    const event = pressTab();
+    await settle();
+    check(event.defaultPrevented, 'Tab in code moved focus instead of indenting');
+    check(window.Mory.getMarkdown() === '```js\nif (ready) {\n    run();\n}\n```\n\nAfter', 'Tab did not insert one indentation unit');
+    check(codeSelection(code).join() === '17,17', 'Tab did not place the caret after the indentation');
+    const outdent = pressTab(true);
+    await settle();
+    check(outdent.defaultPrevented, 'Shift+Tab in code moved focus');
+    check(window.Mory.getMarkdown() === '```js\nif (ready) {\nrun();\n}\n```\n\nAfter', 'Shift+Tab did not remove the line indentation');
+    check(codeSelection(code).join() === '13,13', 'Shift+Tab did not keep the caret on its text');
+    editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true, cancelable: true }));
+    await settle();
+    check(window.Mory.getMarkdown() === '```js\nif (ready) {\n    run();\n}\n```\n\nAfter', 'Undo did not restore the Tab indentation');
+  });
+  await run('Tab and Shift+Tab indent every selected code line and follow existing indentation', async () => {
+    window.Mory.loadMarkdown('```js\nfunction run() {\n  first();\n  second();\n}\n```\n\nAfter');
+    const code = editor.querySelector('pre code');
+    code.textContent = 'function run() {\n  first();\n  second();\n}';
+    editor.focus();
+    getSelection().setBaseAndExtent(code.firstChild, 19, code.firstChild, 31);
+    pressTab();
+    await settle();
+    check(window.Mory.getMarkdown() === '```js\nfunction run() {\n    first();\n    second();\n}\n```\n\nAfter', 'Tab did not indent every selected line by the detected unit');
+    check(codeSelection(code).join() === '21,35', 'Tab lost the multiline selection');
+    pressTab(true);
+    await settle();
+    pressTab(true);
+    await settle();
+    check(window.Mory.getMarkdown() === '```js\nfunction run() {\nfirst();\nsecond();\n}\n```\n\nAfter', 'Shift+Tab did not outdent every selected line');
+    check(editor.querySelectorAll('pre').length === 1 && editor.querySelector('pre').dataset.language === 'js', 'Indenting code changed its block');
+  });
+  await run('Tab in tab-indented code inserts a tab character', async () => {
+    window.Mory.loadMarkdown('```go\nfunc main() {\n\tprintln()\n}\n```');
+    const code = editor.querySelector('pre code');
+    code.textContent = 'func main() {\n\tprintln()\n}';
+    caret(code.firstChild, 24);
+    pressTab();
+    await settle();
+    check(window.Mory.getMarkdown() === '```go\nfunc main() {\n\tprintln()\t\n}\n```', `Tab ignored the tab indentation style: ${JSON.stringify(window.Mory.getMarkdown())}`);
+  });
+  await run('Tab outside lists, tables, and code keeps focus in the editor', async () => {
+    window.Mory.loadMarkdown('Plain paragraph');
+    caret(editor.querySelector('p').firstChild, 5);
+    const event = pressTab();
+    await settle();
+    check(event.defaultPrevented, 'Tab moved focus out of the editor');
+    check(window.Mory.getMarkdown() === 'Plain paragraph', 'Tab changed a plain paragraph');
+  });
+  await run('Enter in code keeps the current line indentation', async () => {
+    window.Mory.loadMarkdown('```js\nfunction run() {\n  first();\n}\n```\n\nAfter');
+    const code = editor.querySelector('pre code');
+    code.textContent = 'function run() {\n  first();\n}';
+    caret(code.firstChild, 27);
+    paragraphBreak();
+    document.execCommand('insertText', false, 'second();');
+    await settle();
+    check(window.Mory.getMarkdown() === '```js\nfunction run() {\n  first();\n  second();\n}\n```\n\nAfter',
+      `Enter dropped the code indentation: ${JSON.stringify(window.Mory.getMarkdown())}`);
+  });
+  await run('double Enter after indented code exits without a whitespace line', async () => {
+    window.Mory.loadMarkdown('```js\nif (ready) {\n  run();\n```\n\nAfter');
+    const code = editor.querySelector('pre code');
+    code.textContent = 'if (ready) {\n  run();';
+    caret(code.firstChild, code.textContent.length);
+    paragraphBreak();
+    paragraphBreak();
+    await settle();
+    check(window.Mory.getMarkdown().startsWith('```js\nif (ready) {\n  run();\n```\n\n'),
+      `Exiting code kept an indentation-only line: ${JSON.stringify(window.Mory.getMarkdown())}`);
+    check(!editor.querySelector('pre').contains(getSelection().anchorNode), 'Double Enter did not leave code');
+  });
+  await run('Backspace in code indentation removes one indentation unit', async () => {
+    window.Mory.loadMarkdown('```js\nfunction run() {\n    first();\n}\n```\n\nAfter');
+    const code = editor.querySelector('pre code');
+    code.textContent = 'function run() {\n    first();\n}';
+    caret(code.firstChild, 21);
+    const event = new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true });
+    editor.dispatchEvent(event);
+    await settle();
+    check(event.defaultPrevented && window.Mory.getMarkdown() === '```js\nfunction run() {\nfirst();\n}\n```\n\nAfter',
+      `Backspace did not remove one indentation unit: ${JSON.stringify(window.Mory.getMarkdown())}`);
+    check(codeSelection(code).join() === '17,17', 'Backspace misplaced the caret');
+    caret(code.firstChild, 20);
+    const text = new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true });
+    editor.dispatchEvent(text);
+    check(!text.defaultPrevented, 'Backspace after code text must keep native character deletion');
+  });
+  await run('Select all inside code selects the code before the document', async () => {
+    window.Mory.loadMarkdown('Before\n\n```js\nfirst();\nsecond();\n```\n\nAfter');
+    const code = editor.querySelector('pre code');
+    caret(code.querySelector('*')?.firstChild || code.firstChild, 1);
+    const first = new KeyboardEvent('keydown', { key: 'a', metaKey: true, bubbles: true, cancelable: true });
+    editor.dispatchEvent(first);
+    check(first.defaultPrevented && getSelection().toString() === 'first();\nsecond();', `Select all did not select the code: ${JSON.stringify(getSelection().toString())}`);
+    const second = new KeyboardEvent('keydown', { key: 'a', metaKey: true, bubbles: true, cancelable: true });
+    editor.dispatchEvent(second);
+    check(!second.defaultPrevented, 'A second select all must select the whole document');
+  });
+  await run('Tab in source mode indents Markdown and supports undo', async () => {
+    try {
+      window.Mory.loadMarkdown('- first\n- second');
+      window.Mory.toggleSource(true);
+      const source = document.querySelector('#source-editor');
+      source.focus();
+      source.setSelectionRange(8, 8);
+      const event = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+      source.dispatchEvent(event);
+      await settle();
+      check(event.defaultPrevented && document.activeElement === source, 'Tab moved focus out of the source editor');
+      check(source.value === '- first\n    - second' && source.selectionStart === 12, `Tab did not indent the source line: ${JSON.stringify(source.value)}`);
+      source.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }));
+      await settle();
+      check(source.value === '- first\n- second', 'Shift+Tab did not outdent the source line');
+      source.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true, cancelable: true }));
+      await settle();
+      check(source.value === '- first\n    - second', 'Undo did not restore the source indentation');
+    } finally {
+      window.Mory.toggleSource(false);
+    }
+  });
+  await run('Tab in code metadata fields keeps native field navigation', async () => {
+    window.Mory.loadMarkdown('```js\nvalue\n```\n\nAfter');
+    editor.querySelector('.code-language-button').click();
+    await settle();
+    const language = editor.querySelector('.code-language');
+    check(language, 'Code metadata did not open');
+    language.focus();
+    const event = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    language.dispatchEvent(event);
+    check(!event.defaultPrevented, 'The editor blocked Tab navigation inside code metadata fields');
+  });
+  await run('code copy button copies the complete literal code without editing the note', async () => {
+    const source = 'const first = 1;\n\n  return `<b>${first}</b>`;';
+    window.Mory.loadMarkdown(`\`\`\`js\n${source}\n\`\`\`\n\n\`\`\`txt\nSecond\n\`\`\``);
+    const buttons = editor.querySelectorAll('.code-copy-button');
+    check(buttons.length === 2, 'Code blocks have no copy buttons');
+    check(buttons[0].getAttribute('aria-label') === '\u590D\u5236\u4EE3\u7801' || buttons[0].getAttribute('aria-label') === 'Copy code', 'Copy button has no accessible label');
+    const copied = [];
+    // Desktop hosts take precedence over the browser clipboard; capture the host request.
+    const originalHost = window.moryNative;
+    window.moryNative = { ...originalHost, request: async (method, args) => {
+      if (method !== 'copyText') throw new Error(`Unexpected host request: ${method}`);
+      copied.push(args.text);
+      return { copied: true };
+    } };
+    try {
+      const saveState = document.querySelector('#save-state');
+      const wasUnsaved = saveState.classList.contains('is-visible');
+      buttons[0].click();
+      await settle();
+      buttons[1].click();
+      await settle();
+      check(copied[0] === source, 'Copy button copied highlighted markup or partial code');
+      check(copied[1] === 'Second', 'Copy button copied another block');
+      check(buttons[0].classList.contains('is-copied'), 'Copy button has no copied feedback');
+      check(saveState.classList.contains('is-visible') === wasUnsaved, 'Copying marked the note dirty');
+      check(!window.Mory.getMarkdown().includes('Copy'), 'Copy control became document text');
+    } finally {
+      if (originalHost === undefined) delete window.moryNative;
+      else window.moryNative = originalHost;
+    }
+  });
   await run('code folding changes only the view and keeps blocks independent', () => {
     const markdown = `\`\`\`js title="example.js"\n${longCode}\n\`\`\`\n\n\`\`\`txt\nSecond block\n\`\`\`\n\nAfter`;
     window.Mory.loadMarkdown(markdown);
@@ -154,7 +379,7 @@ async function runHeadingInputCases() {
     check(!exported.querySelector('.code-tools, .is-code-folded'), 'Export includes fold controls or collapsed state');
   });
   await run('code fold labels follow locale and expanded state', () => {
-    window.Mory.loadMarkdown('```txt\nCode\n```');
+    window.Mory.loadMarkdown(`\`\`\`txt\n${longCode}\n\`\`\``);
     const button = editor.querySelector('.code-fold-toggle');
     check(button, 'Code fold control is missing');
     const language = document.querySelector('#language-select');
@@ -170,6 +395,53 @@ async function runHeadingInputCases() {
       check(button.textContent === 'Expand code block', 'Locale switch reset the collapsed label');
       button.click();
       check(button.textContent === 'Collapse code block', 'Expanding did not refresh the label');
+    } finally { changeLocale(original); }
+  });
+  await run('code fold control appears only for code longer than six lines', async () => {
+    const lines = count => Array.from({ length: count }, (_, index) => `line ${index + 1}`).join('\n');
+    window.Mory.loadMarkdown(`\`\`\`txt\n${lines(6)}\n\`\`\`\n\n\`\`\`txt\n${lines(7)}\n\`\`\``);
+    const [short, long] = editor.querySelectorAll('.code-fold-toggle');
+    check(short.hidden && getComputedStyle(short).display === 'none', 'Six-line code shows a fold control');
+    check(!long.hidden && getComputedStyle(long).display !== 'none', 'Seven-line code has no visible fold control');
+    const code = editor.querySelector('pre code');
+    caret(code.lastChild, code.lastChild.length);
+    paragraphBreak();
+    document.execCommand('insertText', false, 'line 7');
+    check(!short.hidden, 'Typing a seventh line did not reveal the fold control');
+  });
+  await run('code language button edits language and refreshes highlighting', async () => {
+    window.Mory.loadMarkdown('```\nfn main() { let value = 1; }\n```\n\nAfter');
+    const block = editor.querySelector('pre');
+    const button = editor.querySelector('.code-language-button');
+    check(button && button.classList.contains('is-empty'), 'Code without a language has no language control');
+    button.click();
+    const meta = editor.querySelector('.code-meta');
+    const input = meta.querySelector('.code-language');
+    check(!meta.hidden && document.activeElement === input, 'Language control did not open the language field');
+    input.value = 'rust';
+    input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+    check(block.querySelector('code').classList.contains('language-rust'), 'Changing language did not refresh highlighting');
+    check(button.textContent === 'rust' && !button.classList.contains('is-empty'), 'Language control did not show the new language');
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    check(meta.hidden, 'Enter did not close the language field');
+    check(window.Mory.getMarkdown() === '```rust\nfn main() { let value = 1; }\n```\n\nAfter', 'Language change was not serialized');
+    button.click();
+    meta.querySelector('.code-language').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    check(meta.hidden, 'Escape did not close the language field');
+  });
+  await run('code metadata labels follow the interface language', () => {
+    window.Mory.loadMarkdown('```txt\nCode\n```');
+    const language = document.querySelector('#language-select');
+    const original = language.value;
+    const changeLocale = value => { language.value = value; language.dispatchEvent(new Event('change', { bubbles: true })); };
+    try {
+      changeLocale('en');
+      editor.querySelector('.code-language-button').click();
+      const input = editor.querySelector('.code-meta .code-language');
+      check(input.placeholder === 'Language' && editor.querySelector('.code-meta .code-title').placeholder === 'Name (optional)', 'Metadata fields are not English');
+      check(editor.querySelector('.code-copy-button').getAttribute('aria-label') === 'Copy code', 'Copy label is not English');
+      changeLocale('zh-CN');
+      check(input.placeholder === '\u8BED\u8A00', 'Metadata fields are not Chinese');
     } finally { changeLocale(original); }
   });
   await run('newly typed fences receive fold controls and deleted blocks leave no controls', () => {

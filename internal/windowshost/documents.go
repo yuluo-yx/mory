@@ -334,20 +334,50 @@ func loadDocument(root, path string) (Document, error) {
 	return document, nil
 }
 
-func loadDocumentAssets(root, documentPath, markdown string) map[string]string {
-	assets := make(map[string]string)
+// documentImagePath resolves a Markdown image reference with the rules used to display assets.
+// Leading slashes address the workspace root; other references are relative to the document.
+func documentImagePath(root, documentPath, reference string) (string, error) {
 	documentDirectory := filepath.Dir(documentPath)
-	if _, err := safeDescendant(root, documentPath); err != nil {
+	if root == "" {
+		root = documentDirectory
+	} else if _, err := safeDescendant(root, documentPath); err != nil {
 		root = documentDirectory
 	}
+	base := documentDirectory
+	localReference := reference
+	if strings.HasPrefix(reference, "/") || strings.HasPrefix(reference, `\`) {
+		base = root
+		localReference = strings.TrimLeft(reference, `/\`)
+	}
+	return safeDescendant(root, filepath.Join(base, filepath.FromSlash(localReference)))
+}
+
+// documentImageFile locates an existing local image referenced by the current document.
+func documentImageFile(root, documentPath, reference string) (string, error) {
+	if documentPath == "" {
+		return "", errors.New("请先保存文稿")
+	}
+	if decoded, err := url.PathUnescape(reference); err == nil {
+		reference = decoded
+	}
+	if reference == "" || hasRemoteScheme(reference) {
+		return "", errors.New("图片文件不存在")
+	}
+	resolved, err := documentImagePath(root, documentPath, reference)
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(resolved)
+	if err != nil || !info.Mode().IsRegular() || !imageExtensions[strings.ToLower(filepath.Ext(resolved))] {
+		return "", errors.New("图片文件不存在")
+	}
+	return resolved, nil
+}
+
+func loadDocumentAssets(root, documentPath, markdown string) map[string]string {
+	assets := make(map[string]string)
 	for _, reference := range documentImageReferences(markdown) {
-		base := documentDirectory
-		localReference := reference
-		if strings.HasPrefix(reference, "/") || strings.HasPrefix(reference, `\`) {
-			base = root
-			localReference = strings.TrimLeft(reference, `/\`)
-		}
-		resolved, err := safeDescendant(root, filepath.Join(base, filepath.FromSlash(localReference)))
+		resolved, err := documentImagePath(root, documentPath, reference)
 		if err != nil {
 			continue
 		}

@@ -14,6 +14,7 @@ const {
   importImage,
   listDirectories,
   listDocuments,
+  documentImageFile,
   loadDocumentAssets,
   markdownImagePaths,
   moveWorkspaceEntry,
@@ -165,6 +166,25 @@ test("stores images by document name and loads them as embedded assets", async t
   assert.match(assets[result.relative], /^data:image\/png;base64,/);
   assert.match(assets["./photo_1.jpg"], /^data:image\/jpeg;base64,/);
   assert.match(assets["/img/summary/cover.jpg"], /^data:image\/jpeg;base64,/);
+});
+
+test("locates document images with the same rules used to display them", async t => {
+  const root = await fixture(t);
+  const documentPath = path.join(root, "notes", "draft.md");
+  await fs.mkdir(path.join(root, "notes", "draft"), { recursive: true });
+  await fs.mkdir(path.join(root, "img"), { recursive: true });
+  await fs.writeFile(path.join(root, "notes", "draft", "cover image.png"), "image");
+  await fs.writeFile(path.join(root, "img", "root.jpg"), "image");
+  await fs.writeFile(path.join(root, "notes", "draft", "notes.txt"), "text");
+  assert.equal(await documentImageFile(documentPath, "draft/cover%20image.png", root), path.join(root, "notes", "draft", "cover image.png"));
+  assert.equal(await documentImageFile(documentPath, "./draft/cover image.png", root), path.join(root, "notes", "draft", "cover image.png"));
+  assert.equal(await documentImageFile(documentPath, "/img/root.jpg", root), path.join(root, "img", "root.jpg"));
+  // Without a containing workspace, images remain bounded by the document directory.
+  await assert.rejects(documentImageFile(documentPath, "../img/root.jpg", null), /inside the selected directory/);
+  await assert.rejects(documentImageFile(documentPath, "../../outside.png", root), /inside the selected directory/);
+  await assert.rejects(documentImageFile(documentPath, "draft/missing.png", root), /\u56FE\u7247\u6587\u4EF6\u4E0D\u5B58\u5728/);
+  await assert.rejects(documentImageFile(documentPath, "draft/notes.txt", root), /\u56FE\u7247\u6587\u4EF6\u4E0D\u5B58\u5728/);
+  await assert.rejects(documentImageFile("", "draft/cover image.png", root), /\u8BF7\u5148\u4FDD\u5B58\u6587\u7A3F/);
 });
 
 test("renames the image directory when a draft is saved under a document name", async t => {

@@ -228,6 +228,12 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width:
 .path-suggestion-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .path-suggestion-kind { color: var(--faint); font-size: 10px; }
 .editor-scroll { flex: 1; min-height: 0; overflow: auto; scroll-behavior: smooth; }
+.disk-change-bar { display: flex; flex: none; align-items: center; gap: 8px; margin: 8px 16px 0; padding: 7px 8px 7px 12px; border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line)); border-radius: 6px; background: color-mix(in srgb, var(--accent) 8%, var(--surface)); color: var(--text); font-size: 12px; }
+.disk-change-bar[hidden] { display: none; }
+.disk-change-bar span { flex: 1; min-width: 0; }
+.disk-change-bar button { flex: none; height: 26px; padding: 0 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--text); font-size: 12px; cursor: pointer; }
+.disk-change-bar button:hover, .disk-change-bar button:focus-visible { border-color: var(--accent); color: var(--accent); }
+#disk-change-reload { border-color: color-mix(in srgb, var(--accent) 60%, var(--line)); color: var(--accent); }
 .write, .source-editor { width: min(calc(100% - var(--editor-gutter) - var(--editor-gutter)), var(--editor-width)); min-height: calc(100% - 80px); margin: 34px auto 90px; outline: 0; }
 .write { font-family: "Iowan Old Style", "Songti SC", "Noto Serif CJK SC", Georgia, serif; font-size: 1.0625rem; line-height: 1.82; caret-color: var(--accent); }
 .write:empty::before { content: var(--empty-editor-label); color: var(--faint); pointer-events: none; }
@@ -251,12 +257,20 @@ svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width:
 .write pre[data-title]:not([data-title=""]) { padding-top: 36px; }
 .write pre[data-title]:not([data-title=""])::before { content: attr(data-title); position: absolute; top: 8px; left: 18px; color: var(--faint); font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; font-size: 10px; font-weight: 600; letter-spacing: .02em; }
 .write pre code { padding: 0; color: inherit; background: transparent; }
-.write .code-tools { display: flex; justify-content: flex-end; margin: 1.1em 0 0; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; line-height: 1; user-select: none; }
+.write .code-tools { display: flex; align-items: center; justify-content: flex-end; gap: 2px; margin: 1.1em 0 0; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; line-height: 1; user-select: none; }
 .write .code-tools + pre { margin-top: 4px; }
 .write .code-fold-toggle { display: inline-flex; align-items: center; gap: 5px; padding: 4px 6px; border: 1px solid transparent; border-radius: 3px; background: transparent; color: var(--muted); font: inherit; font-size: 11px; cursor: pointer; }
 .write .code-fold-toggle::before { content: ""; width: 6px; height: 6px; border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; transform: translateY(-2px) rotate(45deg); }
 .write .code-fold-toggle[aria-expanded="false"]::before { transform: translateX(-2px) rotate(-45deg); }
 .write .code-fold-toggle:hover, .write .code-fold-toggle:focus-visible { border-color: var(--line-soft); background: var(--code-bg); color: var(--accent); }
+.write .code-tools button[hidden] { display: none; }
+.write .code-language-button { margin-right: auto; max-width: 50%; padding: 4px 6px; overflow: hidden; border: 1px solid transparent; border-radius: 3px; background: transparent; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.write .code-language-button.is-empty { color: var(--faint); font-family: inherit; }
+.write .code-language-button:hover, .write .code-language-button:focus-visible { border-color: var(--line-soft); background: var(--code-bg); color: var(--accent); }
+.write .code-copy-button { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 21px; padding: 0; border: 1px solid transparent; border-radius: 3px; background: transparent; color: var(--muted); cursor: pointer; }
+.write .code-copy-button svg { width: 13px; height: 13px; }
+.write .code-copy-button:hover, .write .code-copy-button:focus-visible { border-color: var(--line-soft); background: var(--code-bg); color: var(--accent); }
+.write .code-copy-button.is-copied { color: var(--accent); }
 #write pre.is-code-folded { min-height: 0; max-height: 6.5em; overflow: hidden; }
 .write .hljs-comment, .write .hljs-quote { color: #6a737d; font-style: italic; }
 .write .hljs-keyword, .write .hljs-selector-tag, .write .hljs-type { color: #8250df; font-weight: 600; }

@@ -54,6 +54,7 @@ type Platform interface {
 	Trash(path string) error
 	Reveal(path string) error
 	OpenDirectory(path string) error
+	OpenFile(path string) error
 	OpenURL(url string) error
 	CopyText(text string) error
 	Evaluate(script string)
@@ -85,6 +86,9 @@ type Host struct {
 	startupComplete   func(error)
 	watchRoot         string
 	watchSignature    string
+	// diskMu serializes checks of the open document; diskStamp is its last reported size and time.
+	diskMu    sync.Mutex
+	diskStamp string
 }
 
 // New creates the Windows host core. Call Start before processing frontend requests.
@@ -108,6 +112,7 @@ func (host *Host) Start(parent context.Context) error {
 	}
 	host.ctx, host.cancel = context.WithCancel(parent)
 	go host.watchWorkspace()
+	go host.watchDocument()
 	return nil
 }
 
@@ -383,6 +388,21 @@ func (host *Host) Request(method string, args map[string]any) (result any, err e
 		return map[string]string{"status": "settings"}, host.platform.OpenURL("ms-settings:defaultapps")
 	case "documentImage":
 		return readDocumentImage(host.workspaces.activeRoot(), stringValue(args, "path"))
+	case "documentImageFile":
+		host.mu.RLock()
+		documentPath := host.currentPath
+		host.mu.RUnlock()
+		path, err := documentImageFile(host.workspaces.activeRoot(), documentPath, stringValue(args, "src"))
+		if err != nil {
+			return nil, err
+		}
+		switch stringValue(args, "action") {
+		case "reveal":
+			err = host.platform.Reveal(path)
+		case "open":
+			err = host.platform.OpenFile(path)
+		}
+		return map[string]string{"path": path}, err
 	case "copyText":
 		return map[string]bool{"copied": true}, host.platform.CopyText(stringValue(args, "text"))
 	case "revealFile":
@@ -698,11 +718,62 @@ func (host *Host) selectDocument(payload map[string]any) {
 	}
 	title := documentTitle(host.currentPath, host.currentName)
 	dirty, _ := payload["dirty"].(bool)
+	// Report the selected file once so edits made while it was in the background are not missed.
+	host.diskStamp = ""
 	host.mu.Unlock()
 	if dirty {
 		title = "● " + title
 	}
 	host.platform.SetTitle(title + " — Mory")
+	go host.checkDocumentDisk()
+}
+
+// watchDocument polls the open document because editors often save by replacing the file,
+// which file-event watchers on the original path do not observe.
+func (host *Host) watchDocument() {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-host.ctx.Done():
+			return
+		case <-ticker.C:
+			host.checkDocumentDisk()
+		}
+	}
+}
+
+// checkDocumentDisk sends the open document's disk content after its size or modification time changes.
+// The frontend compares it with its last known disk version, so the host's own saves are harmless.
+func (host *Host) checkDocumentDisk() {
+	host.diskMu.Lock()
+	defer host.diskMu.Unlock()
+	host.mu.RLock()
+	path, previous := host.currentPath, host.diskStamp
+	host.mu.RUnlock()
+	if path == "" {
+		return
+	}
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return
+	}
+	stamp := fmt.Sprintf("%d:%d", info.ModTime().UnixNano(), info.Size())
+	if stamp == previous {
+		return
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	host.mu.Lock()
+	if host.currentPath != path {
+		host.mu.Unlock()
+		return
+	}
+	host.diskStamp = stamp
+	host.mu.Unlock()
+	host.evaluate("window.Mory.documentChangedOnDisk", map[string]string{"path": path, "markdown": string(data)})
 }
 
 func (host *Host) refreshWorkspace() error {

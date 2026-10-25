@@ -6,9 +6,10 @@ const { spawn } = require("node:child_process");
 const path = require("node:path");
 const { hostMessage } = require("./host-localization.cjs");
 const { writeAtomicFile } = require("./atomic-file.cjs");
-const { copyWorkspaceEntry, createWorkspaceDirectory, createWorkspaceDocument, createWorkspaceManager, importImage, listDirectories, listDocuments, loadDocumentAssets, moveWorkspaceEntry, readDocumentImage, readWorkspaceDocuments, relocateDocumentAssets, renameWorkspaceEntry, sanitizeSegment, workspaceEntryPath, workspaceSignature } = require("./workspaces.cjs");
+const { copyWorkspaceEntry, createWorkspaceDirectory, createWorkspaceDocument, createWorkspaceManager, documentImageFile, importImage, listDirectories, listDocuments, loadDocumentAssets, moveWorkspaceEntry, readDocumentImage, readWorkspaceDocuments, relocateDocumentAssets, renameWorkspaceEntry, sanitizeSegment, workspaceEntryPath, workspaceSignature } = require("./workspaces.cjs");
 const { createThemeManager } = require("./themes.cjs");
 const { createWorkspaceWatcher } = require("./workspace-watcher.cjs");
+const { createDocumentDiskMonitor } = require("./document-disk-monitor.cjs");
 const { addRecentDocument, clearRecentDocuments: clearSystemRecentDocuments, listRecentDocuments } = require("./recent-documents.cjs");
 
 let mainWindow;
@@ -32,6 +33,11 @@ function showHostDialog(options) {
   }
   return dialog.showMessageBox(mainWindow, localized);
 }
+// Other programs may edit the open document; the renderer decides whether to reload or ask.
+const documentDiskMonitor = createDocumentDiskMonitor({
+  onChange: change => sendJSON("window.Mory.documentChangedOnDisk", change),
+  onError: error => console.error("Document disk monitor failed:", error)
+});
 const workspaceWatcher = createWorkspaceWatcher({
   onChange: () => refreshWorkspace(),
   signature: workspaceSignature,
@@ -237,6 +243,7 @@ async function writeDocument(filePath, snapshot) {
       currentFilePath = filePath;
       currentDocumentName = path.basename(filePath);
       setWindowTitle(path.basename(filePath));
+      if (documentDiskMonitor.path !== filePath) void documentDiskMonitor.track(filePath);
     }
     const assets = await loadDocumentAssets(filePath, markdown, snapshot.root);
     const assetPathChanges = markdown === snapshot.markdown ? {} : {
@@ -387,6 +394,15 @@ async function handleWorkspaceRequest(method, args = {}) {
     }
     case "documentImage":
       return readDocumentImage(workspaceManager.activeRoot(), args.path);
+    case "documentImageFile": {
+      const filePath = await documentImageFile(currentFilePath, args.src, workspaceManager.activeRoot());
+      if (args.action === "reveal") shell.showItemInFolder(filePath);
+      else if (args.action === "open") {
+        const failure = await shell.openPath(filePath);
+        if (failure) throw new Error(failure);
+      }
+      return { path: filePath };
+    }
     case "copyText": {
       clipboard.writeText(String(args.text || ""));
       return { copied: true };
@@ -526,6 +542,7 @@ async function exportRendered(options = {}) {
 function newDocument() {
   currentDocumentId = "";
   currentFilePath = null;
+  documentDiskMonitor.stop();
   currentMarkdown = "";
   currentDocumentName = "未命名.md";
   setWindowTitle("未命名");
@@ -679,6 +696,7 @@ ipcMain.on("mory:message", async (_event, payload) => {
     currentMarkdown = typeof payload.markdown === "string" ? payload.markdown : "";
     currentDocumentName = typeof payload.name === "string" && payload.name ? payload.name : "未命名.md";
     setWindowTitle(currentFilePath ? path.basename(currentFilePath) : currentDocumentName.replace(/\.md$/i, ""), payload.dirty === true);
+    void documentDiskMonitor.track(currentFilePath);
   } else if (payload.type === "openFile" && typeof payload.path === "string") {
     await loadFile(payload.path);
   } else if (payload.type === "title" && !currentFilePath && typeof payload.value === "string") {
@@ -735,4 +753,7 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-app.on("before-quit", () => workspaceWatcher.stop());
+app.on("before-quit", () => {
+  workspaceWatcher.stop();
+  documentDiskMonitor.stop();
+});

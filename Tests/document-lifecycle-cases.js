@@ -14,6 +14,7 @@ async function runDocumentLifecycleCases() {
     catch (error) { failures.push({ name, error: error.message }); }
   };
   const startupMarkdown = window.Mory.getMarkdown();
+  const unsaved = () => document.querySelector('#save-state').classList.contains('is-visible');
   const visibleFiles = () => [...document.querySelectorAll('#file-list .file-item')];
   let workspaceSequence = 0;
   const emptyWorkspace = () => {
@@ -216,5 +217,67 @@ async function runDocumentLifecycleCases() {
       } finally { window.moryNative = previousHost; }
     });
   }
+  await run('external edits reload a clean document and keep its reading position', () => {
+    emptyWorkspace();
+    window.Mory.toggleSource(false);
+    const long = Array.from({ length: 80 }, (_, index) => `Paragraph ${index}`).join('\n\n');
+    window.Mory.openDocument({ path: '/lifecycle/external-clean.md', markdown: long });
+    const scroll = document.querySelector('#editor-scroll');
+    scroll.style.scrollBehavior = 'auto';
+    scroll.scrollTop = 400;
+    const before = scroll.scrollTop;
+    check(window.Mory.documentChangedOnDisk({ path: '/lifecycle/external-clean.md', markdown: long + '\n\nAdded elsewhere' }), 'A clean external edit was ignored');
+    check(window.Mory.getMarkdown().endsWith('Added elsewhere'), 'The clean document was not reloaded');
+    check(!unsaved(), 'Reloading marked the document unsaved');
+    check(scroll.scrollTop === before, 'Reloading lost the reading position');
+    check(document.querySelector('#disk-change-bar').hidden, 'A clean reload showed a conflict');
+    scroll.style.scrollBehavior = '';
+  });
+  await run('the application save and unchanged disk content do not reload or warn', () => {
+    emptyWorkspace();
+    window.Mory.openDocument({ path: '/lifecycle/external-own.md', markdown: 'Original' });
+    edit('Saved by Mory');
+    const snapshot = window.Mory.getDocumentSnapshot();
+    // Hosts may observe the written file before the save callback reaches the editor.
+    check(!window.Mory.documentChangedOnDisk({ path: '/lifecycle/external-own.md', markdown: 'Saved by Mory' }), 'Disk content equal to the editor was treated as external');
+    window.Mory.didSave({ ...snapshot, markdown: 'Saved by Mory', sourceMarkdown: 'Saved by Mory' });
+    check(!window.Mory.documentChangedOnDisk({ path: '/lifecycle/external-own.md', markdown: 'Saved by Mory' }), 'The application save was reported again');
+    check(document.querySelector('#disk-change-bar').hidden, 'The application save showed a conflict');
+    check(!window.Mory.documentChangedOnDisk({ path: '/lifecycle/unknown.md', markdown: 'Other' }), 'A closed document was changed');
+  });
+  for (const choice of ['reload', 'keep']) {
+    await run(`external edits beside unsaved edits ask before replacing them (${choice})`, () => {
+      emptyWorkspace();
+      window.Mory.openDocument({ path: `/lifecycle/external-${choice}.md`, markdown: 'Base' });
+      edit('My unsaved edits');
+      const bar = document.querySelector('#disk-change-bar');
+      check(window.Mory.documentChangedOnDisk({ path: `/lifecycle/external-${choice}.md`, markdown: 'Edited elsewhere' }), 'The conflict was not reported');
+      check(window.Mory.getMarkdown() === 'My unsaved edits', 'Unsaved edits were replaced without asking');
+      check(!bar.hidden, 'The conflict bar is hidden');
+      check(!window.Mory.documentChangedOnDisk({ path: `/lifecycle/external-${choice}.md`, markdown: 'Edited elsewhere' }), 'Repeated polling reported the same conflict again');
+      document.querySelector(choice === 'reload' ? '#disk-change-reload' : '#disk-change-keep').click();
+      check(bar.hidden, 'Resolving the conflict left the bar visible');
+      if (choice === 'reload') {
+        check(window.Mory.getMarkdown() === 'Edited elsewhere' && !unsaved(), 'Loading the disk version failed');
+      } else {
+        check(window.Mory.getMarkdown() === 'My unsaved edits' && unsaved(), 'Keeping edits changed the document');
+        check(!window.Mory.documentChangedOnDisk({ path: `/lifecycle/external-${choice}.md`, markdown: 'Edited elsewhere' }), 'A kept disk version warned again');
+        check(window.Mory.documentChangedOnDisk({ path: `/lifecycle/external-${choice}.md`, markdown: 'Edited again' }) && !bar.hidden, 'A newer external edit was not reported');
+      }
+    });
+  }
+  await run('a conflict follows its document when switching documents', () => {
+    emptyWorkspace();
+    window.Mory.openDocument({ path: '/lifecycle/conflict-a.md', markdown: 'A' });
+    edit('A edited');
+    const first = window.Mory.getDocumentSnapshot();
+    window.Mory.documentChangedOnDisk({ path: '/lifecycle/conflict-a.md', markdown: 'A elsewhere' });
+    window.Mory.openDocument({ path: '/lifecycle/conflict-b.md', markdown: 'B' });
+    check(document.querySelector('#disk-change-bar').hidden, 'Another document showed the conflict');
+    window.Mory.documentChangedOnDisk({ path: '/lifecycle/conflict-a.md', markdown: 'A elsewhere twice' });
+    check(window.Mory.getDocumentSnapshot(first.documentId).markdown === 'A edited', 'A background conflict replaced unsaved edits');
+    document.querySelector(`#file-list .file-item[data-document-id="${first.documentId}"]`).click();
+    check(!document.querySelector('#disk-change-bar').hidden, 'Returning to the document hid its conflict');
+  });
   return { passed, failures };
 }

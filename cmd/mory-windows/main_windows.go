@@ -21,7 +21,7 @@ import (
 	"github.com/yuluo-yx/mory/internal/windowshost"
 )
 
-const appVersion = "0.5.9"
+const appVersion = "0.5.10"
 
 type WindowsHost struct {
 	core        *windowshost.Host

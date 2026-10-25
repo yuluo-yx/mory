@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Indent code with Tab and outdent with Shift+Tab, including multiline selections; follow the snippet's tab or space indentation. Enter keeps the current line indentation, Backspace in leading spaces removes one indentation unit, and the first Select All inside code selects only that block.
+- Indent and outdent Markdown lines with Tab and Shift+Tab in source mode. Tab in plain paragraphs no longer moves focus out of the editor.
+- Preserve code line breaks after paste and native editing, add a copy button and language control to code blocks, and show the fold control only for code longer than six lines.
+- Add an image context menu: reveal, open, or copy the path of local images; open or copy the address of remote images.
+- Detect edits made by other programs to the open document on macOS, Windows, and Electron. Clean documents reload while keeping their scroll position; documents with unsaved changes show a bar to load the disk version or keep local edits.
 - Scan local workspaces on a background queue in the macOS host with a single directory walk, coalesce bursts of file events into one follow-up scan, and cache first-level headings by file size and modification date.
 - Ignore hidden paths such as `.git` and `.DS_Store` in the macOS FSEvents and Electron watchers. Electron fallback polling now rescans only when a lightweight metadata signature changes.
 - Rebuild the knowledge graph only when workspace file metadata changes or the active document's title or links change, and re-render the file tree only when the active entry's label changes while typing.

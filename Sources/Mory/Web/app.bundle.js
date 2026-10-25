@@ -1142,6 +1142,7 @@ let markdownNormalizationFrame = 0;
 let documentAssetTimer = 0;
 let documentAssetRequest = 0;
 let contextEntry = null;
+let contextImage = null;
 let tableResize = null;
 const editorHistoryLimit = 100;
 const editorHistoryGroupWindow = 800;
@@ -1245,6 +1246,12 @@ const englishText = {
   "收起源码": "Collapse source", "展开源码": "Expand source", "放大编辑框": "Expand editor", "退出放大": "Exit expanded view",
   "折叠标题内容": "Collapse section", "展开标题内容": "Expand section",
   "折叠代码块": "Collapse code block", "展开代码块": "Expand code block",
+  "用默认应用打开": "Open in Default App", "复制图片路径": "Copy Image Path", "在浏览器中打开": "Open in Browser", "复制图片地址": "Copy Image Address",
+  "图片路径已复制": "Image path copied", "图片地址已复制": "Image address copied",
+  "已载入其他程序的修改": "Loaded changes made by another app", "此文稿已被其他程序修改，而你还有未保存的修改。": "Another app changed this document while you have unsaved edits.",
+  "载入磁盘版本": "Load disk version", "保留我的修改": "Keep my edits",
+  "复制代码": "Copy code", "语言": "Language", "代码语言": "Code language", "设置代码语言": "Set code language",
+  "名称（可选）": "Name (optional)", "代码片段名称（可选）": "Snippet name (optional)", "已复制": "Copied", "复制失败：{error}": "Copy failed: {error}",
   "未打开工作区": "No workspace open", "打开的文稿": "Open documents", "选择工作区以浏览目录": "Choose a workspace to browse its files",
   "恢复的文稿.md": "Recovered note.md", "无法打开工作区，请检查目录是否存在或从最近记录中移除。": "Unable to open workspace. Check its location or remove it from recent entries.",
   "无法保存恢复副本，请及时保存文稿。": "Unable to store recovery copies. Please save your documents.",
@@ -1454,6 +1461,7 @@ function renderDocument(document, announce = false) {
   state.markdown = document.markdown;
   state.dirty = document.dirty;
   state.titleTouched = false;
+  updateDiskChangeBar(document);
   sourceEditor.value = state.markdown;
   write.innerHTML = markdownToHTML(state.markdown) || "<p><br></p>";
   refreshOrderedListCounters(write);
@@ -1563,14 +1571,87 @@ function openDocument(payload = {}) {
   if (document) {
     document.name = name;
     document.markdown = markdown;
+    document.diskMarkdown = markdown;
     document.dirty = false;
     document.assets = payload.assets && typeof payload.assets === "object" ? payload.assets : document.assets || {};
+    delete document.diskConflict;
     delete document.editorHistory;
   } else {
-    document = { id: nextDocumentId(), name, path, markdown, dirty: false, createdAt, assets: payload.assets && typeof payload.assets === "object" ? payload.assets : {} };
+    document = { id: nextDocumentId(), name, path, markdown, diskMarkdown: markdown, dirty: false, createdAt, assets: payload.assets && typeof payload.assets === "object" ? payload.assets : {} };
     state.documents.push(document);
   }
   activateDocument(document.id, { announce: true, notifyHost: true });
+}
+
+// Replaces a document with its disk content while keeping the reading position.
+function reloadDocumentFromDisk(document, markdown) {
+  document.markdown = markdown;
+  document.diskMarkdown = markdown;
+  document.dirty = false;
+  delete document.diskConflict;
+  delete document.editorHistory;
+  if (document !== activeDocument()) {
+    renderFiles();
+    persistRecovery();
+    return;
+  }
+  const scrollTop = editorScroll.scrollTop;
+  const sourceScrollTop = sourceEditor.scrollTop;
+  renderDocument(document);
+  editorScroll.scrollTop = scrollTop;
+  sourceEditor.scrollTop = sourceScrollTop;
+  notifyDocumentSelected(document);
+  persistRecovery();
+}
+
+// Hosts report the disk content of the open document after another program may have changed it.
+// Clean documents follow the disk; unsaved edits are never replaced without the user's choice.
+function documentChangedOnDisk(payload = {}) {
+  const path = typeof payload.path === "string" ? payload.path : "";
+  const markdown = typeof payload.markdown === "string" ? payload.markdown : null;
+  const document = path ? state.documents.find(item => item.path === path) : null;
+  if (!document || markdown === null) return false;
+  if (markdown === document.diskMarkdown || markdown === document.diskConflict) return false;
+  const current = documentSnapshot(document.id)?.markdown ?? document.markdown;
+  const unsaved = document.dirty || (document === activeDocument() && writeComposing);
+  // Matching content includes this application's own saves; recovered drafts adopt the current disk baseline.
+  if (markdown === current || (unsaved && typeof document.diskMarkdown !== "string")) {
+    document.diskMarkdown = markdown;
+    if (markdown === current) delete document.diskConflict;
+    if (document === activeDocument()) updateDiskChangeBar(document);
+    return false;
+  }
+  if (unsaved) {
+    document.diskConflict = markdown;
+    if (document === activeDocument()) updateDiskChangeBar(document);
+    return true;
+  }
+  reloadDocumentFromDisk(document, markdown);
+  if (document === activeDocument()) toast(localized("已载入其他程序的修改"));
+  return true;
+}
+
+function updateDiskChangeBar(document = activeDocument()) {
+  const bar = $("#disk-change-bar");
+  if (!bar) return;
+  bar.hidden = typeof document?.diskConflict !== "string";
+}
+
+function resolveDiskConflict(action) {
+  const document = activeDocument();
+  if (typeof document?.diskConflict !== "string") return;
+  const markdown = document.diskConflict;
+  if (action === "reload") {
+    reloadDocumentFromDisk(document, markdown);
+    toast(localized("已载入其他程序的修改"));
+  } else {
+    // Keeping local edits accepts this disk version as the base the next save overwrites.
+    document.diskMarkdown = markdown;
+    delete document.diskConflict;
+    updateDiskChangeBar(document);
+    persistRecovery();
+  }
+  (state.sourceMode ? sourceEditor : write).focus({ preventScroll: true });
 }
 
 function isLocalDocumentImage(source) {
@@ -1795,6 +1876,53 @@ function textOffsetWithin(element, node, offset) {
     return 0;
   }
   return range.toString().replaceAll(caretMarker, "").length;
+}
+
+// Reads literal code text, mapping native BR and DIV line nodes to newlines.
+// Returns text offsets for selection points inside code, or null for points outside it.
+function readCodeSource(code, points = []) {
+  let source = "";
+  // Block line nodes request one line break before the next emitted content.
+  let pendingBreak = false;
+  let hasLine = false;
+  const offsets = points.map(() => null);
+  const flush = () => {
+    if (pendingBreak && hasLine) source += "\n";
+    pendingBreak = false;
+    hasLine = true;
+  };
+  const mark = (node, index) => points.forEach((point, pointIndex) => {
+    if (offsets[pointIndex] === null && point.node === node && point.offset === index) offsets[pointIndex] = source.length;
+  });
+  const visit = node => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const value = node.nodeValue || "";
+      if (value) flush();
+      points.forEach((point, pointIndex) => {
+        if (offsets[pointIndex] === null && point.node === node) {
+          offsets[pointIndex] = source.length + value.slice(0, point.offset).replaceAll(caretMarker, "").length;
+        }
+      });
+      source += value.replaceAll(caretMarker, "");
+      return;
+    }
+    if (node.nodeName === "BR") {
+      flush();
+      // A trailing BR only keeps its line editable; it does not start another line.
+      if (node.nextSibling) source += "\n";
+      return;
+    }
+    const lineBlock = node !== code && /^(DIV|P)$/.test(node.nodeName);
+    if (lineBlock) pendingBreak = true;
+    node.childNodes.forEach((child, index) => {
+      mark(node, index);
+      visit(child);
+    });
+    mark(node, node.childNodes.length);
+    if (lineBlock) pendingBreak = true;
+  };
+  visit(code);
+  return { source, offsets };
 }
 
 function textPointAtOffset(element, offset) {
@@ -3325,6 +3453,38 @@ function updateCodeFoldButton(block, button) {
   button.setAttribute("aria-expanded", String(expanded));
 }
 
+// Code at or below this many lines is short enough that folding saves no space.
+const codeFoldMinimumLines = 6;
+
+function codeLineCount(block) {
+  const code = block.querySelector("code") || block;
+  const source = readCodeSource(code).source.replace(/\n$/, "");
+  return source ? source.split("\n").length : 0;
+}
+
+function setCodeFolded(block, folded) {
+  block.classList.toggle("is-code-folded", folded);
+  // Keep all code in the DOM for serialization, but prevent edits to clipped lines.
+  if (folded) {
+    const selection = window.getSelection();
+    if (selection?.rangeCount && selection.getRangeAt(0).intersectsNode(block)) selection.removeAllRanges();
+    block.contentEditable = "false";
+    const meta = block.nextElementSibling;
+    if (meta?.matches(".code-meta")) meta.hidden = true;
+    block.scrollTop = 0;
+  } else block.removeAttribute("contenteditable");
+}
+
+function updateCodeLanguageButton(block, button) {
+  const language = block.dataset.language?.trim();
+  const label = language || localized("语言");
+  if (button.textContent !== label) button.textContent = label;
+  button.classList.toggle("is-empty", !language);
+  const action = localized("设置代码语言");
+  button.title = action;
+  button.setAttribute("aria-label", language ? `${action}: ${language}` : action);
+}
+
 function enhanceCodeBlocks(root = write) {
   root.querySelectorAll(":scope > .code-tools").forEach(tools => {
     if (!tools.nextElementSibling?.matches("pre")) tools.remove();
@@ -3343,16 +3503,7 @@ function enhanceCodeBlocks(root = write) {
       button.addEventListener("click", event => {
         event.preventDefault();
         event.stopPropagation();
-        const folded = block.classList.toggle("is-code-folded");
-        // Keep all code in the DOM for serialization, but prevent edits to clipped lines.
-        if (folded) {
-          const selection = window.getSelection();
-          if (selection?.rangeCount && selection.getRangeAt(0).intersectsNode(block)) selection.removeAllRanges();
-          block.contentEditable = "false";
-          const meta = block.nextElementSibling;
-          if (meta?.matches(".code-meta")) meta.hidden = true;
-          block.scrollTop = 0;
-        } else block.removeAttribute("contenteditable");
+        setCodeFolded(block, !block.classList.contains("is-code-folded"));
         updateCodeFoldButton(block, button);
         button.focus({ preventScroll: true });
       });
@@ -3361,8 +3512,77 @@ function enhanceCodeBlocks(root = write) {
       tools.append(button);
       block.before(tools);
     }
-    updateCodeFoldButton(block, tools.querySelector(".code-fold-toggle"));
+    let copyButton = tools.querySelector(".code-copy-button");
+    if (!copyButton) {
+      copyButton = document.createElement("button");
+      copyButton.type = "button";
+      copyButton.className = "code-copy-button";
+      copyButton.innerHTML = '<svg aria-hidden="true"><use href="#i-copy"/></svg>';
+      // Keep the editor selection; copying must not move the caret or mark the note dirty.
+      copyButton.addEventListener("mousedown", event => event.preventDefault());
+      copyButton.addEventListener("click", event => {
+        event.preventDefault();
+        event.stopPropagation();
+        void copyCodeBlock(block, copyButton);
+      });
+      copyButton.addEventListener("keydown", event => event.stopPropagation());
+      tools.prepend(copyButton);
+    }
+    let languageButton = tools.querySelector(".code-language-button");
+    if (!languageButton) {
+      languageButton = document.createElement("button");
+      languageButton.type = "button";
+      languageButton.className = "code-language-button";
+      languageButton.addEventListener("click", event => {
+        event.preventDefault();
+        event.stopPropagation();
+        showCodeMeta(block);
+      });
+      languageButton.addEventListener("keydown", event => event.stopPropagation());
+      tools.prepend(languageButton);
+    }
+    const foldButton = tools.querySelector(".code-fold-toggle");
+    const foldable = codeLineCount(block) > codeFoldMinimumLines;
+    if (!foldable && block.classList.contains("is-code-folded")) setCodeFolded(block, false);
+    foldButton.hidden = !foldable;
+    updateCodeFoldButton(block, foldButton);
+    updateCodeCopyButton(copyButton);
+    updateCodeLanguageButton(block, languageButton);
+    const meta = block.nextElementSibling;
+    if (meta?.matches(".code-meta")) updateCodeMetaLabels(meta);
   });
+}
+
+function updateCodeCopyButton(button) {
+  const label = localized(button.classList.contains("is-copied") ? "已复制" : "复制代码");
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  button.querySelector("use")?.setAttribute("href", button.classList.contains("is-copied") ? "#i-check" : "#i-copy");
+}
+
+function copyTextToClipboard(text) {
+  // Desktop hosts own the system clipboard; the browser API covers hostless previews.
+  return hostRequest("copyText", { text }).catch(() => navigator.clipboard.writeText(text));
+}
+
+async function copyCodeBlock(block, button) {
+  const code = block.querySelector("code") || block;
+  // Match Markdown serialization: the closing fence owns the final line break.
+  const text = readCodeSource(code).source.replace(/\n$/, "");
+  try {
+    await copyTextToClipboard(text);
+  } catch (error) {
+    toast(localized("复制失败：{error}", { error: error.message }));
+    return false;
+  }
+  clearTimeout(Number(button.dataset.copyTimer));
+  button.classList.add("is-copied");
+  updateCodeCopyButton(button);
+  button.dataset.copyTimer = String(setTimeout(() => {
+    button.classList.remove("is-copied");
+    updateCodeCopyButton(button);
+  }, 1500));
+  return true;
 }
 
 function paragraphAfterCode(block) {
@@ -3378,7 +3598,8 @@ function paragraphAfterCode(block) {
 
 function exitCodeBlock(block) {
   const code = block.querySelector("code") || block;
-  const value = (code.innerText || code.textContent || "").replaceAll(caretMarker, "").replace(/\n+$/, "");
+  // Drop trailing blank lines, including indentation carried over by Enter.
+  const value = readCodeSource(code).source.replace(/(\n[\t ]*)+$/, "");
   code.textContent = value;
   if (!value) code.append(document.createElement("br"));
   const meta = block.nextElementSibling?.matches(".code-meta") ? block.nextElementSibling : null;
@@ -3407,20 +3628,21 @@ function ensureCodeMeta(block) {
   panel.hidden = true;
   const language = document.createElement("input");
   language.className = "code-language";
-  language.placeholder = "语言";
-  language.setAttribute("aria-label", "代码语言");
   const title = document.createElement("input");
   title.className = "code-title";
-  title.placeholder = "名称（可选）";
-  title.setAttribute("aria-label", "代码片段名称（可选）");
   panel.append(language, title);
   block.after(panel);
+  updateCodeMetaLabels(panel);
 
   const updateMetadata = () => {
+    const previousLanguage = block.dataset.language || "";
     block.dataset.language = language.value.trim();
     const name = title.value.trim();
     if (name) block.dataset.title = name;
     else delete block.dataset.title;
+    if (block.dataset.language !== previousLanguage) refreshCodeHighlight(block);
+    const languageButton = block.previousElementSibling?.querySelector(".code-language-button");
+    if (languageButton) updateCodeLanguageButton(block, languageButton);
     syncFromWrite();
   };
   panel.addEventListener("input", event => {
@@ -3434,14 +3656,40 @@ function ensureCodeMeta(block) {
       event.stopPropagation();
       (event.target === language ? title : language).focus();
       (event.target === language ? title : language).select();
-    } else if (event.key === "ArrowDown") {
+    } else if (event.key === "ArrowDown" || event.key === "Enter") {
       event.preventDefault();
       event.stopPropagation();
       updateMetadata();
       exitCodeBlock(block);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      panel.hidden = true;
+      write.focus({ preventScroll: true });
     }
   });
   return panel;
+}
+
+function updateCodeMetaLabels(panel) {
+  const language = panel.querySelector(".code-language");
+  const title = panel.querySelector(".code-title");
+  language.placeholder = localized("语言");
+  language.setAttribute("aria-label", localized("代码语言"));
+  title.placeholder = localized("名称（可选）");
+  title.setAttribute("aria-label", localized("代码片段名称（可选）"));
+}
+
+// Rebuilds highlighting after a language change without moving the editor selection.
+function refreshCodeHighlight(block) {
+  const code = block.querySelector("code");
+  if (!code) return false;
+  const source = readCodeSource(code).source;
+  code.textContent = source;
+  code.className = "";
+  delete code.dataset.moryHighlighted;
+  delete block.dataset.highlighted;
+  return highlightCodeBlock(block, true);
 }
 
 function showCodeMeta(block) {
@@ -3450,6 +3698,7 @@ function showCodeMeta(block) {
   const title = panel.querySelector(".code-title");
   language.value = block.dataset.language || "";
   title.value = block.dataset.title || "";
+  updateCodeMetaLabels(panel);
   panel.hidden = false;
   language.focus();
   language.select();
@@ -3514,7 +3763,7 @@ function closeFencedCodeAtCaret(block) {
   } catch {
     return false;
   }
-  const text = (code.innerText || code.textContent || "").replaceAll(caretMarker, "").replace(/\n$/, "");
+  const text = readCodeSource(code).source.replace(/\n$/, "");
   const lastLine = text.slice(text.lastIndexOf("\n") + 1);
   const fence = { marker: block.dataset.fenceMarker || "```" };
   if (tail.toString() || !isMarkdownFenceEnd(lastLine, fence)) return false;
@@ -3920,6 +4169,64 @@ async function createWorkspaceFolder(relativePath) {
   } catch (error) {
     toast(`${localized("创建目录失败")}：${error.message}`, 3200);
     $("#new-folder-input").focus();
+  }
+}
+
+// Image sources that the desktop host can resolve to a file beside the document.
+function documentImageSource(image) {
+  const source = image.dataset.markdownSrc || image.getAttribute("src") || "";
+  if (/^https?:\/\//i.test(source)) return { kind: "remote", source };
+  if (!source || /^(?:data|blob|file):|^\/\//i.test(source)) return null;
+  return { kind: "local", source };
+}
+
+function closeImageContextMenu() {
+  contextImage = null;
+  const menu = $("#image-context-menu");
+  menu.classList.remove("is-open");
+  menu.setAttribute("aria-hidden", "true");
+}
+
+function showImageContextMenu(event) {
+  const image = event.target instanceof Element ? event.target.closest("img") : null;
+  const target = image && write.contains(image) ? documentImageSource(image) : null;
+  if (!target) return false;
+  event.preventDefault();
+  event.stopPropagation();
+  closeFileContextMenu();
+  contextImage = target;
+  const menu = $("#image-context-menu");
+  menu.querySelectorAll("[data-image-kind]").forEach(button => {
+    button.hidden = button.dataset.imageKind !== target.kind;
+  });
+  menu.classList.add("is-open");
+  menu.setAttribute("aria-hidden", "false");
+  const bounds = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - bounds.width - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(event.clientY, window.innerHeight - bounds.height - 8))}px`;
+  menu.querySelector("button:not([hidden])")?.focus({ preventScroll: true });
+  return true;
+}
+
+async function handleImageContextAction(action) {
+  const target = contextImage;
+  closeImageContextMenu();
+  if (!target) return;
+  try {
+    if (action === "open-link") await hostRequest("openExternal", { url: target.source });
+    if (action === "copy-link") {
+      await copyTextToClipboard(target.source);
+      toast(localized("图片地址已复制"));
+    }
+    if (["reveal", "open", "copy-path"].includes(action)) {
+      const result = await hostRequest("documentImageFile", { src: target.source, action: action === "copy-path" ? "resolve" : action });
+      if (action === "copy-path") {
+        await copyTextToClipboard(String(result?.path || ""));
+        toast(localized("图片路径已复制"));
+      }
+    }
+  } catch (error) {
+    toast(`${localized("操作失败")}：${error.message}`, 3200);
   }
 }
 
@@ -4957,7 +5264,8 @@ function persistRecovery() {
   if (!sessionInitialized) return;
   try {
     localStorage.setItem("mory.recovery", JSON.stringify(state.documents.filter(item => item.dirty).map(item => ({
-      name: item.name, path: item.path || "", markdown: item.markdown, createdAt: item.createdAt
+      name: item.name, path: item.path || "", markdown: item.markdown, createdAt: item.createdAt,
+      ...(typeof item.diskMarkdown === "string" ? { diskMarkdown: item.diskMarkdown } : {})
     }))));
     recoveryWarningShown = false;
   } catch {
@@ -4995,7 +5303,11 @@ function initializeSession(payload = {}) {
   setWorkspaceState({ ...payload, activeId: "" });
   for (const item of Array.isArray(recovery) ? recovery : []) {
     if (typeof item?.markdown !== "string") continue;
-    state.documents.push({ id: nextDocumentId(), name: String(item.name || localized("恢复的文稿.md")), path: typeof item.path === "string" ? item.path : "", markdown: item.markdown, createdAt: Number(item.createdAt) || Date.now(), dirty: true, assets: {} });
+    state.documents.push({
+      id: nextDocumentId(), name: String(item.name || localized("恢复的文稿.md")), path: typeof item.path === "string" ? item.path : "", markdown: item.markdown,
+      ...(typeof item.diskMarkdown === "string" ? { diskMarkdown: item.diskMarkdown } : {}),
+      createdAt: Number(item.createdAt) || Date.now(), dirty: true, assets: {}
+    });
   }
   loadMarkdown(!seenIntroduction && !payload.hasWorkspaceRecords && !recovery.length ? defaultMarkdown : "");
   localStorage.setItem("mory.introductionSeen", "true");
@@ -5603,7 +5915,7 @@ function highlightCodeBlock(block, force = false) {
   // Highlighting replaces text nodes, invalidating an in-progress mouse drag anchor.
   if (!force && selection?.rangeCount && (selection.isCollapsed
     ? block.contains(selection.anchorNode) : selection.getRangeAt(0).intersectsNode(block))) return false;
-  const source = code.textContent || "";
+  const source = readCodeSource(code).source;
   const language = normalizedCodeLanguage(block.dataset.language);
   try {
     const result = language && window.hljs.getLanguage(language)
@@ -5629,11 +5941,11 @@ function clearCodeHighlight(block) {
   const code = block?.querySelector?.("code");
   if (!code || code.dataset.moryHighlighted !== "true") return false;
   const selection = window.getSelection();
-  const bookmark = (node, offset) => code.contains(node)
-    ? { offset: textOffsetWithin(code, node, offset) } : { node, offset };
-  const anchor = selection?.rangeCount ? bookmark(selection.anchorNode, selection.anchorOffset) : null;
-  const focus = selection?.rangeCount ? bookmark(selection.focusNode, selection.focusOffset) : null;
-  const source = code.textContent || "";
+  const points = selection?.rangeCount
+    ? [{ node: selection.anchorNode, offset: selection.anchorOffset }, { node: selection.focusNode, offset: selection.focusOffset }]
+    : [];
+  const { source, offsets } = readCodeSource(code, points);
+  const [anchor, focus] = points.map((point, index) => offsets[index] === null ? point : { offset: offsets[index] });
   code.textContent = source;
   code.className = "";
   delete code.dataset.moryHighlighted;
@@ -5661,9 +5973,10 @@ function pasteTextIntoCode(text) {
   if (!block?.matches("pre") || !block.isContentEditable || writeBlockForNode(range.endContainer) !== block) return false;
   const code = block.querySelector("code") || block;
   if (!code.contains(range.startContainer) || !code.contains(range.endContainer)) return false;
-  const start = textOffsetWithin(code, range.startContainer, range.startOffset);
-  const end = textOffsetWithin(code, range.endContainer, range.endOffset);
-  const source = (code.textContent || "").replaceAll(caretMarker, "");
+  const { source, offsets: [start, end] } = readCodeSource(code, [
+    { node: range.startContainer, offset: range.startOffset },
+    { node: range.endContainer, offset: range.endOffset }
+  ]);
   const inserted = text.replace(/\r\n?/g, "\n");
   beginEditorHistory("paste-code", { force: true });
   clearCodeHighlight(block);
@@ -5675,6 +5988,140 @@ function pasteTextIntoCode(text) {
   syncFromWrite();
   highlightCodeBlocks(write);
   updateFocusLine();
+  return true;
+}
+
+function codeIndentUnit(source) {
+  const lines = source.split("\n");
+  if (lines.some(line => line.startsWith("\t"))) return "\t";
+  // Follow the common step of existing space indentation so Tab matches the snippet's style.
+  const divisor = (left, right) => right ? divisor(right, left % right) : left;
+  const width = lines.map(line => /^ +(?=\S)/.exec(line)?.[0].length ?? 0).reduce(divisor, 0) || 4;
+  return " ".repeat(Math.min(Math.max(width, 2), 8));
+}
+
+/**
+ * Applies editor-style Tab indentation to literal code text.
+ * A caret or single-line selection inserts one unit; a multiline selection indents every touched line.
+ * Outdent removes up to one unit from every touched line. Returns the new text and selection offsets.
+ */
+function indentCodeText(source, start, end, outdent) {
+  const unit = codeIndentUnit(source);
+  const lineStart = source.lastIndexOf("\n", start - 1) + 1;
+  const multiline = source.slice(start, end).includes("\n");
+  if (!outdent && !multiline) {
+    return { source: source.slice(0, start) + unit + source.slice(end), start: start + unit.length, end: start + unit.length };
+  }
+  // A selection ending at a line start does not include that line, matching common code editors.
+  const lastIndex = end > start && source[end - 1] === "\n" ? end - 1 : end;
+  const lineEndIndex = source.indexOf("\n", lastIndex);
+  const lineEnd = lineEndIndex < 0 ? source.length : lineEndIndex;
+  let nextStart = start;
+  let nextEnd = end;
+  let offset = lineStart;
+  const lines = source.slice(lineStart, lineEnd).split("\n").map(line => {
+    const at = offset;
+    offset += line.length + 1;
+    if (outdent) {
+      const removed = line.startsWith("\t") ? 1 : Math.min(/^ */.exec(line)[0].length, unit === "\t" ? 4 : unit.length);
+      nextStart -= Math.max(0, Math.min(removed, start - at));
+      nextEnd -= Math.max(0, Math.min(removed, end - at));
+      return line.slice(removed);
+    }
+    if (!line.trim()) return line;
+    // Offsets after the inserted unit move with their text; a line-start boundary keeps the whole line selected.
+    if (at < start) nextStart += unit.length;
+    if (at < end) nextEnd += unit.length;
+    return unit + line;
+  });
+  return { source: source.slice(0, lineStart) + lines.join("\n") + source.slice(lineEnd), start: nextStart, end: nextEnd };
+}
+
+function selectCodeText(code, start, end) {
+  const [startNode, startOffset] = textPointAtOffset(code, start);
+  const [endNode, endOffset] = textPointAtOffset(code, end);
+  const range = document.createRange();
+  range.setStart(startNode, startOffset);
+  range.setEnd(endNode, endOffset);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+}
+
+/** Returns the editable code block containing the whole selection, with selection offsets in its literal text. */
+function selectedCodeText() {
+  const selection = window.getSelection();
+  if (state.sourceMode || !selection?.rangeCount) return null;
+  const range = selection.getRangeAt(0);
+  const element = range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer : range.startContainer.parentElement;
+  const block = element?.closest?.("pre");
+  if (!block || !write.contains(block) || !block.isContentEditable) return null;
+  const code = block.querySelector("code") || block;
+  if (!code.contains(range.startContainer) || !code.contains(range.endContainer)) return null;
+  const { source, offsets: [start, end] } = readCodeSource(code, [
+    { node: range.startContainer, offset: range.startOffset },
+    { node: range.endContainer, offset: range.endOffset }
+  ]);
+  return start === null || end === null ? null : { block, code, source, start, end };
+}
+
+function replaceCodeText({ block, code }, next, group) {
+  beginEditorHistory(group, { force: true });
+  clearCodeHighlight(block);
+  code.textContent = next.source;
+  selectCodeText(code, next.start, next.end);
+  pendingCodeExit = null;
+  syncFromWrite();
+  updateFocusLine();
+}
+
+function handleCodeTab(event) {
+  if (event.key !== "Tab" || event.metaKey || event.ctrlKey || event.altKey) return false;
+  const selected = selectedCodeText();
+  if (!selected) return false;
+  event.preventDefault();
+  const next = indentCodeText(selected.source, selected.start, selected.end, event.shiftKey);
+  if (next.source !== selected.source) replaceCodeText(selected, next, event.shiftKey ? "code-outdent" : "code-indent");
+  return true;
+}
+
+/** Deletes one indentation unit when Backspace is pressed inside a line's leading spaces. */
+function handleCodeBackspace(event) {
+  if (event.key !== "Backspace" || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return false;
+  const selected = selectedCodeText();
+  if (!selected || selected.start !== selected.end) return false;
+  const { source, start } = selected;
+  const before = source.slice(source.lastIndexOf("\n", start - 1) + 1, start);
+  const unit = codeIndentUnit(source);
+  if (!before || unit === "\t" || /[^ ]/.test(before)) return false;
+  event.preventDefault();
+  const width = before.length % unit.length || unit.length;
+  replaceCodeText(selected, { source: source.slice(0, start - width) + source.slice(start), start: start - width, end: start - width }, "code-outdent");
+  return true;
+}
+
+/** Selects the current code block first, so a second select-all can still select the document. */
+function handleCodeSelectAll(event) {
+  if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey || event.key.toLowerCase() !== "a") return false;
+  const selected = selectedCodeText();
+  if (!selected || (selected.start === 0 && selected.end === selected.source.length)) return false;
+  event.preventDefault();
+  const range = document.createRange();
+  range.selectNodeContents(selected.code);
+  window.getSelection().removeAllRanges();
+  window.getSelection().addRange(range);
+  return true;
+}
+
+function handleSourceTab(event) {
+  if (!state.sourceMode || event.target !== sourceEditor || event.key !== "Tab" || event.metaKey || event.ctrlKey || event.altKey) return false;
+  event.preventDefault();
+  const next = indentCodeText(sourceEditor.value, sourceEditor.selectionStart, sourceEditor.selectionEnd, event.shiftKey);
+  if (next.source === sourceEditor.value) return true;
+  beginEditorHistory(event.shiftKey ? "source-outdent" : "source-indent", { force: true });
+  sourceEditor.value = next.source;
+  sourceEditor.setSelectionRange(next.start, next.end);
+  syncFromSource(false);
   return true;
 }
 
@@ -6226,8 +6673,12 @@ function insertCodeLineBreak(block) {
   const code = block.querySelector("code") || block;
   if (!code.contains(selection.anchorNode)) return false;
   const range = selection.getRangeAt(0);
+  const { source, offsets: [offset] } = readCodeSource(code, [{ node: range.startContainer, offset: range.startOffset }]);
+  // New lines continue the current line's indentation, as in code editors.
+  const indent = /^[\t ]*/.exec(source.slice(source.lastIndexOf("\n", (offset ?? source.length) - 1) + 1, offset ?? source.length))[0];
   range.deleteContents();
-  const newline = document.createElement("br");
+  // Literal newline text keeps code lines intact for every text-based code reader.
+  const newline = document.createTextNode(`\n${indent}`);
   const boundary = document.createTextNode(caretMarker);
   const fragment = document.createDocumentFragment();
   fragment.append(newline, boundary);
@@ -6391,7 +6842,15 @@ function handleEditorShortcut(event) {
     }
     return;
   }
+  if (handleCodeSelectAll(event) || handleCodeTab(event) || handleCodeBackspace(event)) return;
   if (handleListTab(event)) return;
+  if (handleSourceTab(event)) return;
+  if (!command && event.key === "Tab" && !event.altKey && event.target === write) {
+    // Keep keyboard focus in the document; Tab has no Markdown meaning in plain paragraphs.
+    // Embedded fields such as code metadata keep native Tab navigation.
+    event.preventDefault();
+    return;
+  }
   if (command && event.shiftKey && event.key === "Backspace" && selectedTable) {
     event.preventDefault();
     deleteTableRow(selectedTable);
@@ -6891,6 +7350,13 @@ $("#new-folder-form").addEventListener("submit", event => {
 $("#new-folder-input").addEventListener("keydown", event => {
   if (event.key === "Escape") { event.preventDefault(); toggleNewFolderForm(false); }
 });
+$("#disk-change-reload").addEventListener("click", () => resolveDiskConflict("reload"));
+$("#disk-change-keep").addEventListener("click", () => resolveDiskConflict("keep"));
+$("#image-context-menu").addEventListener("click", event => {
+  const action = event.target.closest("button[data-image-action]")?.dataset.imageAction;
+  if (action) void handleImageContextAction(action);
+});
+write.addEventListener("contextmenu", showImageContextMenu);
 $("#file-context-menu").addEventListener("click", event => {
   const action = event.target.closest("button[data-entry-action]")?.dataset.entryAction;
   if (action) void handleFileContextAction(action);
@@ -7181,7 +7647,7 @@ document.addEventListener("keydown", event => {
       event.preventDefault();
       return;
     }
-    closePathSuggestions(); closeInlineColorPopover(); closeFileContextMenu(); toggleEntryOperation(false); closeImagePreview(); closeQuickOpen(); closeFind(); closeCalendarQuickEditor(); closeCalendarEditor(); togglePreferences(false); toggleExportDialog(false); toggleKnowledgeGraph(false);
+    closePathSuggestions(); closeInlineColorPopover(); closeFileContextMenu(); closeImageContextMenu(); toggleEntryOperation(false); closeImagePreview(); closeQuickOpen(); closeFind(); closeCalendarQuickEditor(); closeCalendarEditor(); togglePreferences(false); toggleExportDialog(false); toggleKnowledgeGraph(false);
   }
 });
 document.addEventListener("mousedown", event => {
@@ -7231,6 +7697,7 @@ document.addEventListener("pointercancel", event => {
 document.addEventListener("pointerdown", event => {
   if (!event.target.closest("#path-suggestions, #write")) closePathSuggestions();
   if (!event.target.closest("#file-context-menu")) closeFileContextMenu();
+  if (!event.target.closest("#image-context-menu")) closeImageContextMenu();
   if (!event.target.closest(".calendar-quick-editor, .calendar-day-cell")) closeCalendarQuickEditor();
 });
 
@@ -7268,6 +7735,7 @@ window.Mory = {
   showIntroduction: () => createUntitledDocument(defaultMarkdown),
   loadMarkdown: markdown => loadMarkdown(markdown, true),
   openDocument,
+  documentChangedOnDisk,
   newDocument: () => createUntitledDocument(),
   newFolder: () => toggleNewFolderForm(true),
   closeDocument,
@@ -7307,6 +7775,10 @@ window.Mory = {
         }
       }
       if (payload?.assets && typeof payload.assets === "object") document.assets = payload.assets;
+      // The saved file is the new disk baseline for detecting edits by other programs.
+      const written = typeof payload?.markdown === "string" ? payload.markdown : payload?.sourceMarkdown;
+      if (typeof written === "string") document.diskMarkdown = written;
+      delete document.diskConflict;
       document.dirty = newerEdits;
       state.documents = state.documents.filter(item => item === document || item.dirty || item === activeDocument() || !document.path || item.path !== document.path);
       const orderIndex = state.manualFileOrder.indexOf(previousOrderKey);
@@ -7322,6 +7794,7 @@ window.Mory = {
       $("#save-state").textContent = localized(newerEdits ? "未保存" : "已保存");
       $("#save-state").classList.toggle("is-visible", newerEdits);
       notifyDocumentSelected(document);
+      updateDiskChangeBar();
     }
     renderFiles();
     persistRecovery();

@@ -53,6 +53,9 @@ async function runNativeCodeInteractions(window) {
       `${backward ? 'Backward' : 'Forward'} mouse drag selected text outside its endpoints`);
   }
   window.webContents.focus();
+  // Only code longer than six lines exposes a fold control.
+  const foldable = Array.from({ length: 8 }, (_, index) => `const value${index} = ${index};`).join('\n');
+  await evaluate(`window.Mory.loadMarkdown(${JSON.stringify('```js\n' + foldable + '\n```')})`);
   await evaluate("document.querySelector('.code-fold-toggle').focus()");
   window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Enter' });
   // sendInputEvent separates key transitions from the native character event.

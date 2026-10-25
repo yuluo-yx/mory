@@ -28,6 +28,7 @@ type fakePlatform struct {
 	aboutLocales     []string
 	revealed         []string
 	opened           []string
+	openedFiles      []string
 	urls             []string
 	copiedTexts      []string
 	recent           []string
@@ -131,6 +132,10 @@ func (platform *fakePlatform) Reveal(path string) error {
 }
 func (platform *fakePlatform) OpenDirectory(path string) error {
 	platform.opened = append(platform.opened, path)
+	return nil
+}
+func (platform *fakePlatform) OpenFile(path string) error {
+	platform.openedFiles = append(platform.openedFiles, path)
 	return nil
 }
 func (platform *fakePlatform) OpenURL(url string) error {
@@ -447,6 +452,22 @@ func TestHostWorkspaceRequestMatrixAndMenuActions(t *testing.T) {
 	if _, err := host.Request("documentAssets", map[string]any{"markdown": "![x](note/p.png)"}); err != nil {
 		t.Fatal(err)
 	}
+	image := filepath.Join(root, "note", "p.png")
+	for _, action := range []string{"resolve", "reveal", "open"} {
+		result, err := host.Request("documentImageFile", map[string]any{"src": "./note/p.png", "action": action})
+		if err != nil || result.(map[string]string)["path"] != image {
+			t.Fatalf("document image %s: %#v, %v", action, result, err)
+		}
+	}
+	if len(platform.revealed) != 1 || platform.revealed[0] != image || len(platform.openedFiles) != 1 || platform.openedFiles[0] != image {
+		t.Fatalf("document image actions: revealed %#v, opened %#v", platform.revealed, platform.openedFiles)
+	}
+	for _, source := range []string{"../outside.png", "note/missing.png", "https://example.com/p.png"} {
+		if _, err := host.Request("documentImageFile", map[string]any{"src": source, "action": "reveal"}); err == nil {
+			t.Fatalf("document image %q should fail", source)
+		}
+	}
+	platform.revealed = nil
 	if _, err := host.Request("openExternal", map[string]any{"url": "https://example.com/docs"}); err != nil || len(platform.urls) != 1 {
 		t.Fatalf("open external URL: %v, %#v", err, platform.urls)
 	}
@@ -628,4 +649,59 @@ func TestHostWatcherRefreshesAfterExternalChange(t *testing.T) {
 		}
 	}
 	t.Fatal("external file changes did not trigger a workspace snapshot")
+}
+
+func TestOpenDocumentReportsExternalDiskChanges(t *testing.T) {
+	platform := &fakePlatform{}
+	host := New(platform, t.TempDir(), t.TempDir())
+	note := filepath.Join(t.TempDir(), "note.md")
+	if err := os.WriteFile(note, []byte("first"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reports := func() []string {
+		platform.mu.Lock()
+		defer platform.mu.Unlock()
+		var matched []string
+		for _, script := range platform.scripts {
+			if strings.HasPrefix(script, "window.Mory.documentChangedOnDisk(") {
+				matched = append(matched, script)
+			}
+		}
+		return matched
+	}
+	host.mu.Lock()
+	host.currentPath = note
+	host.mu.Unlock()
+	host.checkDocumentDisk()
+	host.checkDocumentDisk()
+	if got := reports(); len(got) != 1 || !strings.Contains(got[0], `"markdown":"first"`) {
+		t.Fatalf("initial report: %#v", got)
+	}
+	// Replace the file as editors with atomic saves do, and make the timestamp change observable.
+	replacement := note + ".tmp"
+	if err := os.WriteFile(replacement, []byte("edited elsewhere"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	later := time.Now().Add(2 * time.Second)
+	if err := os.Chtimes(replacement, later, later); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(replacement, note); err != nil {
+		t.Fatal(err)
+	}
+	host.checkDocumentDisk()
+	if got := reports(); len(got) != 2 || !strings.Contains(got[1], `"markdown":"edited elsewhere"`) {
+		t.Fatalf("external edit report: %#v", got)
+	}
+	if err := os.Remove(note); err != nil {
+		t.Fatal(err)
+	}
+	host.checkDocumentDisk()
+	host.mu.Lock()
+	host.currentPath = ""
+	host.mu.Unlock()
+	host.checkDocumentDisk()
+	if got := reports(); len(got) != 2 {
+		t.Fatalf("missing or unsaved documents must not be reported: %#v", got)
+	}
 }

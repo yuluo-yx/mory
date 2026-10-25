@@ -540,20 +540,42 @@ function markdownImagePaths(markdown) {
   return [...paths];
 }
 
+// Resolves a Markdown image reference with the same rules used to display document assets.
+// Leading slashes address the workspace root; other references are relative to the document.
+function documentImagePath(documentPath, reference, workspaceRoot = path.dirname(documentPath)) {
+  const documentDirectory = path.dirname(documentPath);
+  const configuredRoot = path.resolve(workspaceRoot || documentDirectory);
+  const root = isSameOrDescendant(configuredRoot, documentPath) ? configuredRoot : documentDirectory;
+  const relative = String(reference || "");
+  const workspaceRelative = relative.startsWith("/") || relative.startsWith("\\");
+  const resolved = workspaceRelative
+    ? path.resolve(root, relative.replace(/^[\\/]+/, ""))
+    : path.resolve(documentDirectory, relative);
+  const local = path.relative(root, resolved);
+  if (!relative || local === ".." || local.startsWith(`..${path.sep}`)) {
+    const error = new Error("Path must remain inside the selected directory.");
+    error.code = "MORY_PATH_OUTSIDE";
+    throw error;
+  }
+  return containedPath(root, resolved);
+}
+
+// Locates an existing local image referenced by the current document.
+async function documentImageFile(documentPath, reference, workspaceRoot) {
+  if (!documentPath) throw new Error("请先保存文稿。");
+  let decoded = String(reference || "");
+  try { decoded = decodeURI(decoded); } catch { /* Keep references that are not URI encoded. */ }
+  const resolved = documentImagePath(documentPath, decoded, workspaceRoot);
+  const stat = await fs.stat(resolved).catch(() => null);
+  if (!stat?.isFile() || !IMAGE_EXTENSIONS.has(path.extname(resolved).toLowerCase())) throw new Error("图片文件不存在。");
+  return resolved;
+}
+
 async function loadDocumentAssets(documentPath, markdown, workspaceRoot = path.dirname(documentPath)) {
   const assets = {};
-  const documentDirectory = path.dirname(documentPath);
-  const configuredRoot = path.resolve(workspaceRoot);
-  const root = isSameOrDescendant(configuredRoot, documentPath) ? configuredRoot : documentDirectory;
   for (const relative of markdownImagePaths(markdown)) {
-    const workspaceRelative = relative.startsWith("/") || relative.startsWith("\\");
-    const resolved = workspaceRelative
-      ? path.resolve(root, relative.replace(/^[\\/]+/, ""))
-      : path.resolve(documentDirectory, relative);
-    const local = path.relative(root, resolved);
-    if (local === ".." || local.startsWith(`..${path.sep}`)) continue;
     try {
-      containedPath(root, resolved);
+      const resolved = documentImagePath(documentPath, relative, workspaceRoot);
       const data = await fs.readFile(resolved);
       const mime = mimeForPath(resolved);
       assets[relative.replaceAll("\\", "/")] = `data:${mime};base64,${data.toString("base64")}`;
@@ -644,4 +666,4 @@ function runSidecar(executable, payload) {
   });
 }
 
-module.exports = { compareDocumentsByCreation, copyWorkspaceEntry, createWorkspaceDirectory, createWorkspaceDocument, createWorkspaceManager, importImage, listDirectories, listDocumentImages, listDocuments, loadDocumentAssets, markdownImagePaths, moveWorkspaceEntry, readDocumentImage, readWorkspaceDocuments, relocateDocumentAssets, renameWorkspaceEntry, resolveWorkspaceDirectory, sanitizeSegment, storageWorkspace, validateWorkspace, workspaceEntryPath, workspaceSignature };
+module.exports = { compareDocumentsByCreation, copyWorkspaceEntry, createWorkspaceDirectory, createWorkspaceDocument, createWorkspaceManager, documentImageFile, importImage, listDirectories, listDocumentImages, listDocuments, loadDocumentAssets, markdownImagePaths, moveWorkspaceEntry, readDocumentImage, readWorkspaceDocuments, relocateDocumentAssets, renameWorkspaceEntry, resolveWorkspaceDirectory, sanitizeSegment, storageWorkspace, validateWorkspace, workspaceEntryPath, workspaceSignature };

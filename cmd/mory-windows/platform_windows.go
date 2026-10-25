@@ -145,6 +145,11 @@ func (platform *windowsPlatform) OpenDirectory(path string) error {
 	return exec.Command("explorer.exe", path).Start()
 }
 
+// OpenFile opens a local file with its associated Windows application.
+func (platform *windowsPlatform) OpenFile(path string) error {
+	return exec.Command("explorer.exe", path).Start()
+}
+
 func (platform *windowsPlatform) OpenURL(url string) error {
 	runtime.BrowserOpenURL(platform.context(), url)
 	return nil
