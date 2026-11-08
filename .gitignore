@@ -1,0 +1,6 @@
+/build/
+/.reference/
+/.work/
+/.test-output/
+/coverage.out
+.DS_Store

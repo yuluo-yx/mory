@@ -1,0 +1,18 @@
+{
+  "name": "Mory",
+  "identifier": "io.github.yuluo-yx.mory",
+  "version": "0.1.0",
+  "description": "A thoughtful, local writing space for macOS.",
+  "icon": "resources/icon.png",
+  "license": "MIT",
+  "out": "build",
+  "fileAssociations": [
+    { "ext": ["md", "markdown"], "name": "Markdown Document", "role": "Editor" },
+    { "ext": ["xml"], "name": "DocxXML Document", "role": "Editor" }
+  ],
+  "macos": {
+    "minimumSystemVersion": "13.0",
+    "dmgTitle": "Mory",
+    "infoPlist": { "LSApplicationCategoryType": "public.app-category.productivity" }
+  }
+}

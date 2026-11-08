@@ -1,0 +1,299 @@
+/* Copyright 2026 s1dashu. MIT License. Adapted for Mory. */
+:root {
+  --theme-name: "Feishu";
+  --theme-name-en: "Feishu";
+  --theme-author: "Mory";
+  --theme-description: "Native document typography";
+
+  --theme-base: feishu;
+
+
+  --color-gray: #8f959e;
+  --color-red: #d83931;
+  --color-orange: #de7802;
+  --color-yellow: #dc9b04;
+  --color-green: #2ea121;
+  --color-blue: #245bdb;
+  --color-purple: #6425d0;
+
+
+  --highlight-light-gray: #f2f3f5;
+  --highlight-light-red: #fbbfbc;
+  --highlight-light-orange: #fed4a4cc;
+  --highlight-light-yellow: #fff67acc;
+  --highlight-light-green: #b7edb1cc;
+  --highlight-light-blue: #bacefdb3;
+  --highlight-light-purple: #cdb2fab3;
+  --highlight-medium-gray: #dee0e3cc;
+  --highlight-gray: #bbbfc4;
+  --highlight-red: #f76964;
+  --highlight-orange: #ffa53d;
+  --highlight-yellow: #ffe928;
+  --highlight-green: #62d256;
+  --highlight-blue: #4e83fd8c;
+  --highlight-purple: #935af68c;
+
+
+  --background-light-gray: #f5f6f7e6;
+  --background-light-red: #fef1f1;
+  --background-light-orange: #fff5eb;
+  --background-light-yellow: #fefff0;
+  --background-light-green: #f0fbef;
+  --background-light-blue: #f0f4ff;
+  --background-light-purple: #f6f1fe;
+  --background-medium-gray: #f2f3f5;
+  --background-gray: #eff0f1;
+  --background-medium-red: #fde2e2;
+  --background-medium-orange: #feead2;
+  --background-medium-yellow: #ffffcc;
+  --background-medium-green: #d9f5d6;
+  --background-medium-blue: #e1eaff;
+  --background-medium-purple: #ece2fe;
+
+
+  --callout-light-gray: #f5f6f7;
+  --callout-light-red: #fef1f1;
+  --callout-light-orange: #fff5eb;
+  --callout-light-yellow: #fefff0;
+  --callout-light-green: #f0fbef;
+  --callout-light-blue: #f0f4ff;
+  --callout-light-purple: #f6f1fe;
+  --callout-medium-gray: #f2f3f5;
+  --callout-gray: #eff0f1;
+  --callout-medium-red: #fde2e2;
+  --callout-medium-orange: #feead2;
+  --callout-medium-yellow: #ffffcc;
+  --callout-medium-green: #d9f5d6;
+  --callout-medium-blue: #e1eaff;
+  --callout-medium-purple: #ece2fe;
+
+
+  --border-gray: #eff0f1;
+  --border-red: #fbbfbc;
+  --border-orange: #fed4a4;
+  --border-yellow: #fff67a;
+  --border-green: #b7edb1;
+  --border-blue: #bacefd;
+  --border-purple: #cdb2fa;
+
+
+  --token-text-caption: #646a73;
+  --token-text-placeholder: #8f959e;
+  --token-block-placeholder: #bbbfc4;
+  --token-text-disabled: #bbbfc4;
+  --token-text-code: #2b2f36;
+  --token-primary-500: #336df4;
+  --token-primary-fill-1: #f0f4ff;
+  --token-bg-overlay: #f5f6f7;
+  --token-line-divider: #1f232926;
+  --token-line-border: #dee0e3;
+  --token-fill-hover: #1f232914;
+  --token-fill-hover-strong: #1f23291a;
+  --token-fill-pressed: #1f23291f;
+  --token-fill-turninto-active: #e0e9ff;
+  --token-block-hover: #1456f01a;
+  --token-block-selected: #1456f02e;
+  --token-handle-active: #eff0f1;
+  --token-size-cell: #f2f3f5;
+  --token-size-cell-border: #eff0f1;
+  --token-size-cell-active: #94b4ff;
+  --token-size-cell-disabled: #e0e9ff;
+  --token-swatch-border: #1f232914;
+  --token-block-bg-area: #646a730d;
+  --token-scrollbar-thumb: #1f23294d;
+  --token-shadow: #1f23291a;
+  --token-code-hover-ring: #c2d4ff;
+  --token-pinned: #10a893;
+  --token-table-bar-hover: #dee0e3;
+  --token-table-bar-selected: #c5d3fb;
+  --token-danger-bar: #ff7570;
+  --token-danger-cell: #fef0f0;
+  --token-danger: #f54a45;
+  --token-sidebar-text: #1f2225d9;
+  --token-sidebar-hover: #0000000b;
+  --token-sidebar-selected: #00000012;
+  --token-sidebar-section: #333739;
+  --token-button-border: #00000013;
+  --token-code-gutter-line: #e8e8e8;
+  --token-caption: #7e8287;
+  --token-menu-highlight: #3a85f7;
+  --token-popover-bg: #fafafa;
+}
+
+.page {
+  background-color: #ffffff;
+  color: #1f2329;
+  font-family: system-ui;
+  font-size: 16px;
+  line-height: 26px;
+  max-width: 820px;
+  caret-color: #1f2329;
+}
+
+::selection {
+  background-color: #1456f02e;
+}
+
+p {
+  margin-bottom: 8px;
+}
+
+.title {
+  font-family: system-ui;
+  font-size: 34px;
+  line-height: 55.25px;
+  font-weight: 500;
+  color: inherit;
+}
+
+h1 {
+  font-size: 26px;
+  line-height: 36.4px;
+  font-weight: 500;
+  margin-top: 26px;
+  margin-bottom: 10px;
+}
+
+h2 {
+  font-size: 22px;
+  line-height: 30.8px;
+  font-weight: 500;
+  margin-top: 22px;
+  margin-bottom: 8px;
+}
+
+h3 {
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 500;
+  margin-top: 20px;
+  margin-bottom: 8px;
+}
+
+h4 {
+  font-size: 18px;
+  line-height: 25.2px;
+  font-weight: 500;
+  margin-top: 18px;
+  margin-bottom: 8px;
+}
+
+h5 {
+  font-size: 16px;
+  line-height: 26px;
+  font-weight: 500;
+  margin-top: 18px;
+  margin-bottom: 8px;
+}
+
+h6 {
+  font-size: 16px;
+  line-height: 26px;
+  font-weight: 500;
+  margin-top: 16px;
+  margin-bottom: 8px;
+}
+
+h7 {
+  font-size: 16px;
+  line-height: 26px;
+  font-weight: 500;
+  margin-top: 16px;
+  margin-bottom: 8px;
+}
+
+h8 {
+  font-size: 16px;
+  line-height: 26px;
+  font-weight: 500;
+  margin-top: 16px;
+  margin-bottom: 8px;
+}
+
+h9 {
+  font-size: 16px;
+  line-height: 26px;
+  font-weight: 500;
+  margin-top: 16px;
+  margin-bottom: 8px;
+}
+
+a {
+  color: #336df4;
+}
+
+a:hover {
+  color: #245bdb;
+}
+
+pre {
+  font-family: Menlo;
+  color: #4c4d50;
+  background-color: #fbfbfb;
+  border-color: #eaebeb;
+}
+
+.line-numbers {
+  color: #c2c2c3;
+  background-color: #f8f8f8;
+}
+
+blockquote {
+  border-left-color: #bbbfc4;
+}
+
+.task {
+  border-color: #00000038;
+}
+
+.task-done {
+  color: #646a73b3;
+}
+
+hr {
+  border-top-color: #1f222580;
+}
+
+table {
+  border-color: #00000017;
+}
+
+th {
+  background-color: #f2f3f5;
+}
+
+.token.comment {
+  color: #8d9096;
+}
+
+.token.keyword {
+  color: #b2565c;
+}
+
+.token.tag {
+  color: #b2565c;
+}
+
+.token.string {
+  color: #89713a;
+}
+
+.token.number {
+  color: #9759b3;
+}
+
+.token.boolean {
+  color: #9759b3;
+}
+
+.token.class-name {
+  color: #3878b1;
+}
+
+.token.attr-name {
+  color: #3878b1;
+}
+
+.token.function {
+  color: #5f7e43;
+}

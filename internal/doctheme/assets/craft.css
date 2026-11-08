@@ -1,0 +1,372 @@
+/* Copyright 2026 s1dashu. MIT License. Adapted for Mory. */
+:root {
+  --theme-name: "Craft";
+  --theme-name-en: "Craft";
+  --theme-author: "Mory";
+  --theme-description: "Native document typography";
+
+  --theme-base: craft;
+
+
+  --color-gray: #868b90;
+  --color-red: #cb0424;
+  --color-orange: #d97c00;
+  --color-yellow: #d4a100;
+  --color-green: #008658;
+  --color-blue: #003fa1;
+  --color-purple: #4a00d9;
+
+
+  --highlight-light-gray: #b8c0c559;
+  --highlight-light-red: #ff989859;
+  --highlight-light-orange: #ffb86a59;
+  --highlight-light-yellow: #fff10059;
+  --highlight-light-green: #39ff9159;
+  --highlight-light-blue: #72c2ff59;
+  --highlight-light-purple: #c49bff59;
+  --highlight-medium-gray: #b8c0c5a6;
+  --highlight-gray: #b8c0c5a6;
+  --highlight-red: #ff9898a6;
+  --highlight-orange: #ffb86aa6;
+  --highlight-yellow: #fff100a6;
+  --highlight-green: #39ff91a6;
+  --highlight-blue: #72c2ffa6;
+  --highlight-purple: #c49bffa6;
+
+
+  --background-light-gray: #f8f8f9;
+  --background-light-red: #feecef;
+  --background-light-orange: #fff7ec;
+  --background-light-yellow: #fffaec;
+  --background-light-green: #ecf8f4;
+  --background-light-blue: #ecf1fa;
+  --background-light-purple: #f2ecff;
+  --background-medium-gray: #f0f1f2;
+  --background-gray: #f0f1f2;
+  --background-medium-red: #fddadf;
+  --background-medium-orange: #ffefd9;
+  --background-medium-yellow: #fef5d9;
+  --background-medium-green: #d9f0e8;
+  --background-medium-blue: #d9e4f5;
+  --background-medium-purple: #e6d9ff;
+
+
+  --callout-light-gray: #f8f8f9;
+  --callout-light-red: #feecef;
+  --callout-light-orange: #fff7ec;
+  --callout-light-yellow: #fffaec;
+  --callout-light-green: #ecf8f4;
+  --callout-light-blue: #ecf1fa;
+  --callout-light-purple: #f2ecff;
+  --callout-medium-gray: #f0f1f2;
+  --callout-gray: #f0f1f2;
+  --callout-medium-red: #fddadf;
+  --callout-medium-orange: #ffefd9;
+  --callout-medium-yellow: #fef5d9;
+  --callout-medium-green: #d9f0e8;
+  --callout-medium-blue: #d9e4f5;
+  --callout-medium-purple: #e6d9ff;
+
+
+  --border-gray: #e0e0e0;
+  --border-red: #ffc9c9;
+  --border-orange: #ffd6a8;
+  --border-yellow: #fff085;
+  --border-green: #a4f4cf;
+  --border-blue: #bedbff;
+  --border-purple: #ddd6ff;
+
+
+  --token-text-caption: #737477;
+  --token-text-placeholder: #9c9fa0;
+  --token-block-placeholder: #1f222540;
+  --token-text-disabled: #1f22254d;
+  --token-text-code: #303335;
+  --token-primary-500: #3a85f7;
+  --token-primary-fill-1: #f0f5fe;
+  --token-bg-overlay: #f7f7f7;
+  --token-line-divider: #0000000f;
+  --token-line-border: #00000014;
+  --token-fill-hover: #0000000b;
+  --token-fill-hover-strong: #0000000f;
+  --token-fill-pressed: #00000017;
+  --token-fill-turninto-active: #e3edfd;
+  --token-block-hover: #3a85f714;
+  --token-block-selected: #3a85f724;
+  --token-handle-active: #0000000f;
+  --token-size-cell: #f7f7f7;
+  --token-size-cell-border: #eaebeb;
+  --token-size-cell-active: #9cc0fa;
+  --token-size-cell-disabled: #e3edfd;
+  --token-swatch-border: #00000014;
+  --token-block-bg-area: #00000008;
+  --token-scrollbar-thumb: #00000038;
+  --token-shadow: #00000014;
+  --token-code-hover-ring: #3a85f759;
+  --token-pinned: #3a85f7;
+  --token-table-bar-hover: #dedfe0;
+  --token-table-bar-selected: #c6dafc;
+  --token-danger-bar: #ff6467;
+  --token-danger-cell: #fef2f2;
+  --token-danger: #e7000b;
+  --token-sidebar-text: #1f2225d9;
+  --token-sidebar-hover: #0000000b;
+  --token-sidebar-selected: #00000012;
+  --token-sidebar-section: #333739;
+  --token-button-border: #00000013;
+  --token-code-gutter-line: #e8e8e8;
+  --token-caption: #7e8287;
+  --token-menu-highlight: #3a85f7;
+  --token-popover-bg: #fafafa;
+}
+
+.page {
+  background-color: #ffffff;
+  color: #1f2225;
+  font-family: system-ui;
+  font-size: 15px;
+  line-height: 22px;
+  max-width: 820px;
+  caret-color: #3a85f7;
+}
+
+::selection {
+  background-color: #3a85f73d;
+}
+
+p {
+  margin-bottom: 13px;
+}
+
+.title {
+  font-family: system-ui;
+  font-size: 34px;
+  line-height: 55.25px;
+  font-weight: 700;
+  color: inherit;
+}
+
+h1 {
+  font-family: system-ui;
+  font-size: 21px;
+  line-height: 27px;
+  font-weight: 700;
+  color: inherit;
+  margin-top: 48px;
+  margin-bottom: 16px;
+}
+
+h2 {
+  font-family: system-ui;
+  font-size: 19px;
+  line-height: 25px;
+  font-weight: 700;
+  color: inherit;
+  margin-top: 36px;
+  margin-bottom: 16px;
+}
+
+h3 {
+  font-family: system-ui;
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 600;
+  color: inherit;
+  margin-top: 28px;
+  margin-bottom: 12px;
+}
+
+h4 {
+  font-family: system-ui;
+  font-size: 16px;
+  line-height: 25px;
+  font-weight: 600;
+  color: inherit;
+  margin-top: 16px;
+  margin-bottom: 16px;
+}
+
+h5 {
+  font-family: system-ui;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+  color: inherit;
+  margin-top: 13px;
+  margin-bottom: 13px;
+}
+
+h6 {
+  font-family: system-ui;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+  color: inherit;
+  margin-top: 13px;
+  margin-bottom: 13px;
+}
+
+h7 {
+  font-family: system-ui;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+  color: inherit;
+  margin-top: 13px;
+  margin-bottom: 13px;
+}
+
+h8 {
+  font-family: system-ui;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+  color: inherit;
+  margin-top: 13px;
+  margin-bottom: 13px;
+}
+
+h9 {
+  font-family: system-ui;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+  color: inherit;
+  margin-top: 13px;
+  margin-bottom: 13px;
+}
+
+strong {
+  font-weight: 700;
+  color: inherit;
+}
+
+a {
+  color: #105592;
+  text-decoration: none;
+  text-decoration-color: inherit;
+}
+
+a:hover {
+  color: #144571;
+}
+
+code {
+  color: inherit;
+  background-color: #f8f8f8;
+  border-color: #e2e3e3;
+  border-radius: 3px;
+  padding-left: 4px;
+}
+
+pre {
+  font-family: ui-monospace;
+  font-size: 13px;
+  line-height: 20px;
+  color: #4c4d50;
+  background-color: #fbfbfb;
+  border-color: #eaebeb;
+  border-radius: 6px;
+}
+
+.line-numbers {
+  display: block;
+  color: #c2c2c3;
+  background-color: #f8f8f8;
+}
+
+blockquote {
+  border-left-width: 4px;
+  border-left-color: #1f2225d1;
+  padding-left: 16px;
+  color: inherit;
+  font-style: normal;
+}
+
+ul {
+  padding-left: 25px;
+}
+
+ul li::marker {
+  color: inherit;
+}
+
+ol li::marker {
+  color: inherit;
+}
+
+.task {
+  width: 17px;
+  border-radius: 5px;
+  border-color: #00000038;
+}
+
+.task:checked {
+  background-color: #3a85f7;
+  color: #ffffff;
+}
+
+.task-done {
+  color: #1f222580;
+  text-decoration: line-through;
+}
+
+hr {
+  border-top-style: dotted;
+  border-top-width: 1.5px;
+  border-top-color: #1f222580;
+}
+
+table {
+  font-size: 14px;
+  line-height: 20px;
+  border-color: #00000017;
+  border-radius: 0px;
+}
+
+th {
+  background-color: #f8f8f8;
+}
+
+.callout {
+  border-radius: 4px;
+  border-width: 1px;
+  padding-top: 12px;
+  padding-left: 14px;
+}
+
+.token.comment {
+  color: #8d9096;
+}
+
+.token.keyword {
+  color: #b2565c;
+}
+
+.token.tag {
+  color: #b2565c;
+}
+
+.token.string {
+  color: #89713a;
+}
+
+.token.number {
+  color: #9759b3;
+}
+
+.token.boolean {
+  color: #9759b3;
+}
+
+.token.class-name {
+  color: #3878b1;
+}
+
+.token.attr-name {
+  color: #3878b1;
+}
+
+.token.function {
+  color: #5f7e43;
+}

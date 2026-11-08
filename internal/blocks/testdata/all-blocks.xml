@@ -1,0 +1,92 @@
+<title icon="📘" cover="covers/c1.jpg" cover-y="0.25">全部 <b>块</b> 类型</title>
+<h1 seq="auto">一级标题</h1>
+<h2 folded="true">折叠的二级标题</h2>
+<p>被折叠的段落</p>
+<h3 align="center">三级</h3>
+<h4>四</h4>
+<h5>五</h5>
+<h6>六</h6>
+<h7>七</h7>
+<h8>八</h8>
+<h9>九</h9>
+<p>普通 <b>加粗</b> <em>斜体</em> <u>下划线</u> <del>删除线</del> <span text-color="red" background-color="light-yellow">彩色</span> <a href="https://a.com/?x=1&amp;y=2">链接</a> <code>code</code><br/>第二行 😀👍🏽 <latex>E=mc^2</latex> <cite type="user" user-id="ou_1"/> 尾随空格 </p>
+<p align="right" background-color="light-blue">右对齐有背景</p>
+<p> </p>
+<p>父段落
+  <p>缩进的子段落</p>
+</p>
+<ul>
+  <li>一
+    <ul>
+      <li>一.一
+        <ul>
+          <li>一.一.一</li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+  <li folded="true">折叠项
+    <ul>
+      <li>藏</li>
+    </ul>
+  </li>
+  <li><p></p>
+    <p>空项下的段落</p>
+  </li>
+</ul>
+<ol>
+  <li seq="3">三</li>
+  <li>四
+    <ol>
+      <li>四.一</li>
+    </ol>
+  </li>
+</ol>
+<checkbox done="true">完成</checkbox>
+<checkbox done="false">未完成
+  <checkbox done="false">子任务</checkbox>
+</checkbox>
+<blockquote>
+  <p>引用一</p>
+  <ul>
+    <li>引用里的列表</li>
+  </ul>
+  <p>引用二</p>
+</blockquote>
+<pre lang="rust" caption="例" wrap="true"><code>fn main() {
+    println!("&lt;hi&gt; &amp; 'q'");
+
+}</code></pre>
+<pre lang="plaintext"><code></code></pre>
+<hr/>
+<callout emoji="💡" background-color="light-orange" border-color="orange">
+  <p>提示</p>
+  <checkbox done="false">里的待办</checkbox>
+</callout>
+<grid>
+  <column width-ratio="0.3">
+    <p>左</p>
+  </column>
+  <column width-ratio="0.7">
+    <p>右</p>
+    <blockquote>
+      <p>右引</p>
+    </blockquote>
+  </column>
+</grid>
+<table>
+  <colgroup><col width="120"/><col width="80"/><col width="100"/></colgroup>
+  <thead>
+    <tr><th background-color="light-gray"><p>A</p></th><th><p>B</p></th><th><p>C</p></th></tr>
+  </thead>
+  <tbody>
+    <tr><td vertical-align="middle" colspan="2" rowspan="2"><p>合并 </p><ul><li>格内<ul><li>嵌套</li></ul></li></ul></td><td><pre lang="python"><code>a = 1&#10;b = 2</code></pre></td></tr>
+    <tr><td><p>6</p><p>第二段</p></td></tr>
+    <tr><td><checkbox done="true">格内待办</checkbox></td><td><p></p></td><td><p>公式 <latex>\frac{1}{2}</latex></p></td></tr>
+  </tbody>
+</table>
+<img href="https://x/y.png" width="300" caption="图" align="center"/>
+<whiteboard type="blank"/>
+<sheet token="shtabc"/>
+<bookmark href="https://example.com" title="书签"/>
+<p>结尾</p>
