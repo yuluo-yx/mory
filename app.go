@@ -368,7 +368,7 @@ func (a *app) duplicate(n *library.Note) {
 	if !a.save() {
 		return
 	}
-	copy, err := a.lib.Duplicate(n)
+	copy, err := a.duplicateWithAssets(n)
 	if !a.fail(err) {
 		a.openNote(copy)
 	}

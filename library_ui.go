@@ -96,7 +96,7 @@ func (a *app) batch(action string) {
 		var err error
 		switch action {
 		case "Duplicate":
-			_, err = a.lib.Duplicate(n)
+			_, err = a.duplicateWithAssets(n)
 		case "Trash":
 			err = a.lib.TrashTree(n, true)
 		case "Restore":

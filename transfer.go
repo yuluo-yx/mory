@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/rand"
 	"fmt"
 	"net/url"
 	"os"
@@ -186,24 +185,12 @@ func (a *app) chooseAttachment() {
 			a.win.Update(func() { a.fail(err) })
 			return
 		}
-		name := strings.ToLower(rand.Text()) + strings.ToLower(filepath.Ext(path))
-		dest := filepath.Join(a.lib.Dir, "assets", name)
-		err = library.AtomicWrite(dest, b)
 		a.win.Update(func() {
-			if a.fail(err) {
-				return
-			}
 			if a.current == nil || a.current.ID != id {
-				a.status = "Attachment copied to library assets"
+				a.status = "Attachment insertion canceled after navigation"
 				return
 			}
-			prefix := ""
-			switch strings.ToLower(filepath.Ext(path)) {
-			case ".png", ".jpg", ".jpeg", ".gif", ".webp":
-				prefix = "!"
-			}
-			label := strings.NewReplacer("[", "\\[", "]", "\\]").Replace(filepath.Base(path))
-			a.insert("\n" + prefix + "[" + label + "](assets/" + name + ")\n")
+			a.insertAsset(b, filepath.Base(path))
 		})
 	}()
 }

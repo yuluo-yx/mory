@@ -21,7 +21,7 @@ The library, editors, document previews and settings use native GPU controls. Pr
 
 ## Import and export
 
-**Import** copies Markdown or Feishu/Lark DocxXML documents. Import a folder to include its subfolders, or an indexed DocxXML library to map metadata, parent relationships and assets. **Open local file** edits the original file in place, with conflict detection. Removing an external file from the library never deletes the original.
+**Import** copies Markdown or Feishu/Lark DocxXML documents. Import a folder to include its subfolders, or an indexed DocxXML library to map metadata, parent relationships and assets. **Open local file** edits the original file in place, with conflict detection. Removing an external file from the library never deletes the original. Duplicating an external note copies its images, attachments and cover into the library.
 
 Export Markdown, DocxXML, self-contained HTML or paginated PDF, or print through the macOS print dialog. Structured HTML preserves table spans, columns, images and mathematical notation. Markdown uses embedded XML for structures that plain Markdown cannot represent. Unknown XML elements and attributes remain in the document model. Cloud-only objects retain their data without connecting to hosted services.
 
@@ -90,7 +90,7 @@ The macOS-only GitHub workflow builds a universal Apple Silicon/Intel app and up
 Local builds are ad-hoc signed. Developer ID signing, Apple notarization and signed in-app update distribution require the owner's release credentials and update-signing configuration. The native update UI reports availability for the current build. Physical Intel hardware and older macOS releases require separate runtime validation.
 
 Last local verification: **2026-11-09**, macOS 27.0.1, Apple M4, Go 1.27.3.
-`make check` passed at **5,084 / 5,628 production statements (90.33%)**.
+`make check` passed at **5,093 / 5,637 production statements (90.35%)**.
 `make race`, `go mod verify`, the universal build, strict code-signature verification
 and DMG integrity verification passed. The packaged application launched with an
 isolated library. Native E2E includes original-file saves, folder import, covers,
