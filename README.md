@@ -107,7 +107,7 @@ outside the completed local validation.
 
 Mory is [MIT licensed](LICENSE). Copyright and dependency notices appear in [THIRD_PARTY.md](THIRD_PARTY.md) and ship inside the application bundle.
 
-The app icon is an original generated blue-and-white line illustration of a graceful young adult woman, with straight shoulder-length hair, delicate cobalt contours, a white blouse and a pale blue rounded border on an opaque white background. Its source is `resources/icon.png`, included under the project's MIT license.
+The app icon is an original generated blue-and-white line illustration of a graceful young adult woman looking back over her shoulder, with straight shoulder-length hair, delicate cobalt contours, a white blouse and a pale blue rounded border on an opaque white background. Its source is `resources/icon.png`, included under the project's MIT license.
 
 <details><summary>Icon generation prompt</summary>
 
@@ -116,6 +116,10 @@ Use case: logo-brand. Asset type: finished Mory macOS app icon, a single square 
 Final background refinement:
 
 Use case: precise-object-edit. Edit the provided blue and white line-art app icon. Preserve the young adult woman's face, hair, smile, proportions, blue contour strokes, blouse and overall layout exactly. Repair ONLY the background: remove every gray blotch, translucent hole, rough edge, shadow and stray mark. Make the entire square canvas solid opaque pure white, including all four corners. Keep the pale-blue rounded-square outline clean and continuous. The areas inside and outside the outline must be completely uniform flat white with no transparency, texture, shadows or gradients. Retain the tiny pale-blue cheek and neck accents. Deliver a clean finished square blue-and-white line-art icon. No text, no watermark.
+
+Final pose refinement:
+
+Use case: identity-preserve. Asset type: Mory macOS app icon. Edit the supplied blue-and-white line illustration. Change the young adult woman's pose to a graceful SIDEWAYS, LOOKING BACK OVER HER SHOULDER pose. Her torso and shoulders turn away toward the right, showing a three-quarter back view of her blouse and one shoulder in the foreground. She naturally turns her head back toward the viewer over that shoulder; show her face in a clear three-quarter side view, with a delicate visible nose silhouette, a gentle small smile and eyes glancing back at the viewer. Make the sideways torso and backward glance unmistakable, anatomically natural and relaxed. Preserve her youthful adult appearance around age 22, quiet elegance, straight shoulder-length hair with light parted bangs, simple white blouse, minimalist cobalt-blue contour strokes, pale-blue accents and generous white negative space. Hair follows the turn and falls naturally along her back, outlined in a few clean flowing lines with white interiors. Center the complete head-and-shoulders portrait with a safe margin inside the existing pale-blue rounded-square border. Preserve the square opaque white canvas and clean flat background. Strict blue-and-white palette. No heavy shading, gradients, texture, solid dark hair, makeup, jewelry, props, text, watermark or extra characters. Keep the illustration crisp and readable as a small app icon.
 
 </details>
 
