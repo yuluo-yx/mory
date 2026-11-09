@@ -77,7 +77,7 @@ func (a *app) documentHeader(c *ui.Context) {
 	if n.Cover != "" {
 		bitmap := a.loadAssetBitmap(n.Cover)
 		if bitmap != nil {
-			handle := ui.Box(c).FillWidth().Height(128).Radius(8).Clip().Label("Document cover")
+			handle := ui.Box(c).FillWidth().Height(128).Radius(8).Clip().Label(a.tr("Document cover"))
 			handle.Draw(func(p *ui.Painter, r ui.Rect) {
 				bw, bh := bitmap.Size()
 				w, h := float32(bw), float32(bh)
@@ -96,14 +96,14 @@ func (a *app) documentHeader(c *ui.Context) {
 		if n.Icon != "" {
 			ui.Text(c, n.Icon).FontSize(30)
 		}
-		if ui.TextInput(c, &n.Title).Label("Document title").Font("-apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif").FontSize(28).Bold().LetterSpacing(-0.4).Grow(1).Background(ui.Transparent).Border(0, ui.Transparent).Changed() {
+		if ui.TextInput(c, &n.Title).Label(a.tr("Document title")).Font("-apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif").FontSize(28).Bold().LetterSpacing(-0.4).Grow(1).Background(ui.Transparent).Border(0, ui.Transparent).Changed() {
 			a.syncMetadata()
 		}
 	})
 	if !n.HideInfo {
-		info := "Modified " + n.Updated.Format("Jan 2, 2006 15:04")
+		info := a.tr("Modified ") + a.dateText(n.Updated, true)
 		if n.ShowCreated {
-			info = "Created " + n.Created.Format("Jan 2, 2006") + " · " + info
+			info = a.tr("Created ") + a.dateText(n.Created, false) + " · " + info
 		}
 		ui.Text(c, info).FontSize(10).TextColor(c.Theme().TextMuted).Padding(0, 0, 10)
 	}
@@ -137,8 +137,8 @@ func (a *app) documentControls(c *ui.Context) {
 		return
 	}
 	ui.Row(c).Gap(10).Children(func() {
-		ui.Text(c, "Icon")
-		if ui.TextInput(c, &n.Icon).Label("Document icon").Width(100).Changed() {
+		ui.Text(c, a.tr("Icon"))
+		if ui.TextInput(c, &n.Icon).Label(a.tr("Document icon")).Width(100).Changed() {
 			if n == a.current {
 				a.syncMetadata()
 			} else {
@@ -149,24 +149,24 @@ func (a *app) documentControls(c *ui.Context) {
 		if width == "" {
 			width = "Standard"
 		}
-		if ui.Select(c, &width, []string{"Standard", "Wide", "Full"}).Label("Page width").Width(130).Changed() {
+		if a.selectText(c, &width, []string{"Standard", "Wide", "Full"}).Label(a.tr("Page width")).Width(130).Changed() {
 			a.mutate(n, func() { n.Width = width })
 		}
 	})
 	ui.Row(c).Gap(10).Children(func() {
 		show := !n.HideInfo
-		if ui.Checkbox(c, &show, "Document information").Changed() {
+		if ui.Checkbox(c, &show, a.tr("Document information")).Changed() {
 			a.mutate(n, func() { n.HideInfo = !show })
 		}
-		if ui.Checkbox(c, &n.ShowCreated, "Created date").Changed() {
+		if ui.Checkbox(c, &n.ShowCreated, a.tr("Created date")).Changed() {
 			a.mutate(n, func() {})
 		}
 	})
 	ui.Row(c).Gap(8).Children(func() {
-		if ui.Button(c, "Choose cover…").Clicked() {
+		if ui.Button(c, a.tr("Choose cover…")).Clicked() {
 			a.chooseCover(n.ID)
 		}
-		if n.Cover != "" && ui.Button(c, "Remove cover").Clicked() {
+		if n.Cover != "" && ui.Button(c, a.tr("Remove cover")).Clicked() {
 			n.Cover = ""
 			if n == a.current {
 				a.syncMetadata()
@@ -174,7 +174,7 @@ func (a *app) documentControls(c *ui.Context) {
 				a.fail(a.lib.Save(n))
 			}
 		}
-		if ui.Button(c, "History…").Clicked() {
+		if ui.Button(c, a.tr("History…")).Clicked() {
 			var err error
 			a.revisions, err = a.lib.History(n.ID)
 			if !a.fail(err) {
@@ -192,8 +192,9 @@ func (a *app) chooseCover(id string) {
 	if a.win == nil {
 		return
 	}
+	options := mygo.OpenDialogOptions{Parent: a.win, Title: a.tr("Choose document cover"), Filters: []mygo.FileFilter{{Name: "Images", Extensions: []string{"png", "jpg", "jpeg", "webp"}}}}
 	go func() {
-		paths, err := openDialog(mygo.OpenDialogOptions{Parent: a.win, Title: "Choose document cover", Filters: []mygo.FileFilter{{Name: "Images", Extensions: []string{"png", "jpg", "jpeg", "webp"}}}})
+		paths, err := openDialog(options)
 		a.win.Update(func() {
 			if a.fail(err) || len(paths) == 0 {
 				return

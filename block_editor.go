@@ -352,24 +352,24 @@ func (a *app) blockView(c *ui.Context, readOnly bool) {
 	if !readOnly {
 		ui.Row(c).Gap(8).Padding(6).Children(func() {
 			if s.chosen.Len() > 1 {
-				if ghostButton(c, "Copy blocks").Clicked() {
+				if ghostButton(c, a.tr("Copy blocks")).Clicked() {
 					a.copyBlocks(c, false)
 				}
-				if ghostButton(c, "Cut blocks").Clicked() {
+				if ghostButton(c, a.tr("Cut blocks")).Clicked() {
 					a.copyBlocks(c, true)
 				}
-				if ghostButton(c, "Delete selected blocks").Clicked() {
+				if ghostButton(c, a.tr("Delete selected blocks")).Clicked() {
 					a.deleteBlocks()
 				}
 			}
-			if ghostButton(c, "+ Add block").Clicked() {
+			if ghostButton(c, a.tr("+ Add block")).Clicked() {
 				a.insertOpen = true
 				a.insertQuery = ""
 			}
-			if ghostButton(c, "Undo").KeepFocus().Clicked() {
+			if ghostButton(c, a.tr("Undo")).KeepFocus().Clicked() {
 				a.blockUndo(false)
 			}
-			if ghostButton(c, "Redo").KeepFocus().Clicked() {
+			if ghostButton(c, a.tr("Redo")).KeepFocus().Clicked() {
 				a.blockUndo(true)
 			}
 		})
@@ -385,7 +385,7 @@ func (a *app) blockNode(c *ui.Context, n *blocks.Node, readOnly bool, depth int)
 	row := ui.Row(c.Key(n.ID)).FillWidth().MinWidth(0).AlignItems(ui.Start).Gap(6)
 	row.Children(func() {
 		if !readOnly && depth == 0 {
-			handle := ghostButton(c.Key("handle"), "⠿").Label("Block actions " + n.Kind).Padding(3).Width(21).Drag(blockDrag{n.ID})
+			handle := ghostButton(c.Key("handle"), "⠿").Label(a.tr("Block actions ") + n.Kind).Padding(3).Width(21).Drag(blockDrag{n.ID})
 			if handle.Clicked() {
 				s.active = n.ID
 			}
@@ -444,7 +444,7 @@ func (a *app) blockNode(c *ui.Context, n *blocks.Node, readOnly bool, depth int)
 				for i, child := range blocks.Visible(n.Children) {
 					if n.Kind == "ol" && child.Kind == "li" {
 						ui.Row(c).Gap(8).Children(func() {
-							ui.Textf(c, "%d.", i+1).TextColor(t.TextMuted)
+							ui.Textf(c, a.tr("%d."), i+1).TextColor(t.TextMuted)
 							ui.Column(c).Grow(1).Children(func() { a.blockNode(c, child, readOnly, depth+1) })
 						})
 					} else {
@@ -469,7 +469,7 @@ func (a *app) blockNode(c *ui.Context, n *blocks.Node, readOnly bool, depth int)
 					if n.Plain() != "" {
 						ui.Text(c, n.Plain())
 					}
-					if !readOnly && ghostButton(c, "Edit block properties").Clicked() {
+					if !readOnly && ghostButton(c, a.tr("Edit block properties")).Clicked() {
 						a.editBlockProperties(n)
 					}
 				})
@@ -533,10 +533,6 @@ func (a *app) blockText(c *ui.Context, n *blocks.Node, readOnly bool) {
 				return
 			}
 			if event.Kind != ui.InputKeyDown {
-				return
-			}
-			if event.Key == ui.KeyZ && event.Mods&ui.Cmd != 0 {
-				a.blockUndo(event.Mods&ui.Shift != 0)
 				return
 			}
 			anchor, caret := field.doc.Selection()
@@ -611,7 +607,7 @@ func (a *app) mergeBlock(id string, direction int) {
 
 func (a *app) blockMenu(m *ui.Menu, n *blocks.Node) {
 	s := a.blockEditor
-	if m.Item("Insert paragraph below").Chosen() {
+	if m.Item(a.tr("Insert paragraph below")).Chosen() {
 		p, index := s.doc.Parent(n.ID)
 		if p != nil {
 			fresh := blocks.Paragraph("")
@@ -619,7 +615,7 @@ func (a *app) blockMenu(m *ui.Menu, n *blocks.Node) {
 			s.focus = fresh.ID
 		}
 	}
-	if m.Item("Duplicate block").Chosen() {
+	if m.Item(a.tr("Duplicate block")).Chosen() {
 		p, index := s.doc.Parent(n.ID)
 		if p != nil {
 			copy := n.Clone()
@@ -627,7 +623,7 @@ func (a *app) blockMenu(m *ui.Menu, n *blocks.Node) {
 			a.fail(s.doc.Splice(p.ID, index+1, 0, copy))
 		}
 	}
-	if m.Item("Fold content").Checked(n.Attr("folded") == "true").Chosen() {
+	if m.Item(a.tr("Fold content")).Checked(n.Attr("folded") == "true").Chosen() {
 		a.fail(s.doc.Transform(n.ID, func(n *blocks.Node) {
 			if n.Attr("folded") == "true" {
 				n.Set("folded", "")
@@ -636,12 +632,12 @@ func (a *app) blockMenu(m *ui.Menu, n *blocks.Node) {
 			}
 		}))
 	}
-	if m.Item("Properties…").Chosen() {
+	if m.Item(a.tr("Properties…")).Chosen() {
 		a.editBlockProperties(n)
 	}
-	m.Submenu("Background", func(m *ui.Menu) {
+	m.Submenu(a.tr("Background"), func(m *ui.Menu) {
 		for _, color := range []string{"Default", "light-gray", "light-red", "light-orange", "light-yellow", "light-green", "light-blue", "light-purple"} {
-			if m.Item(color).Chosen() {
+			if m.Item(a.tr(color)).Chosen() {
 				a.fail(s.doc.Transform(n.ID, func(n *blocks.Node) {
 					if color == "Default" {
 						n.Set("background-color", "")
@@ -653,7 +649,7 @@ func (a *app) blockMenu(m *ui.Menu, n *blocks.Node) {
 		}
 	})
 	m.Separator()
-	if m.Item("Delete block").Chosen() {
+	if m.Item(a.tr("Delete block")).Chosen() {
 		a.fail(s.doc.Remove(n.ID))
 	}
 	a.captureBlocks()
@@ -670,16 +666,16 @@ func (a *app) blockCode(c *ui.Context, n *blocks.Node, readOnly bool) {
 	}
 	ui.Row(c).Gap(8).Children(func() {
 		language := n.Attr("lang")
-		if ui.TextInput(c, &language).Label("Code language").Width(120).Disabled(readOnly).Changed() {
+		if ui.TextInput(c, &language).Label(a.tr("Code language")).Width(120).Disabled(readOnly).Changed() {
 			a.fail(s.doc.Transform(n.ID, func(n *blocks.Node) { n.Set("lang", language) }))
 			f.code.Buffer.SetLanguage(codeLanguage(language))
 		}
 		wrap := n.Attr("wrap") == "true"
-		if ui.Checkbox(c, &wrap, "Wrap").Disabled(readOnly).Changed() {
+		if ui.Checkbox(c, &wrap, a.tr("Wrap")).Disabled(readOnly).Changed() {
 			a.fail(s.doc.Transform(n.ID, func(n *blocks.Node) { n.Set("wrap", strconv.FormatBool(wrap)) }))
 			f.code.SoftWrap = wrap
 		}
-		if ghostButton(c, "Copy code").Clicked() {
+		if ghostButton(c, a.tr("Copy code")).Clicked() {
 			c.Services().WriteClipboard(f.code.Buffer.String())
 		}
 	})
@@ -703,7 +699,7 @@ func (a *app) blockCode(c *ui.Context, n *blocks.Node, readOnly bool) {
 		f.code.Theme = editor.DefaultTheme(c.Theme())
 	}
 	lines := strings.Count(f.code.Buffer.String(), "\n") + 1
-	editor.View(c.Key("code"), f.code).Height(float32(min(24, max(3, lines)))*22 + 12).FillWidth().Label("Code block")
+	editor.View(c.Key("code"), f.code).Height(float32(min(24, max(3, lines)))*22 + 12).FillWidth().Label(a.tr("Code block"))
 	if n.Attr("caption") != "" {
 		ui.Text(c, n.Attr("caption")).FontSize(12).TextColor(c.Theme().TextMuted)
 	}
@@ -724,9 +720,9 @@ func (a *app) blockMath(c *ui.Context, n *blocks.Node, readOnly bool) {
 	} else {
 		ui.Box(c).Height(formula.Ascent + formula.Depth + 24).FillWidth().Draw(func(p *ui.Painter, r ui.Rect) {
 			formula.Draw(p, ui.Rect{X: r.X + max(0, (r.W-formula.Width)/2), Y: r.Y + 12, W: r.W, H: r.H})
-		}).Label("Equation " + n.Plain())
+		}).Label(a.tr("Equation ") + n.Plain())
 	}
-	if !readOnly && ghostButton(c, "Edit equation").Clicked() {
+	if !readOnly && ghostButton(c, a.tr("Edit equation")).Clicked() {
 		s := a.blockEditor
 		s.formulaID = n.ID
 		s.formulaText = n.Plain()
@@ -765,15 +761,15 @@ func (a *app) blockFile(c *ui.Context, n *blocks.Node) {
 		preview := n.Attr("view-type") == "Preview" || n.Kind == "video"
 		if preview {
 			if bitmap := a.fileThumbnail(path); bitmap != nil {
-				ui.Image(c, bitmap).MaxWidth(600).Height(240).Fit(ui.Contain).Label("Attachment thumbnail " + name)
+				ui.Image(c, bitmap).MaxWidth(600).Height(240).Fit(ui.Contain).Label(a.tr("Attachment thumbnail ") + name)
 			}
 		}
 		ui.Row(c).Gap(8).Children(func() {
-			if ghostButton(c, "Quick Look").Label("Preview " + name).Clicked() {
+			if ghostButton(c, a.tr("Quick Look")).Label(a.tr("Preview ") + name).Clicked() {
 				a.quickLook(path)
 			}
 			if a.mode == "Write" {
-				if ui.Checkbox(c, &preview, "Preview thumbnail").Changed() {
+				if ui.Checkbox(c, &preview, a.tr("Preview thumbnail")).Changed() {
 					a.fail(a.blockEditor.doc.Transform(n.ID, func(n *blocks.Node) {
 						if preview {
 							n.Set("view-type", "Preview")
@@ -797,12 +793,12 @@ func (a *app) blockCountdown(c *ui.Context, n *blocks.Node, readOnly bool) {
 		c.After(time.Second)
 	}
 	ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
-		ui.Textf(c, "%02d:%02d", remaining/60, remaining%60).FontSize(30).Font("Menlo")
+		ui.Textf(c, a.tr("%02d:%02d"), remaining/60, remaining%60).FontSize(30).Font("Menlo")
 		if !readOnly {
-			if ghostButton(c, "Start / reset").Clicked() {
+			if ghostButton(c, a.tr("Start / reset")).Clicked() {
 				a.fail(a.blockEditor.doc.Transform(n.ID, func(n *blocks.Node) { n.Set("start-time", fmt.Sprint(time.Now().UnixMilli())) }))
 			}
-			if ghostButton(c, "Stop").Clicked() {
+			if ghostButton(c, a.tr("Stop")).Clicked() {
 				a.fail(a.blockEditor.doc.Transform(n.ID, func(n *blocks.Node) { n.Set("start-time", "") }))
 			}
 		}

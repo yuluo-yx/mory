@@ -1,0 +1,319 @@
+package main
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/richtext"
+	"github.com/yuluo-yx/mory/internal/library"
+)
+
+func TestLanguagePageAndDocumentPreservation(t *testing.T) {
+	a := testApp(t)
+	a.createNote("# Original\n\nSettings", "Settings")
+	note := a.current
+	original := note.Source
+	tt := ui.NewTester(a.view, 1280, 820)
+	tt.Key(ui.Cmd, ui.KeyComma)
+	if tt.HasText("Document editor") {
+		t.Fatal("settings overlays the document instead of replacing the workspace")
+	}
+	click(t, tt, "Application language")
+	click(t, tt, "简体中文")
+	if !tt.HasText("外观与样式") || a.lib.Settings.Language != "zh-CN" {
+		t.Fatal("language did not switch")
+	}
+	click(t, tt, "外观")
+	click(t, tt, "深色")
+	if a.lib.Settings.Appearance != "Dark" {
+		t.Fatal("translated option changed its persisted value")
+	}
+	click(t, tt, "大纲显示位置")
+	click(t, tt, "左侧")
+	if a.outlineSide() != "Left" {
+		t.Fatal("outline preference not applied")
+	}
+	if dir := os.Getenv("MORY_TEST_IMAGES"); dir != "" {
+		saveImage(t, tt, filepath.Join(dir, "settings-zh.png"))
+	}
+	click(t, tt, "返回文稿")
+	if a.current != note || note.Source != original || note.Title != "Settings" {
+		t.Fatal("language/navigation changed document data")
+	}
+	if !tt.HasText("所有修改已保存") {
+		t.Fatal("editor status was not translated")
+	}
+	reopened, err := newApp(a.lib.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reopened.lib.Settings.Language != "zh-CN" || reopened.outlineSide() != "Left" {
+		t.Fatal("preferences did not persist")
+	}
+	a.setLanguage("en")
+	tt.Frame()
+	if !tt.HasText("All changes saved") {
+		t.Fatal("English did not return")
+	}
+}
+
+func TestOutlineMovesAndSettingsFit(t *testing.T) {
+	a := testApp(t)
+	a.createNote("# Heading one\n\nBody", "Outline")
+	tt := ui.NewTester(a.view, 1280, 820)
+	before, _ := tt.Find("ON THIS PAGE")
+	click(t, tt, "Outline on Left")
+	after, _ := tt.Find("ON THIS PAGE")
+	if after.X >= before.X {
+		t.Fatal("outline did not move to the left")
+	}
+	click(t, tt, "Outline on Right")
+	again, _ := tt.Find("ON THIS PAGE")
+	if again.X <= after.X {
+		t.Fatal("outline did not return to the right")
+	}
+	for _, size := range [][2]int{{1000, 620}, {1280, 820}, {1600, 1000}} {
+		tt.SetSize(size[0], size[1])
+		a.settingsOpen = true
+		a.settingsTab = "Keyboard shortcuts"
+		tt.Frame()
+		for _, label := range []string{"Save shortcuts", "Global quick note shortcut", "Back from settings"} {
+			r, ok := tt.Find(label)
+			if !ok || r.Y < 0 || r.Y+r.H > float32(size[1]) {
+				t.Fatalf("%s outside %v: %+v", label, size, r)
+			}
+		}
+	}
+}
+
+func TestShortcutDraftValidationAndPersistence(t *testing.T) {
+	a := testApp(t)
+	tt := ui.NewTester(a.view, 1280, 820)
+	a.helpOpen = true
+	tt.Frame()
+	click(t, tt, "Shortcut New note")
+	tt.Key(ui.Cmd, ui.KeyA)
+	tt.Type("Opt+Shift+J")
+	if a.keyFor("New note", "Cmd+N") != "Cmd+N" {
+		t.Fatal("draft applied before save")
+	}
+	a.quickDraft = "Alt+Shift+J"
+	click(t, tt, "Save shortcuts")
+	if !strings.Contains(a.problem, "conflict") {
+		t.Fatal("local/global collision accepted")
+	}
+	a.problem = ""
+	a.quickDraft = ""
+	tt.Frame()
+	click(t, tt, "Save shortcuts")
+	if a.lib.Settings.Keys["New note"] != "Alt+Shift+J" {
+		t.Fatal("modifier aliases not normalized")
+	}
+	before := len(a.lib.Notes)
+	tt.Key(ui.Cmd, ui.KeyN)
+	if len(a.lib.Notes) != before {
+		t.Fatal("old shortcut remained active")
+	}
+	tt.Key(ui.Alt|ui.Shift, ui.KeyJ)
+	if len(a.lib.Notes) != before+1 {
+		t.Fatal("new shortcut did not activate")
+	}
+	a.helpOpen = true
+	tt.Frame()
+	a.shortcutDraft["New note"] = ""
+	click(t, tt, "Save shortcuts")
+	tt.Key(ui.Alt|ui.Shift, ui.KeyJ)
+	if len(a.lib.Notes) != before+1 {
+		t.Fatal("disabled shortcut still active")
+	}
+	reopened, err := library.Open(a.lib.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value, ok := reopened.Settings.Keys["New note"]; !ok || value != "" || reopened.Settings.QuickNote != "" {
+		t.Fatal("disabled bindings not saved")
+	}
+	for _, key := range []string{"Bad+K", "Cmd+NoSuchKey", "J", "Shift+A"} {
+		if _, _, err := a.validateShortcuts(map[string]string{"New note": key}, ""); err == nil {
+			t.Fatalf("accepted invalid key %s", key)
+		}
+	}
+	for _, key := range []string{"Cmd+F12", "Ctrl+PageDown", "Opt+Space", "Command+Return", "Cmd+-", "Cmd+Esc"} {
+		if _, err := canonicalKey(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestGlobalHotkeyReplacementAndDisable(t *testing.T) {
+	a := testApp(t)
+	oldRegister, oldUnregister, oldKey := registerGlobal, unregisterGlobal, quickKey
+	t.Cleanup(func() { registerGlobal, unregisterGlobal, quickKey = oldRegister, oldUnregister, oldKey })
+	quickKey = "Alt+Space"
+	var events []string
+	registerGlobal = func(key string, fn func()) error {
+		events = append(events, "register "+key)
+		if key == "Cmd+Space" {
+			return errors.New("occupied")
+		}
+		return nil
+	}
+	unregisterGlobal = func(key string) { events = append(events, "unregister "+key) }
+	if err := a.applyQuickKey("Cmd+Space"); err == nil || quickKey != "Alt+Space" {
+		t.Fatal("failed replacement released old hotkey")
+	}
+	if err := a.applyQuickKey("Ctrl+Opt+Space"); err != nil {
+		t.Fatal(err)
+	}
+	if quickKey != "Ctrl+Alt+Space" || events[len(events)-1] != "unregister Alt+Space" {
+		t.Fatal(events)
+	}
+	if err := a.applyQuickKey(""); err != nil || quickKey != "" {
+		t.Fatal("empty did not unregister")
+	}
+	count := len(events)
+	a.registerQuickNote()
+	if len(events) != count {
+		t.Fatal("empty preference fell back to Alt+Space")
+	}
+	if err := a.applyQuickKey("Bogus+K"); err == nil {
+		t.Fatal("invalid global binding")
+	}
+}
+
+func TestMenuMappingsAndWindowPreferences(t *testing.T) {
+	a := testApp(t)
+	b, err := newApp(a.lib.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := appWindows
+	appWindows = []*app{a, b}
+	t.Cleanup(func() { appWindows = previous })
+	a.setLanguage("zh-CN")
+	if b.lib.Settings.Language != "zh-CN" {
+		t.Fatal("other window did not switch")
+	}
+	b.setOutlineSide("Left")
+	if a.outlineSide() != "Left" || b.problem != "" {
+		t.Fatal("sibling settings version is stale")
+	}
+	a.lib.Settings.Keys["Formatting toolbar"] = "Ctrl+Alt+T"
+	a.lib.Settings.Keys["Outline"] = "Ctrl+Alt+O"
+	a.lib.Settings.Keys["Cut"] = ""
+	a.lib.Settings.Keys["Copy"] = "Cmd+Shift+C"
+	menu := a.buildMenu(&mygo.MenuItem{Label: "Updates"})
+	found := map[string]*mygo.MenuItem{}
+	var walk func([]*mygo.MenuItem)
+	walk = func(items []*mygo.MenuItem) {
+		for _, item := range items {
+			found[item.Label] = item
+			if item.Role == mygo.RoleCut && item.Accelerator != "" {
+				t.Fatal("disabled role default was restored")
+			}
+			if item.Role == mygo.RoleCopy && item.Accelerator != "Cmd+Shift+C" {
+				t.Fatal("copy remapping ignored")
+			}
+			walk(item.Submenu)
+		}
+	}
+	walk(menu.Items())
+	for name, key := range map[string]string{"Formatting toolbar": "Ctrl+Alt+T", "Outline": "Ctrl+Alt+O"} {
+		item := found[a.tr(name)]
+		if item == nil || item.Accelerator != key {
+			t.Fatalf("menu/action mismatch %s", name)
+		}
+	}
+	if found["文件"] == nil {
+		t.Fatal("native menus not translated")
+	}
+	if a.shortcutHint("Missing") != "" || !strings.Contains(a.shortcutHints("Copy"), "Cmd+Shift+C") {
+		t.Fatal("shortcut hints stale")
+	}
+}
+
+func TestFormattingRebindAndSettingsConflict(t *testing.T) {
+	a := testApp(t)
+	a.createNote("Text", "Formatting")
+	tt := ui.NewTester(a.view, 1280, 820)
+	a.lib.Settings.Keys["Bold"] = "Cmd+Alt+B"
+	click(t, tt, "Document editor")
+	tt.Key(ui.Cmd, ui.KeyA)
+	tt.Key(ui.Cmd, ui.KeyB)
+	if a.doc.Formatting().Bold == richtext.FormatOn {
+		t.Fatal("old formatting binding was not disabled")
+	}
+	tt.Key(ui.Cmd|ui.Alt, ui.KeyB)
+	if a.doc.Formatting().Bold != richtext.FormatOn {
+		t.Fatal("custom formatting binding was not applied")
+	}
+	a.lib.Settings.Keys["Bold"] = ""
+	tt.Frame()
+	tt.Key(ui.Cmd|ui.Alt, ui.KeyB)
+	if a.doc.Formatting().Bold != richtext.FormatOn {
+		t.Fatal("disabled formatting shortcut still active")
+	}
+	other, err := library.Open(a.lib.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other.Settings.Language = "zh-CN"
+	if err := other.SaveSettings(); err != nil {
+		t.Fatal(err)
+	}
+	a.setLanguage("en")
+	if a.problem == "" || a.lib.Settings.Language != "" {
+		t.Fatal("failed preference write did not roll back")
+	}
+	a.setOutlineSide("Left")
+	if a.outlineSide() != "Right" {
+		t.Fatal("failed outline write did not roll back")
+	}
+	a.shortcutDraft = map[string]string{"New note": "Cmd+Alt+J"}
+	if a.saveShortcuts() || a.lib.Settings.Keys["New note"] != "" {
+		t.Fatal("failed shortcut write was applied")
+	}
+	if err := a.lib.ReloadSettings(); err != nil {
+		t.Fatal(err)
+	}
+	if a.lib.Settings.Language != "zh-CN" {
+		t.Fatal("settings reload did not resolve conflict")
+	}
+}
+
+func TestLocalizedChromeAndMessages(t *testing.T) {
+	a := testApp(t)
+	a.lib.Settings.Language = "zh-CN"
+	for _, action := range a.actions() {
+		if a.tr(action.Name) == action.Name {
+			t.Errorf("missing action translation: %s", action.Name)
+		}
+	}
+	for _, message := range []string{"Exported document.md", "Editing original file · /notes/test.md", "Reminder: Meeting", "Imported 3 documents", "Imported 3 documents and their metadata", "All changes saved"} {
+		if a.statusText(message) == message {
+			t.Errorf("untranslated status: %s", message)
+		}
+	}
+	for _, message := range []string{"invalid shortcut: Foo", "Shortcut conflict: Copy and Cut", "unknown modifier: Foo", "global shortcut Alt+Space unavailable", "Enter a positive number for width", "Give your note a name.", "disk write failed"} {
+		if a.localizedProblem(message) == message {
+			t.Errorf("untranslated problem: %s", message)
+		}
+	}
+	when := time.Date(2026, 11, 9, 12, 34, 0, 0, time.UTC)
+	if a.dateText(when, true) != "2026-11-09 12:34" {
+		t.Fatal("Chinese date")
+	}
+	a.lib.Settings.Language = "en"
+	if a.localizedProblem("invalid shortcut: Foo") != "invalid shortcut: Foo" || a.dateText(when, false) != "Nov 9, 2026" {
+		t.Fatal("English fallback")
+	}
+	if a.tr("An external plugin message") != "An external plugin message" {
+		t.Fatal("unknown content changed")
+	}
+}

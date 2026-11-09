@@ -19,6 +19,7 @@ var nativeReadyHook func(*app)
 
 func main() {
 	mygo.App.SetName("Mory")
+	mygo.App.SetLanguages("en", "zh-Hans")
 	mygo.Use(native.New(updater.Options{}))
 	if !mygo.App.RequestSingleInstanceLock() {
 		return
@@ -52,6 +53,7 @@ func main() {
 		}
 	})
 	mygo.App.WhenReady(func() {
+		a.applyLocale()
 		a.newWindow()
 		a.installMenu()
 		a.registerQuickNote()
@@ -155,30 +157,52 @@ func (a *app) newWindow() {
 	})
 }
 
-func (a *app) installMenu() {
-	action := func(label, key string, fn func()) *mygo.MenuItem {
-		return &mygo.MenuItem{Label: label, Accelerator: a.keyFor(strings.TrimSuffix(label, "…"), key), Click: func(_ *mygo.MenuItem, _ *mygo.Window) {
-			fn()
+func (a *app) installMenu() { mygo.App.SetMenu(a.buildMenu(updater.MenuItem())) }
+
+// Native menus and shortcut settings share stable action names.
+func (a *app) buildMenu(updateItem *mygo.MenuItem) *mygo.Menu {
+	actions := map[string]shortcut{}
+	for _, item := range a.actions() {
+		actions[item.Name] = item
+	}
+	action := func(name string) *mygo.MenuItem {
+		item := actions[name]
+		label := name
+		if name == "Import" || name == "Export" || name == "Settings" {
+			label += "…"
+		}
+		return &mygo.MenuItem{Label: a.tr(label), Accelerator: a.keyFor(name, item.Key), Click: func(_ *mygo.MenuItem, _ *mygo.Window) {
+			if item.Run != nil {
+				item.Run()
+			}
 			if a.win != nil {
 				a.win.Update(func() {})
 			}
 		}}
 	}
-	formatItems := []*mygo.MenuItem{}
+	roles := map[*mygo.MenuItem]string{}
+	role := func(name string, r mygo.MenuRole) *mygo.MenuItem {
+		item := &mygo.MenuItem{Role: r, Accelerator: a.keyFor(name, actions[name].Key)}
+		roles[item] = item.Accelerator
+		return item
+	}
+	formats := []*mygo.MenuItem{}
 	for _, item := range a.actions() {
 		if isTextAction(item.Name) && item.Name != "Undo" && item.Name != "Redo" && item.Name != "Paste" {
-			formatItems = append(formatItems, action(item.Name, item.Key, item.Run))
+			formats = append(formats, action(item.Name))
 		}
 	}
-	mygo.App.SetMenu(mygo.NewMenu([]*mygo.MenuItem{
-		{Label: "Mory", Submenu: []*mygo.MenuItem{{Role: mygo.RoleAbout}, updater.MenuItem(), mygo.Separator(), {Role: mygo.RoleHide}, {Role: mygo.RoleHideOthers}, {Role: mygo.RoleUnhide}, mygo.Separator(), {Role: mygo.RoleQuit}}},
-		{Label: "File", Submenu: []*mygo.MenuItem{action("New note", "Cmd+N", func() { a.createNote("", "Untitled") }), action("Import…", "Cmd+O", a.chooseImport), action("Save", "Cmd+S", func() { a.save() }), action("Open local file", "Cmd+Shift+O", func() { a.chooseLocal(false) }), action("Quick note", "Cmd+Alt+N", a.quickNote), action("Open in new window", "", func() {
-			if a.current != nil {
-				a.openWindow(a.current)
-			}
-		}), action("Print", "Cmd+Alt+P", a.printDocument), action("Export…", "Cmd+Shift+E", a.exportMenuOpen), {Role: mygo.RoleClose}}},
-		{Label: "Edit", Submenu: []*mygo.MenuItem{{Role: mygo.RoleUndo, Accelerator: a.keyFor("Undo", "Cmd+Z")}, {Role: mygo.RoleRedo, Accelerator: a.keyFor("Redo", "Cmd+Shift+Z")}, mygo.Separator(), {Role: mygo.RoleCut}, {Role: mygo.RoleCopy}, {Role: mygo.RolePaste, Accelerator: a.keyFor("Paste", "Cmd+V")}, {Role: mygo.RoleSelectAll}}}, {Label: "Format", Submenu: formatItems},
-		{Label: "View", Submenu: []*mygo.MenuItem{action("Library", "Cmd+Shift+F", func() { a.home("All notes") }), action("Focus mode", "Cmd+Shift+L", func() { a.focus = !a.focus }), action("Toggle toolbar", "Cmd+Shift+T", func() { a.showToolbar = !a.showToolbar }), action("Toggle outline", "Cmd+Shift+H", func() { a.outline = !a.outline }), action("Insert block…", "Cmd+P", func() { a.insertOpen = true }), action("Settings…", "Cmd+,", func() { a.settingsOpen = true }), {Role: mygo.RoleToggleFullScreen}}},
-		{Role: mygo.RoleWindowMenu}, {Label: "Help", Submenu: []*mygo.MenuItem{action("Shortcuts", "Cmd+/", func() { a.helpOpen = true })}},
-	}))
+	menu := mygo.NewMenu([]*mygo.MenuItem{
+		{Label: "Mory", Submenu: []*mygo.MenuItem{{Role: mygo.RoleAbout}, updateItem, mygo.Separator(), action("Settings"), mygo.Separator(), role("Hide", mygo.RoleHide), role("Hide others", mygo.RoleHideOthers), {Role: mygo.RoleUnhide}, mygo.Separator(), role("Quit", mygo.RoleQuit)}},
+		{Label: a.tr("File"), Submenu: []*mygo.MenuItem{action("New note"), action("Import"), action("Open local file"), action("Save"), action("Quick note"), action("Open in new window"), action("Print"), action("Export"), role("Close window", mygo.RoleClose)}},
+		{Label: a.tr("Edit"), Submenu: []*mygo.MenuItem{role("Undo", mygo.RoleUndo), role("Redo", mygo.RoleRedo), mygo.Separator(), role("Cut", mygo.RoleCut), role("Copy", mygo.RoleCopy), role("Paste", mygo.RolePaste), role("Select all", mygo.RoleSelectAll), mygo.Separator(), action("Find"), action("Replace")}},
+		{Label: a.tr("Format"), Submenu: formats},
+		{Label: a.tr("View"), Submenu: []*mygo.MenuItem{action("Library"), action("Focus mode"), action("Formatting toolbar"), action("Outline"), action("Outline on Left"), action("Outline on Right"), action("Write mode"), action("Read mode"), action("Source mode"), action("Split mode"), action("Insert block"), role("Full screen", mygo.RoleToggleFullScreen)}},
+		{Role: mygo.RoleWindowMenu}, {Label: a.tr("Help"), Submenu: []*mygo.MenuItem{action("Shortcuts")}},
+	})
+	// MyGo fills role defaults during construction; explicitly clear disabled keys afterwards.
+	for item, key := range roles {
+		item.Accelerator = key
+	}
+	return menu
 }

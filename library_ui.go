@@ -116,7 +116,7 @@ func (a *app) batchBar(c *ui.Context, notes []*library.Note) {
 	t := c.Theme()
 	if !a.selecting && (a.section != "Trash" || len(notes) == 0) {
 		// Invisible bridge for automation click
-		if b := ui.Button(c, "").Label("Select notes").Height(1).Width(1).Opacity(0).Background(ui.Transparent).Border(0, ui.Transparent).Padding(0); b.Clicked() {
+		if b := ui.Button(c, "").Label(a.tr("Select notes")).Height(1).Width(1).Opacity(0).Background(ui.Transparent).Border(0, ui.Transparent).Padding(0); b.Clicked() {
 			a.selecting = true
 			a.selected = map[string]bool{}
 		}
@@ -125,41 +125,41 @@ func (a *app) batchBar(c *ui.Context, notes []*library.Note) {
 
 	ui.Row(c).Padding(6, 14).Radius(8).Background(t.Surface).Border(1, t.Border.Alpha(0.7)).Gap(10).AlignItems(ui.Center).Children(func() {
 		if a.selecting {
-			if ghostButton(c, "Select all").Padding(4, 8).Radius(5).Clicked() {
+			if ghostButton(c, a.tr("Select all")).Padding(4, 8).Radius(5).Clicked() {
 				for _, n := range notes {
 					a.selected[n.ID] = true
 				}
 			}
-			ui.Textf(c, "%d selected", len(a.selectedNotes())).FontSize(12).Bold().TextColor(t.Accent)
+			ui.Textf(c, a.tr("%d selected"), len(a.selectedNotes())).FontSize(12).Bold().TextColor(t.Accent)
 			ui.Box(c).Height(14).Width(1).Background(t.Border)
 			if a.section == "Trash" {
-				if ghostButton(c, "Restore selected").Padding(4, 8).Radius(5).Clicked() {
+				if ghostButton(c, a.tr("Restore selected")).Padding(4, 8).Radius(5).Clicked() {
 					a.batch("Restore")
 				}
 			} else {
-				if ghostButton(c, "Duplicate selected").Padding(4, 8).Radius(5).Clicked() {
+				if ghostButton(c, a.tr("Duplicate selected")).Padding(4, 8).Radius(5).Clicked() {
 					a.batch("Duplicate")
 				}
-				if ghostButton(c, "Move selected…").Padding(4, 8).Radius(5).Clicked() {
+				if ghostButton(c, a.tr("Move selected…")).Padding(4, 8).Radius(5).Clicked() {
 					a.batchMove = true
 					a.moveOpen = true
 					a.moveParent = ""
 					a.moveFolder = ""
 					a.target = nil
 				}
-				if ghostButton(c, "Trash selected").Padding(4, 8).Radius(5).Clicked() {
+				if ghostButton(c, a.tr("Trash selected")).Padding(4, 8).Radius(5).Clicked() {
 					a.batch("Trash")
 				}
 			}
 			ui.Box(c).Grow(1)
-			if ghostButton(c, "Done").Padding(4, 10).Radius(5).Background(t.Background).Clicked() {
+			if ghostButton(c, a.tr("Done")).Padding(4, 10).Radius(5).Background(t.Background).Clicked() {
 				a.selecting = false
 				a.selected = map[string]bool{}
 			}
 		}
 		if a.section == "Trash" && len(notes) > 0 {
 			ui.Box(c).Grow(1)
-			if ghostButton(c, "Empty Trash…").Padding(4, 8).Radius(5).TextColor(ui.Hex("#ff3b30")).Clicked() {
+			if ghostButton(c, a.tr("Empty Trash…")).Padding(4, 8).Radius(5).TextColor(ui.Hex("#ff3b30")).Clicked() {
 				a.emptyTrashOpen = true
 			}
 		}
@@ -169,12 +169,12 @@ func (a *app) batchBar(c *ui.Context, notes []*library.Note) {
 func (a *app) libraryOverlays(c *ui.Context) {
 	ui.Modal(c, &a.folderOpen, func() {
 		ui.Column(c).Width(380).Gap(12).Children(func() {
-			ui.Text(c, "Folder").FontSize(24)
-			ui.TextInput(c, &a.folderName).Label("Folder title").FillWidth().AutoFocus()
-			if ui.PrimaryButton(c, "Save folder").Clicked() && !a.fail(a.lib.RenameFolder(a.folderFrom, a.folderName)) {
+			ui.Text(c, a.tr("Folder")).FontSize(24)
+			ui.TextInput(c, &a.folderName).Label(a.tr("Folder title")).FillWidth().AutoFocus()
+			if ui.PrimaryButton(c, a.tr("Save folder")).Clicked() && !a.fail(a.lib.RenameFolder(a.folderFrom, a.folderName)) {
 				a.folderOpen = false
 			}
-			if a.folderFrom != "" && ui.Button(c, "Remove folder, keep notes").Clicked() && !a.fail(a.lib.DeleteFolder(a.folderFrom)) {
+			if a.folderFrom != "" && ui.Button(c, a.tr("Remove folder, keep notes")).Clicked() && !a.fail(a.lib.DeleteFolder(a.folderFrom)) {
 				a.folderOpen = false
 				a.folder = ""
 			}
@@ -182,29 +182,29 @@ func (a *app) libraryOverlays(c *ui.Context) {
 	})
 	ui.Modal(c, &a.emptyTrashOpen, func() {
 		ui.Column(c).Width(400).Gap(12).Children(func() {
-			ui.Text(c, "Empty Trash permanently?").FontSize(24)
-			ui.Text(c, "All trashed library notes will be deleted. Original external files are kept.")
-			if ui.Button(c, "Empty Trash").Clicked() && !a.fail(a.lib.EmptyTrash()) {
+			ui.Text(c, a.tr("Empty Trash permanently?")).FontSize(24)
+			ui.Text(c, a.tr("All trashed library notes will be deleted. Original external files are kept."))
+			if ui.Button(c, a.tr("Empty Trash")).Clicked() && !a.fail(a.lib.EmptyTrash()) {
 				a.emptyTrashOpen = false
 				a.selected = map[string]bool{}
 			}
-			if ui.Button(c, "Cancel").Clicked() {
+			if ui.Button(c, a.tr("Cancel")).Clicked() {
 				a.emptyTrashOpen = false
 			}
 		})
 	})
 	ui.Modal(c, &a.historyOpen, func() {
 		ui.Column(c).Width(560).MaxHeight(600).Gap(12).Children(func() {
-			ui.Text(c, "Document history").FontSize(24)
+			ui.Text(c, a.tr("Document history")).FontSize(24)
 			ui.Scroll(c).MaxHeight(440).Gap(8).Children(func() {
 				if len(a.revisions) == 0 {
-					ui.Text(c, "No previous saved revisions yet.")
+					ui.Text(c, a.tr("No previous saved revisions yet."))
 				}
 				for _, revision := range a.revisions {
 					ui.Row(c.Key(revision.Name)).Gap(12).Children(func() {
-						ui.Text(c, revision.Note.Updated.Format("Jan 2, 2006 15:04:05")).Grow(1)
-						ui.Textf(c, "%d characters", len([]rune(revision.Note.Source)))
-						if ui.Button(c, "Restore").Clicked() && a.current != nil {
+						ui.Text(c, a.dateText(revision.Note.Updated, true)).Grow(1)
+						ui.Textf(c, a.tr("%d characters"), len([]rune(revision.Note.Source)))
+						if ui.Button(c, a.tr("Restore")).Clicked() && a.current != nil {
 							a.current.Source = revision.Note.Source
 							a.loadEditors()
 							a.markDirty()
@@ -214,18 +214,18 @@ func (a *app) libraryOverlays(c *ui.Context) {
 					})
 				}
 			})
-			if ui.Button(c, "Close").Clicked() {
+			if ui.Button(c, a.tr("Close")).Clicked() {
 				a.historyOpen = false
 			}
 		})
 	})
 	ui.Modal(c, &a.recoveryOpen, func() {
 		ui.Column(c).Width(480).Gap(12).Children(func() {
-			ui.Text(c, "Recover unsaved documents").FontSize(24)
+			ui.Text(c, a.tr("Recover unsaved documents")).FontSize(24)
 			for i, revision := range a.recoveries {
 				ui.Row(c.Key(revision.Name)).Gap(8).Children(func() {
 					ui.Text(c, revision.Note.Title).Grow(1)
-					if ui.Button(c, "Recover as a copy").Clicked() {
+					if ui.Button(c, a.tr("Recover as a copy")).Clicked() {
 						n, err := a.lib.Create(revision.Note.Title+" recovered", revision.Note.Source, revision.Note.Format)
 						if !a.fail(err) {
 							a.openNote(n)
@@ -236,7 +236,7 @@ func (a *app) libraryOverlays(c *ui.Context) {
 					}
 				})
 			}
-			if ui.Button(c, "Later").Clicked() {
+			if ui.Button(c, a.tr("Later")).Clicked() {
 				a.recoveryOpen = false
 			}
 		})
@@ -247,8 +247,9 @@ func (a *app) chooseLocal(folder bool) {
 	if a.win == nil {
 		return
 	}
+	options := mygo.OpenDialogOptions{Parent: a.win, Title: a.tr("Open local documents"), Directory: folder, Multiple: !folder}
 	go func() {
-		paths, err := openDialog(mygo.OpenDialogOptions{Parent: a.win, Title: "Open local documents", Directory: folder, Multiple: !folder})
+		paths, err := openDialog(options)
 		a.win.Update(func() {
 			if a.fail(err) {
 				return

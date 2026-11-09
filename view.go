@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-		"strings"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -10,7 +10,7 @@ import (
 	"github.com/egoist/mygo/ui/markdown"
 	"github.com/egoist/mygo/ui/richtext"
 	"github.com/yuluo-yx/mory/internal/blocks"
-		"github.com/yuluo-yx/mory/internal/document"
+	"github.com/yuluo-yx/mory/internal/document"
 	"github.com/yuluo-yx/mory/internal/library"
 )
 
@@ -83,11 +83,13 @@ func (a *app) view(c *ui.Context) {
 	}
 
 	ui.Row(c).Fill().AlignItems(ui.Stretch).Background(c.Theme().Background).Children(func() {
-		if !a.focus {
+		if !a.focus || a.settingsOpen || a.helpOpen {
 			a.sidebar(c)
 		}
-		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-			if a.current == nil {
+		ui.Column(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
+			if a.settingsOpen || a.helpOpen {
+				a.settingsPage(c)
+			} else if a.current == nil {
 				a.homeView(c)
 			} else {
 				a.editorView(c)
@@ -125,7 +127,7 @@ func (a *app) sidebar(c *ui.Context) {
 	sideCol.Children(func() {
 		// Window control placeholder & sidebar toggle
 		ui.Row(c).Height(24).AlignItems(ui.Center).Justify(ui.End).Padding(0, 6).Children(func() {
-			btn := ghostButton(c, "").Tooltip("Toggle sidebar").Padding(3, 5).Radius(5)
+			btn := ghostButton(c, "").Tooltip(a.tr("Toggle sidebar")).Padding(3, 5).Radius(5)
 			btn.Children(func() {
 				ui.Icon(c, iconSidebar()).Width(15).Height(15).TextColor(t.TextMuted)
 			})
@@ -136,7 +138,7 @@ func (a *app) sidebar(c *ui.Context) {
 
 		// Active Section Item: [Home] / All notes
 		isHome := a.current == nil && (a.section == "All notes" || a.section == "") && a.folder == ""
-		homeBtn := ghostButton(c, "").Label("All notes").FillWidth().Padding(8, 12).Radius(8)
+		homeBtn := ghostButton(c, "").Label(a.tr("All notes")).FillWidth().Padding(8, 12).Radius(8)
 		if isHome {
 			homeBtn.Background(t.Accent.Alpha(0.18))
 		} else if homeBtn.Hovered() {
@@ -149,7 +151,7 @@ func (a *app) sidebar(c *ui.Context) {
 					iconColor = t.Accent
 				}
 				ui.Icon(c, iconHome()).Width(16).Height(16).TextColor(iconColor)
-				txt := ui.Text(c, "Home").FontSize(13).Grow(1)
+				txt := ui.Text(c, a.tr("Home")).FontSize(13).Grow(1)
 				if isHome {
 					txt.Bold().TextColor(t.Accent)
 				}
@@ -163,9 +165,9 @@ func (a *app) sidebar(c *ui.Context) {
 
 		// Section: My documents Header
 		ui.Row(c).Padding(6, 8, 4).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "My documents").FontSize(12).TextColor(t.TextMuted).Bold().Grow(1).LetterSpacing(-0.1)
+			ui.Text(c, a.tr("My documents")).FontSize(12).TextColor(t.TextMuted).Bold().Grow(1).LetterSpacing(-0.1)
 			ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
-				btnFolder := ghostButton(c, "").Tooltip("New folder").Label("New folder").Padding(3, 5).Radius(4)
+				btnFolder := ghostButton(c, "").Tooltip(a.tr("New folder")).Label(a.tr("New folder")).Padding(3, 5).Radius(4)
 				btnFolder.Children(func() {
 					ui.Icon(c, iconFolder()).Width(13).Height(13).TextColor(t.TextMuted)
 				})
@@ -174,7 +176,7 @@ func (a *app) sidebar(c *ui.Context) {
 					a.folderName = ""
 					a.folderOpen = true
 				}
-				btnNote := ghostButton(c, "").Tooltip("New note").Label("New note").Padding(3, 5).Radius(4)
+				btnNote := ghostButton(c, "").Tooltip(a.tr("New note")).Label(a.tr("New note")).Padding(3, 5).Radius(4)
 				btnNote.Children(func() {
 					ui.Icon(c, iconPlus()).Width(13).Height(13).TextColor(t.TextMuted)
 				})
@@ -187,7 +189,7 @@ func (a *app) sidebar(c *ui.Context) {
 		// Document & Folder Tree
 		ui.Scroll(c).Grow(1).Gap(1).Children(func() {
 			for _, folder := range a.lib.Folders() {
-				button := ghostButton(c, "").Label("Folder " + folder).FillWidth().Radius(6).Padding(6, 8)
+				button := ghostButton(c, "").Label(a.tr("Folder ")+folder).FillWidth().Radius(6).Padding(6, 8)
 				if a.folder == folder {
 					button.Background(t.Accent.Alpha(0.12))
 				} else if button.Hovered() {
@@ -203,7 +205,7 @@ func (a *app) sidebar(c *ui.Context) {
 					})
 				})
 				button.PopoverMenu(func(m *ui.Menu) {
-					if m.Item("Edit folder…").Chosen() {
+					if m.Item(a.tr("Edit folder…")).Chosen() {
 						a.folderFrom = folder
 						a.folderName = folder
 						a.folderOpen = true
@@ -234,41 +236,38 @@ func (a *app) sidebar(c *ui.Context) {
 		// Bottom Settings Icon Button
 		ui.Box(c).Height(1).FillWidth().Background(t.Border.Alpha(0.5)).Margin(4, 0)
 		ui.Row(c).AlignItems(ui.Center).Children(func() {
-			settingsBtn := ghostButton(c, "").Label("Settings").Radius(6).Padding(7, 10).Grow(1)
+			settingsBtn := ghostButton(c, "").Label(a.tr("Settings")).Radius(6).Padding(7, 10).Grow(1)
 			if a.settingsOpen {
 				settingsBtn.Background(t.SurfaceHover)
 			}
 			settingsBtn.Children(func() {
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 					ui.Icon(c, iconSettings()).Width(16).Height(16).TextColor(t.TextMuted)
-					ui.Text(c, "Settings").FontSize(13)
+					ui.Text(c, a.tr("Settings")).FontSize(13)
 				})
 			})
 			if settingsBtn.Clicked() {
 				a.settingsOpen = !a.settingsOpen
 			}
-			ui.Popover(c, settingsBtn, &a.settingsOpen, func() {
-				a.settingsContent(c)
-			})
 		})
 
 		// Accessibility bridges for automation & testing
 		ui.Row(c).Height(1).Width(1).Opacity(0).Background(ui.Transparent).Border(0, ui.Transparent).Padding(0).Children(func() {
 			for _, sec := range []string{"Recent", "Favorites", "Trash"} {
-				if b := ui.Button(c, "").Label(sec).Height(1).Width(1).Background(ui.Transparent).Border(0, ui.Transparent).Padding(0); b.Clicked() {
+				if b := ui.Button(c, "").Label(a.tr(sec)).Height(1).Width(1).Background(ui.Transparent).Border(0, ui.Transparent).Padding(0); b.Clicked() {
 					a.home(sec)
 				}
 			}
-			if b := ui.Button(c, "").Label("Plugins").Height(1).Width(1).Background(ui.Transparent).Border(0, ui.Transparent).Padding(0); b.Clicked() {
+			if b := ui.Button(c, "").Label(a.tr("Plugins")).Height(1).Width(1).Background(ui.Transparent).Border(0, ui.Transparent).Padding(0); b.Clicked() {
 				a.pluginsOpen = true
 			}
-			if b := ui.Button(c, "").Label("↓   Import documents").Height(1).Width(1).Background(ui.Transparent).Border(0, ui.Transparent).Padding(0); b.Clicked() {
+			if b := ui.Button(c, "").Label(a.tr("↓   Import documents")).Height(1).Width(1).Background(ui.Transparent).Border(0, ui.Transparent).Padding(0); b.Clicked() {
 				a.chooseImport()
 			}
-			if b := ui.Button(c, "").Label("▱   Import folder").Height(1).Width(1).Background(ui.Transparent).Border(0, ui.Transparent).Padding(0); b.Clicked() {
+			if b := ui.Button(c, "").Label(a.tr("▱   Import folder")).Height(1).Width(1).Background(ui.Transparent).Border(0, ui.Transparent).Padding(0); b.Clicked() {
 				a.chooseLocal(true)
 			}
-			if b := ui.Button(c, "").Label("↗   Open local file").Height(1).Width(1).Background(ui.Transparent).Border(0, ui.Transparent).Padding(0); b.Clicked() {
+			if b := ui.Button(c, "").Label(a.tr("↗   Open local file")).Height(1).Width(1).Background(ui.Transparent).Border(0, ui.Transparent).Padding(0); b.Clicked() {
 				a.chooseLocal(false)
 			}
 		})
@@ -280,7 +279,7 @@ func (a *app) treeNote(c *ui.Context, n *library.Note, depth int, seen map[strin
 		return
 	}
 	seen[n.ID] = true
-	b := ghostButton(c.Key("tree-"+n.ID), "").Label("Open "+n.Title).FillWidth().Padding(5, 8+float32(depth)*12).MaxHeight(32).Radius(6).Drag(noteDrag{n.ID})
+	b := ghostButton(c.Key("tree-"+n.ID), "").Label(a.tr("Open ")+n.Title).FillWidth().Padding(5, 8+float32(depth)*12).MaxHeight(32).Radius(6).Drag(noteDrag{n.ID})
 	if a.current == n {
 		b.Background(c.Theme().Accent.Alpha(0.12))
 	} else if b.Hovered() {
@@ -339,24 +338,29 @@ func (a *app) homeView(c *ui.Context) {
 		header.DragWindow()
 	}
 	header.Children(func() {
-		ui.Text(c, "Home").FontSize(17).Bold().LetterSpacing(-0.2).TextColor(t.Text)
+		ui.Text(c, a.tr("Home")).FontSize(17).Bold().LetterSpacing(-0.2).TextColor(t.Text)
 
 		ui.Row(c).Grow(1).Justify(ui.Center).Children(func() {
 			ui.Row(c).Width(340).Height(32).Padding(0, 10).Radius(8).Background(t.Surface).Border(1, t.Border.Alpha(0.6)).AlignItems(ui.Center).Gap(8).Children(func() {
 				ui.Icon(c, iconSearch()).Width(14).Height(14).TextColor(t.TextMuted)
-				if ui.TextInput(c, &a.query).Label("Search notes").Placeholder("Search documents…").Grow(1).Background(ui.Transparent).Border(0, ui.Transparent).Changed() {
+				search := ui.TextInput(c, &a.query).Label(a.tr("Search notes")).Placeholder(a.tr("Search documents…")).Grow(1).Background(ui.Transparent).Border(0, ui.Transparent)
+				if a.searchFocus {
+					search.Focus()
+					a.searchFocus = false
+				}
+				if search.Changed() {
 					if a.save() {
 						a.current = nil
 					}
 				}
 				if a.lib.Settings.ShowShortcuts {
-					ui.Text(c, "⌘J").FontSize(11).TextColor(t.TextMuted.Alpha(0.7))
+					ui.Text(c, a.shortcutHint("Search notes")).FontSize(11).TextColor(t.TextMuted.Alpha(0.7))
 				}
 			})
 		})
 
 		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-			btnImport := ghostButton(c, "").Tooltip("Import").Padding(5, 8).Radius(6)
+			btnImport := ghostButton(c, "").Tooltip(a.tr("Import")).Padding(5, 8).Radius(6)
 			btnImport.Children(func() {
 				ui.Icon(c, iconDownload()).Width(15).Height(15).TextColor(t.TextMuted)
 			})
@@ -364,7 +368,7 @@ func (a *app) homeView(c *ui.Context) {
 				a.chooseImport()
 			}
 
-			btnFolder := ghostButton(c, "").Tooltip("New folder").Padding(5, 8).Radius(6)
+			btnFolder := ghostButton(c, "").Tooltip(a.tr("New folder")).Padding(5, 8).Radius(6)
 			btnFolder.Children(func() {
 				ui.Icon(c, iconFolder()).Width(15).Height(15).TextColor(t.TextMuted)
 			})
@@ -375,7 +379,7 @@ func (a *app) homeView(c *ui.Context) {
 			}
 
 			if a.section != "Trash" {
-				btn := ghostButton(c, "").Label("Create note").Padding(5, 10).Radius(6).Background(t.Accent)
+				btn := ghostButton(c, "").Label(a.tr("Create note")).Padding(5, 10).Radius(6).Background(t.Accent)
 				btn.Children(func() {
 					ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
 						ui.Icon(c, iconPlus()).Width(14).Height(14).TextColor(t.AccentText)
@@ -392,7 +396,7 @@ func (a *app) homeView(c *ui.Context) {
 		ui.Row(c).AlignItems(ui.Center).Gap(12).Children(func() {
 			ui.Row(c).Padding(3).Radius(8).Background(t.Surface).Gap(2).Children(func() {
 				isAll := a.section == "All notes"
-				docBtn := ghostButton(c, "My documents").Label("All notes").Padding(5, 12).FontSize(13).Radius(6)
+				docBtn := ghostButton(c, a.tr("My documents")).Label(a.tr("All notes")).Padding(5, 12).FontSize(13).Radius(6)
 				if isAll {
 					docBtn.Background(t.Background).TextColor(t.Text).Bold().Shadow(0, 1, 3, 0, ui.RGBA(0, 0, 0, 0.08))
 				} else {
@@ -403,7 +407,7 @@ func (a *app) homeView(c *ui.Context) {
 				}
 
 				isFav := a.section == "Favorites"
-				favBtn := ghostButton(c, "Favorites").Label("Favorites").Padding(5, 12).FontSize(13).Radius(6)
+				favBtn := ghostButton(c, a.tr("Favorites")).Label(a.tr("Favorites")).Padding(5, 12).FontSize(13).Radius(6)
 				if isFav {
 					favBtn.Background(t.Background).TextColor(t.Text).Bold().Shadow(0, 1, 3, 0, ui.RGBA(0, 0, 0, 0.08))
 				} else {
@@ -430,7 +434,7 @@ func (a *app) homeView(c *ui.Context) {
 			if a.selecting {
 				manageLabel = "Done selecting"
 			}
-			manageBtn := ghostButton(c, "").Label(manageLabel).Padding(5, 10).Radius(6)
+			manageBtn := ghostButton(c, "").Label(a.tr(manageLabel)).Padding(5, 10).Radius(6)
 			if a.selecting {
 				manageBtn.Background(t.Accent.Alpha(0.12))
 			} else if manageBtn.Hovered() {
@@ -439,7 +443,7 @@ func (a *app) homeView(c *ui.Context) {
 			manageBtn.Children(func() {
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 					ui.Icon(c, iconCheckSquare()).Width(13).Height(13).TextColor(t.TextMuted)
-					txt := ui.Text(c, "Manage").FontSize(12)
+					txt := ui.Text(c, a.tr("Manage")).FontSize(12)
 					if a.selecting {
 						txt.Bold().TextColor(t.Accent)
 					}
@@ -454,11 +458,11 @@ func (a *app) homeView(c *ui.Context) {
 
 			ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
 				ui.Icon(c, iconSliders()).Width(13).Height(13).TextColor(t.TextMuted)
-				ui.Select(c, &a.order, []string{"Modified", "Created", "Title", "Manual"}).Width(126).Label("Sort notes")
+				a.selectText(c, &a.order, []string{"Modified", "Created", "Title", "Manual"}).Width(126).Label(a.tr("Sort notes"))
 			})
 
 			ui.Row(c).Padding(2).Radius(7).Background(t.Surface).Gap(2).Children(func() {
-				gridBtn := ghostButton(c, "").Label("Grid view").Padding(4, 7).Radius(5)
+				gridBtn := ghostButton(c, "").Label(a.tr("Grid view")).Padding(4, 7).Radius(5)
 				if !a.lib.Settings.List {
 					gridBtn.Background(t.Background).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.08))
 				}
@@ -471,10 +475,10 @@ func (a *app) homeView(c *ui.Context) {
 				})
 				if gridBtn.Clicked() {
 					a.lib.Settings.List = false
-					a.fail(a.lib.SaveSettings())
+					a.savePreferences()
 				}
 
-				listBtn := ghostButton(c, "").Label("List view").Padding(4, 7).Radius(5)
+				listBtn := ghostButton(c, "").Label(a.tr("List view")).Padding(4, 7).Radius(5)
 				if a.lib.Settings.List {
 					listBtn.Background(t.Background).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.08))
 				}
@@ -487,7 +491,7 @@ func (a *app) homeView(c *ui.Context) {
 				})
 				if listBtn.Clicked() {
 					a.lib.Settings.List = true
-					a.fail(a.lib.SaveSettings())
+					a.savePreferences()
 				}
 			})
 		})
@@ -497,9 +501,9 @@ func (a *app) homeView(c *ui.Context) {
 		ui.Scroll(c).Grow(1).Gap(14).Children(func() {
 			if len(notes) == 0 {
 				ui.Column(c).Padding(80, 20).Gap(14).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, "A little space for something new.").FontSize(20).Bold().LetterSpacing(-0.3)
-					ui.Text(c, "Create a note, import a document, or try another search.").TextColor(t.TextMuted).FontSize(13)
-					if ghostButton(c, "Create a blank note").Padding(8, 16).Radius(6).Background(t.Surface).Clicked() {
+					ui.Text(c, a.tr("A little space for something new.")).FontSize(20).Bold().LetterSpacing(-0.3)
+					ui.Text(c, a.tr("Create a note, import a document, or try another search.")).TextColor(t.TextMuted).FontSize(13)
+					if ghostButton(c, a.tr("Create a blank note")).Padding(8, 16).Radius(6).Background(t.Surface).Clicked() {
 						a.createNote("", "Untitled")
 					}
 				})
@@ -519,9 +523,9 @@ func (a *app) homeView(c *ui.Context) {
 		})
 
 		ui.Row(c).AlignItems(ui.Center).Children(func() {
-			ui.Textf(c, "%d notes · On this Mac", len(notes)).FontSize(11).TextColor(t.TextMuted).Grow(1)
+			ui.Textf(c, a.tr("%d notes · On this Mac"), len(notes)).FontSize(11).TextColor(t.TextMuted).Grow(1)
 			if a.lib.Settings.ShowShortcuts {
-				ui.Text(c, "⌘N  New note     ⌘O  Import     ⌘J  Search").FontSize(11).TextColor(t.TextMuted)
+				ui.Text(c, a.shortcutHints("New note", "Import", "Search notes")).FontSize(11).TextColor(t.TextMuted)
 			}
 		})
 	})
@@ -538,7 +542,7 @@ func (a *app) noteCard(c *ui.Context, n *library.Note, list bool) {
 	if !dark {
 		cardBg = ui.Hex("#f8f8fa")
 	}
-	card := ui.Column(c.Key("card-"+n.ID)).Height(height).MinWidth(0).Radius(12).Border(1, t.Border).Background(cardBg).Label("Note " + n.Title).Focusable().Drag(noteDrag{n.ID}).Cursor(ui.CursorPointer)
+	card := ui.Column(c.Key("card-"+n.ID)).Height(height).MinWidth(0).Radius(12).Border(1, t.Border).Background(cardBg).Label(a.tr("Note ") + n.Title).Focusable().Drag(noteDrag{n.ID}).Cursor(ui.CursorPointer)
 	if card.Hovered() {
 		card.Border(1, t.Border).Shadow(0, 8, 20, 0, ui.RGBA(0, 0, 0, 0.08)).Translate(0, -2)
 	} else {
@@ -556,7 +560,7 @@ func (a *app) noteCard(c *ui.Context, n *library.Note, list bool) {
 			ui.Row(c).Fill().Padding(12, 16).AlignItems(ui.Center).Gap(12).Children(func() {
 				if a.selecting {
 					selected := a.selected[n.ID]
-					if ui.Checkbox(c, &selected, "").Label("Select " + n.Title).Changed() {
+					if ui.Checkbox(c, &selected, "").Label(a.tr("Select ") + n.Title).Changed() {
 						a.selected[n.ID] = selected
 					}
 				}
@@ -571,9 +575,9 @@ func (a *app) noteCard(c *ui.Context, n *library.Note, list bool) {
 							ui.Icon(c, iconStar()).Width(12).Height(12).TextColor(ui.Hex("#ff9500"))
 						}
 					})
-					ui.Text(c, n.Updated.Format("Jan 2")+"  ·  "+formatLabel(n)).FontSize(11).TextColor(t.TextMuted)
+					ui.Text(c, a.dateText(n.Updated, false)+"  ·  "+formatLabel(n)).FontSize(11).TextColor(t.TextMuted)
 				})
-				btnMore := ghostButton(c, "").Label("Actions "+n.Title).Padding(4, 6).Radius(5)
+				btnMore := ghostButton(c, "").Label(a.tr("Actions ")+n.Title).Padding(4, 6).Radius(5)
 				btnMore.Children(func() {
 					ui.Icon(c, iconMore()).Width(14).Height(14).TextColor(t.TextMuted)
 				})
@@ -595,7 +599,7 @@ func (a *app) noteCard(c *ui.Context, n *library.Note, list bool) {
 				ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
 					if a.selecting {
 						selected := a.selected[n.ID]
-						if ui.Checkbox(c, &selected, "").Label("Select " + n.Title).Changed() {
+						if ui.Checkbox(c, &selected, "").Label(a.tr("Select ") + n.Title).Changed() {
 							a.selected[n.ID] = selected
 						}
 					}
@@ -607,7 +611,7 @@ func (a *app) noteCard(c *ui.Context, n *library.Note, list bool) {
 					if n.Starred {
 						ui.Icon(c, iconStar()).Width(11).Height(11).TextColor(ui.Hex("#ff9500"))
 					}
-					btnActions := ghostButton(c, "").Label("Actions "+n.Title).Padding(2, 4).Radius(4)
+					btnActions := ghostButton(c, "").Label(a.tr("Actions ")+n.Title).Padding(2, 4).Radius(4)
 					btnActions.Children(func() {
 						ui.Icon(c, iconMore()).Width(13).Height(13).TextColor(t.TextMuted)
 					})
@@ -632,7 +636,7 @@ func (a *app) noteCard(c *ui.Context, n *library.Note, list bool) {
 
 		ui.Column(c).Padding(8, 14, 12).Gap(4).Children(func() {
 			ui.Text(c, n.Title).FontSize(14).Bold().LetterSpacing(-0.2).MaxHeight(20).Clip()
-			ui.Text(c, n.Updated.Format("Jan 2")+"  ·  "+formatLabel(n)).FontSize(11).TextColor(t.TextMuted)
+			ui.Text(c, a.dateText(n.Updated, false)+"  ·  "+formatLabel(n)).FontSize(11).TextColor(t.TextMuted)
 		})
 	})
 
@@ -658,43 +662,43 @@ func formatLabel(n *library.Note) string {
 
 func (a *app) noteMenu(m *ui.Menu, n *library.Note) {
 	if n.Deleted {
-		if m.Item("Restore").Chosen() {
+		if m.Item(a.tr("Restore")).Chosen() {
 			a.fail(a.lib.TrashTree(n, false))
 		}
-		if m.Item("Delete permanently…").Chosen() {
+		if m.Item(a.tr("Delete permanently…")).Chosen() {
 			a.target = n
 			a.deleteOpen = true
 		}
 		return
 	}
-	if m.Item("Open").Chosen() {
+	if m.Item(a.tr("Open")).Chosen() {
 		a.openNote(n)
 	}
-	if m.Item("Open in new window").Chosen() {
+	if m.Item(a.tr("Open in new window")).Chosen() {
 		a.openWindow(n)
 	}
-	if m.Item("Rename…").Chosen() {
+	if m.Item(a.tr("Rename…")).Chosen() {
 		a.target = n
 		a.renameTitle = n.Title
 		a.renameOpen = true
 	}
-	if m.Item("Move…").Chosen() {
+	if m.Item(a.tr("Move…")).Chosen() {
 		a.target = n
 		a.moveFolder = n.Folder
 		a.moveParent = n.Parent
 		a.moveOpen = true
 	}
-	if m.Item("Duplicate").Chosen() {
+	if m.Item(a.tr("Duplicate")).Chosen() {
 		a.duplicate(n)
 	}
-	if m.Item("Favorite").Checked(n.Starred).Chosen() {
+	if m.Item(a.tr("Favorite")).Checked(n.Starred).Chosen() {
 		a.mutate(n, func() { n.Starred = !n.Starred })
 	}
-	if m.Item("Pin to top").Checked(n.Pinned).Chosen() {
+	if m.Item(a.tr("Pin to top")).Checked(n.Pinned).Chosen() {
 		a.mutate(n, func() { n.Pinned = !n.Pinned })
 	}
 	m.Separator()
-	if m.Item("Move to Trash").Chosen() {
+	if m.Item(a.tr("Move to Trash")).Chosen() {
 		a.trash(n)
 	}
 }
@@ -721,7 +725,7 @@ func (a *app) editorView(c *ui.Context) {
 		header.DragWindow()
 	}
 	header.Children(func() {
-		btnBack := ghostButton(c, "").Label("Back to library").Padding(5, 8).Radius(6)
+		btnBack := ghostButton(c, "").Label(a.tr("Back to library")).Padding(5, 8).Radius(6)
 		btnBack.Children(func() {
 			ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
 				ui.Icon(c, iconChevronLeft()).Width(16).Height(16).TextColor(t.Text)
@@ -735,7 +739,7 @@ func (a *app) editorView(c *ui.Context) {
 
 		ui.Row(c).Padding(2).Radius(7).Background(t.Surface).Gap(2).Children(func() {
 			for _, mode := range []string{"Write", "Source", "Split", "Read"} {
-				b := ghostButton(c, mode).Padding(4, 9).FontSize(12).Radius(5)
+				b := ghostButton(c, a.tr(mode)).Padding(4, 9).FontSize(12).Radius(5)
 				if a.mode == mode {
 					b.Background(t.Background).TextColor(t.Text).Bold().Shadow(0, 1, 3, 0, ui.RGBA(0, 0, 0, 0.08))
 				} else {
@@ -747,7 +751,7 @@ func (a *app) editorView(c *ui.Context) {
 			}
 		})
 
-		btnStar := ghostButton(c, "").Label("Toggle favorite").Radius(6).Padding(5, 7)
+		btnStar := ghostButton(c, "").Label(a.tr("Toggle favorite")).Radius(6).Padding(5, 7)
 		btnStar.Children(func() {
 			starCol := t.TextMuted
 			if n.Starred {
@@ -759,7 +763,7 @@ func (a *app) editorView(c *ui.Context) {
 			a.mutate(n, func() { n.Starred = !n.Starred })
 		}
 
-		btnOutline := ghostButton(c, "").Label("Toggle outline").Radius(6).Padding(5, 7)
+		btnOutline := ghostButton(c, "").Label(a.tr("Toggle outline")).Radius(6).Padding(5, 7)
 		if a.outline {
 			btnOutline.Background(t.Accent.Alpha(0.12))
 		}
@@ -774,7 +778,7 @@ func (a *app) editorView(c *ui.Context) {
 			a.outline = !a.outline
 		}
 
-		btnExport := ghostButton(c, "").Label("Export note").Radius(6).Padding(5, 7)
+		btnExport := ghostButton(c, "").Label(a.tr("Export note")).Radius(6).Padding(5, 7)
 		btnExport.Children(func() {
 			ui.Icon(c, iconShare()).Width(15).Height(15).TextColor(t.TextMuted)
 		})
@@ -782,7 +786,7 @@ func (a *app) editorView(c *ui.Context) {
 			a.exportMenuOpen()
 		}
 
-		btnActions := ghostButton(c, "").Label("Document actions").Radius(6).Padding(5, 7)
+		btnActions := ghostButton(c, "").Label(a.tr("Document actions")).Radius(6).Padding(5, 7)
 		btnActions.Children(func() {
 			ui.Icon(c, iconMore()).Width(15).Height(15).TextColor(t.TextMuted)
 		})
@@ -803,6 +807,9 @@ func (a *app) editorView(c *ui.Context) {
 		a.findBar(c)
 	}
 	ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
+		if a.outline && !a.focus && a.mode != "Split" && a.lib.Settings.OutlineSide == "Left" {
+			a.outlineView(c)
+		}
 		column := ui.Column(c).Grow(1).MinWidth(0).Padding(32, 40, 16)
 		if n.Width != "Full" && a.mode != "Split" {
 			width := float32(820)
@@ -824,13 +831,13 @@ func (a *app) editorView(c *ui.Context) {
 					break
 				}
 				font := a.writingFont(".page")
-				ed := richtext.EditorBase(c.Key(n.ID), a.doc, richtext.EditorOptions{Label: "Document editor", Placeholder: "Start writing…", Font: font, OnLink: a.openLink, OnLinkCommand: func() { a.linkURL = a.doc.Formatting().Link; a.linkOpen = true }, Theme: a.docTheme.Rich(c.Theme(), font)}).Grow(1).FillWidth()
+				ed := richtext.EditorBase(c.Key(n.ID), a.doc, richtext.EditorOptions{Label: a.tr("Document editor"), Placeholder: a.tr("Start writing…"), Font: font, OnLink: a.openLink, OnLinkCommand: func() { a.linkURL = a.doc.Formatting().Link; a.linkOpen = true }, Theme: a.docTheme.Rich(c.Theme(), font)}).Grow(1).FillWidth()
 				a.textFocused = ed.Focused()
 			case "Source":
-				editor.View(c.Key(n.ID), a.code).Label("Source editor").Fill()
+				editor.View(c.Key(n.ID), a.code).Label(a.tr("Source editor")).Fill()
 			case "Split":
 				ui.Row(c).Grow(1).MinHeight(0).Gap(22).Children(func() {
-					editor.View(c.Key(n.ID), a.code).Label("Source editor").Grow(1).MinWidth(0)
+					editor.View(c.Key(n.ID), a.code).Label(a.tr("Source editor")).Grow(1).MinWidth(0)
 					ui.Box(c).Width(1).Background(t.Border)
 					ui.Column(c).Grow(1).MinWidth(0).Children(func() { a.splitPreview(c) })
 				})
@@ -842,13 +849,13 @@ func (a *app) editorView(c *ui.Context) {
 				}
 			}
 		})
-		if a.outline && !a.focus && a.mode != "Split" {
+		if a.outline && !a.focus && a.mode != "Split" && a.lib.Settings.OutlineSide != "Left" {
 			a.outlineView(c)
 		}
 	})
 	a.capture()
 	ui.Row(c).Height(30).Shrink(0).Padding(4, 24).Gap(16).BorderWidth(1, 0, 0).BorderColor(t.Border).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, a.status).FontSize(11).TextColor(t.TextMuted).Grow(1)
+		ui.Text(c, a.statusText(a.status)).FontSize(11).TextColor(t.TextMuted).Grow(1)
 		if a.statsSource != n.Source {
 			text := n.Source
 			if a.structured() {
@@ -857,8 +864,8 @@ func (a *app) editorView(c *ui.Context) {
 			a.words, a.characters = document.Counts(text)
 			a.statsSource = n.Source
 		}
-		ui.Textf(c, "%d words  ·  %d characters", a.words, a.characters).FontSize(11).TextColor(t.TextMuted)
-		if ghostButton(c, "Focus").Label("Toggle focus mode").Padding(2, 6).FontSize(11).Radius(4).Clicked() {
+		ui.Textf(c, a.tr("%d words  ·  %d characters"), a.words, a.characters).FontSize(11).TextColor(t.TextMuted)
+		if ghostButton(c, a.tr("Focus")).Label(a.tr("Toggle focus mode")).Padding(2, 6).FontSize(11).Radius(4).Clicked() {
 			a.focus = !a.focus
 		}
 	})
@@ -873,7 +880,7 @@ func (a *app) toolbar(c *ui.Context) {
 		if f.Paragraph.Heading > 0 {
 			style = fmt.Sprintf("Heading %d", f.Paragraph.Heading)
 		}
-		if ui.Select(c, &style, []string{"Body", "Heading 1", "Heading 2", "Heading 3", "Heading 4", "Heading 5", "Heading 6", "Heading 7", "Heading 8", "Heading 9"}).Label("Paragraph style").KeepFocus().Width(125).Changed() {
+		if a.selectText(c, &style, []string{"Body", "Heading 1", "Heading 2", "Heading 3", "Heading 4", "Heading 5", "Heading 6", "Heading 7", "Heading 8", "Heading 9"}).Label(a.tr("Paragraph style")).KeepFocus().Width(125).Changed() {
 			level := 0
 			fmt.Sscanf(style, "Heading %d", &level)
 			a.setHeading(level)
@@ -883,7 +890,7 @@ func (a *app) toolbar(c *ui.Context) {
 			on          bool
 			run         func()
 		}{{"B", "Bold", f.Bold == richtext.FormatOn, doc.ToggleBold}, {"I", "Italic", f.Italic == richtext.FormatOn, doc.ToggleItalic}, {"U", "Underline", f.Underline == richtext.FormatOn, doc.ToggleUnderline}, {"S", "Strikethrough", f.Strikethrough == richtext.FormatOn, doc.ToggleStrikethrough}, {"‹›", "Inline code", f.Code == richtext.FormatOn, doc.ToggleCode}, {"•", "Bullet list", f.Paragraph.List == richtext.Bullets, func() { doc.ToggleList(richtext.Bullets) }}, {"1.", "Numbered list", f.Paragraph.List == richtext.Numbers, func() { doc.ToggleList(richtext.Numbers) }}, {"☑", "Task list", f.Paragraph.List == richtext.Tasks, func() { doc.ToggleList(richtext.Tasks) }}, {"❝", "Quote", f.Paragraph.Quote, doc.ToggleQuote}, {"{}", "Code block", f.Paragraph.CodeBlock, doc.ToggleCodeBlock}} {
-			button := ghostButton(c, b.text).Label(b.label).Tooltip(b.label).KeepFocus().Padding(5, 9).Radius(5)
+			button := ghostButton(c, b.text).Label(a.tr(b.label)).Tooltip(a.tr(b.label)).KeepFocus().Padding(5, 9).Radius(5)
 			if b.on {
 				button.Background(t.Accent.Alpha(0.18)).TextColor(t.Accent).Bold()
 			} else if button.Hovered() {
@@ -893,17 +900,17 @@ func (a *app) toolbar(c *ui.Context) {
 				b.run()
 			}
 		}
-		if ghostButton(c, "Link").KeepFocus().Clicked() {
+		if ghostButton(c, a.tr("Link")).KeepFocus().Clicked() {
 			a.linkURL = doc.Formatting().Link
 			a.linkOpen = true
 		}
-		if ghostButton(c, "+ Insert").Label("Insert block").KeepFocus().Clicked() {
+		if ghostButton(c, a.tr("+ Insert")).Label(a.tr("Insert block")).KeepFocus().Clicked() {
 			a.insertOpen = true
 			a.insertQuery = ""
 		}
-		ghostButton(c, "Color").KeepFocus().PopoverMenuButton(func(m *ui.Menu) {
+		ghostButton(c, a.tr("Color")).KeepFocus().PopoverMenuButton(func(m *ui.Menu) {
 			for _, color := range []string{"Default", "gray", "red", "orange", "yellow", "green", "blue", "purple"} {
-				if m.Item(color).Chosen() {
+				if m.Item(a.tr(color)).Chosen() {
 					value := blockColor(color, t.Text)
 					if color == "Default" {
 						value = ui.Color{}
@@ -913,21 +920,21 @@ func (a *app) toolbar(c *ui.Context) {
 				}
 			}
 		})
-		ghostButton(c, "Highlight").KeepFocus().PopoverMenuButton(func(m *ui.Menu) {
+		ghostButton(c, a.tr("Highlight")).KeepFocus().PopoverMenuButton(func(m *ui.Menu) {
 			for _, color := range []string{"None", "light-gray", "light-red", "light-orange", "light-yellow", "light-green", "light-blue", "light-purple"} {
-				if m.Item(color).Chosen() {
+				if m.Item(a.tr(color)).Chosen() {
 					value := blockColor(color, ui.Transparent)
 					doc.Format(func(attr *richtext.Attributes) { attr.Background = value })
 					a.capture()
 				}
 			}
 		})
-		ghostButton(c, "Align").KeepFocus().PopoverMenuButton(func(m *ui.Menu) {
+		ghostButton(c, a.tr("Align")).KeepFocus().PopoverMenuButton(func(m *ui.Menu) {
 			for _, item := range []struct {
 				name  string
 				align ui.Align
 			}{{"Left", ui.Start}, {"Center", ui.Center}, {"Right", ui.End}} {
-				if m.Item(item.name).Chosen() {
+				if m.Item(a.tr(item.name)).Chosen() {
 					doc.SetAlign(item.align)
 					a.capture()
 				}
@@ -939,11 +946,23 @@ func (a *app) toolbar(c *ui.Context) {
 func (a *app) outlineView(c *ui.Context) {
 	t := c.Theme()
 	ui.Scroll(c).Width(176).Shrink(0).Padding(34, 12).Gap(10).Children(func() {
-		ui.Text(c, "ON THIS PAGE").FontSize(9).TextColor(t.TextMuted).Padding(0, 8, 10)
+		ui.Row(c).AlignItems(ui.Center).Gap(4).Children(func() {
+			ui.Text(c, a.tr("ON THIS PAGE")).FontSize(9).TextColor(t.TextMuted).Grow(1)
+			for _, side := range []string{"Left", "Right"} {
+				button := ghostButton(c, "").Label(a.tr("Outline on " + side)).Tooltip(a.tr("Outline on " + side)).Padding(3).Radius(4)
+				if a.outlineSide() == side {
+					button.Background(t.Accent.Alpha(0.15))
+				}
+				button.Children(func() { ui.Icon(c, outlinePositionIcon(side)).Size(16, 16).TextColor(t.TextMuted) })
+				if button.Clicked() {
+					a.setOutlineSide(side)
+				}
+			}
+		})
 		if a.structured() {
 			a.blockEditor.doc.Root.Walk(func(n *blocks.Node) {
 				if len(n.Kind) == 2 && n.Kind[0] == 'h' && n.Kind[1] >= '1' && n.Kind[1] <= '9' {
-					if ghostButton(c.Key(n.ID), n.Plain()).Label("Heading "+n.Plain()).FontSize(11).Padding(5, 8+float32(n.Kind[1]-'1')*8).FillWidth().Clicked() {
+					if ghostButton(c.Key(n.ID), n.Plain()).Label(a.tr("Heading ")+n.Plain()).FontSize(11).Padding(5, 8+float32(n.Kind[1]-'1')*8).FillWidth().Clicked() {
 						a.focusBlock(n.ID, 0)
 					}
 				}
@@ -956,7 +975,7 @@ func (a *app) outlineView(c *ui.Context) {
 			a.headings = document.Headings(source)
 		}
 		for _, h := range a.headings {
-			if ghostButton(c.Key(h.Offset), h.Text).Label("Heading "+h.Text).FontSize(11).Padding(5, 8+float32(h.Level-1)*8).MaxHeight(38).Clip().TextAlign(ui.Start).FillWidth().Clicked() {
+			if ghostButton(c.Key(h.Offset), h.Text).Label(a.tr("Heading ")+h.Text).FontSize(11).Padding(5, 8+float32(h.Level-1)*8).MaxHeight(38).Clip().TextAlign(ui.Start).FillWidth().Clicked() {
 				if a.mode == "Write" {
 					for pos, p := range a.doc.Text().Paragraphs() {
 						if p.Style.Heading == h.Level && strings.TrimSpace(pText(p)) == h.Text {
@@ -985,12 +1004,12 @@ func pText(p richtext.Paragraph) string {
 
 func (a *app) findBar(c *ui.Context) {
 	ui.Row(c).Padding(8, 28).Gap(8).Children(func() {
-		ui.TextInput(c, &a.findText).Label("Find text").Placeholder("Find…").Width(180)
-		ui.TextInput(c, &a.replaceText).Label("Replace text").Placeholder("Replace with…").Width(180)
-		if ui.Button(c, "Next").Clicked() {
+		ui.TextInput(c, &a.findText).Label(a.tr("Find text")).Placeholder(a.tr("Find…")).Width(180)
+		ui.TextInput(c, &a.replaceText).Label(a.tr("Replace text")).Placeholder(a.tr("Replace with…")).Width(180)
+		if ui.Button(c, a.tr("Next")).Clicked() {
 			a.findNext()
 		}
-		if ui.Button(c, "Replace").Clicked() {
+		if ui.Button(c, a.tr("Replace")).Clicked() {
 			anchor, caret := a.doc.Selection()
 			start, end := min(anchor, caret), max(anchor, caret)
 			r := []rune(a.doc.Text().String())
@@ -1000,10 +1019,10 @@ func (a *app) findBar(c *ui.Context) {
 			}
 			a.findNext()
 		}
-		if ghostButton(c, "×").Label("Close find").Clicked() {
+		if ghostButton(c, "×").Label(a.tr("Close find")).Clicked() {
 			a.findOpen = false
 		}
-		if ui.Button(c, "Replace all").Clicked() {
+		if ui.Button(c, a.tr("Replace all")).Clicked() {
 			a.replaceAll()
 		}
 	})

@@ -32,7 +32,7 @@ func (a *app) printDocument() {
 	if a.fail(err) {
 		return
 	}
-	w := mygo.NewWindow(mygo.WindowOptions{Title: "Print — " + a.current.Title, Width: 850, Height: 1000})
+	w := mygo.NewWindow(mygo.WindowOptions{Title: a.tr("Print — ") + a.current.Title, Width: 850, Height: 1000})
 	w.Page().OnDidFinishLoad(func() { printPage(w) })
 	w.Page().LoadHTML(page, "")
 }

@@ -17,7 +17,7 @@ The library, editors, document previews and settings use native GPU controls. Pr
 - Inline reminders, document references, buttons, child-page lists and countdown timers. Reminders are checked while the app is running.
 - Cards or a list, full-text search, recent notes, favorites, pinning, folders, nested documents and manual ordering.
 - Batch duplication, movement, deletion and restoration. Deleting a parent groups its children for restoration. Emptying Trash requires confirmation.
-- Native macOS menus, independent note windows, an Option+Space quick-note window, and configurable application and formatting shortcuts.
+- Native macOS menus, independent note windows, a quick-note window with an optional global shortcut, and configurable application, editing and formatting shortcuts.
 
 ## Import and export
 
@@ -31,9 +31,17 @@ Imports copy local assets. Markdown/XML exports include an `assets` folder; HTML
 
 Craft, Feishu, Notion and Obsidian document styles are built in, with System, Light and Dark appearance. Document CSS is separate from the app interface. Settings can edit, duplicate, import and reset styles. Files in the library's `themes/` folder reload after they change. Invalid or unsupported declarations appear in the stylesheet editor.
 
+Settings opens as a full workspace page, with General and Keyboard shortcuts tabs. **General → Language** switches the application between English and Simplified Chinese immediately, including app menus and MyGo controls. The choice is saved and shared by open windows. Document contents, titles, folder names and stored theme identifiers remain unchanged. Some macOS-owned system dialog text follows the app language on its next launch.
+
+The document outline has two position icons for **Left** and **Right**. Its placement is also available under General and persists across launches. Opening Settings retains the active document and edit buffer; Done or Escape returns to it.
+
 Selectors include `.page`, `.title`, `h1`–`h9`, `p`, `pre`, `code`, tables, lists, tasks, quotations and callouts. CSS custom properties, `var()` fallbacks, hexadecimal/RGB/HSL colors and relative lengths are supported. Built-in styles in `internal/doctheme/assets/` provide editable examples.
 
 Open **Settings → Keyboard shortcuts** to change bindings. Defaults: **Cmd+N** new note, **Cmd+O** import, **Cmd+Shift+O** open a local file, **Cmd+S** save, **Cmd+F** find, **Cmd+P** insert a block, **Cmd+Alt+P** print, **Cmd+,** settings.
+
+**Cmd+J** focuses library search. The shortcut list includes window commands, clipboard commands, editor modes, formatting and outline placement. Enter modifiers and a key separated by `+`; `Opt` and `Option` are aliases for `Alt`. Changes remain a draft until **Save shortcuts** validates them. Duplicate bindings, including conflicts between local commands and the global quick-note shortcut, are rejected. An unavailable system shortcut reports an error while retaining the previous registration. Menu accelerators and shortcut hints use the saved mappings.
+
+Leave a binding empty to disable it. **Global quick note** is disabled by default, so Mory does not claim Option+Space from launchers such as Raycast. Set an available combination (for example `Ctrl+Alt+Shift+Space`) to enable it, or clear the field and save to release it. Existing explicit global bindings are preserved; an absent or empty legacy `quickNote` value now means disabled instead of implicitly registering Option+Space. No document migration is needed.
 
 ## Local data and recovery
 
@@ -90,15 +98,16 @@ The macOS-only GitHub workflow builds a universal Apple Silicon/Intel app and up
 Local builds are ad-hoc signed. Developer ID signing, Apple notarization and signed in-app update distribution require the owner's release credentials and update-signing configuration. The native update UI reports availability for the current build. Physical Intel hardware and older macOS releases require separate runtime validation.
 
 Last local verification: **2026-11-09**, macOS 27.0.1, Apple M4, Go 1.27.3.
-`make check` passed at **5,093 / 5,637 production statements (90.35%)**.
+`make check` passed at **5,563 / 6,160 production statements (90.31%)**.
 `make race`, `go mod verify`, the universal build, strict code-signature verification
 and DMG integrity verification passed. The packaged application launched with an
 isolated library. Native E2E includes original-file saves, folder import, covers,
-CSS import, Quick Look thumbnails, multiple windows and the native print renderer.
+CSS import, Quick Look thumbnails, multiple windows, language switching, shortcut
+configuration, outline placement and the native print renderer.
 The interactive printer-selection sheet is replaced by PDF output in E2E.
 
-Ten-iteration regression benchmarks measured **0.234 ms** per million-character
-editing frame, **10.294 ms** for Unicode counting and **1.619 ms** for a query over
+Ten-iteration regression benchmarks measured **0.325 ms** per million-character
+editing frame, **9.710 ms** for Unicode counting and **1.991 ms** for a query over
 1,000 notes. These samples are not P95 latency or end-to-end save measurements.
 Power-loss injection, long-duration stress and physical Intel testing remain
 outside the completed local validation.

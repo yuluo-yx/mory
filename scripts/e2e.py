@@ -115,8 +115,29 @@ def exercise(binary, root):
         act("Settings")
         act("Larger text")
         act("Smaller text")
+        assert not any(n.get("label") == "Document editor" for n in nodes()), "Settings is still an overlay"
+        act("Application language")
+        act("简体中文")
+        assert any(n.get("label") == "应用语言" for n in nodes()), "Chinese interface did not activate"
+        assert json.loads((root / "library" / "settings.json").read_text())["language"] == "zh-CN"
+        act("应用语言")
+        act("English")
         act("Keyboard shortcuts")
-        act("Done")
+        act("Global quick note shortcut", "setValue", text="Ctrl+Alt+Shift+Space")
+        act("Shortcut New note", "setValue", text="Cmd+Alt+J")
+        act("Save shortcuts")
+        saved_settings = json.loads((root / "library" / "settings.json").read_text())
+        assert saved_settings["keys"]["New note"] == "Cmd+Alt+J"
+        assert saved_settings["quickNote"] == "Ctrl+Alt+Shift+Space"
+        act("Outline on Left")
+        assert json.loads((root / "library" / "settings.json").read_text())["outlineSide"] == "Left"
+        act("Outline on Right")
+        # Clear the global hotkey again and verify that no Alt+Space fallback is saved.
+        act("Settings")
+        act("Keyboard shortcuts")
+        act("Restore defaults")
+        act("Save shortcuts")
+        assert not json.loads((root / "library" / "settings.json").read_text()).get("quickNote")
         call("menu", path=["File", "Import…"])
         time.sleep(0.2)
         assert any(n.get("value") == "Fixture import" for n in nodes()), "Import did not open the document"
@@ -135,6 +156,7 @@ def exercise(binary, root):
         assert "data:image/" in (fixtures / "Fixture import.html").read_text()
         assert (fixtures / "Fixture import.pdf").read_bytes().startswith(b"%PDF-")
         act("Settings")
+        act("General")
         act("Import CSS…")
         act("Apply stylesheet")
         act("Document actions")

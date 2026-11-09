@@ -26,8 +26,9 @@ func (a *app) chooseImport() {
 	if a.win == nil {
 		return
 	}
+	options := mygo.OpenDialogOptions{Parent: a.win, Title: a.tr("Import documents"), Multiple: true, Filters: []mygo.FileFilter{{Name: "Documents", Extensions: []string{"md", "markdown", "xml"}}}}
 	go func() {
-		paths, err := openDialog(mygo.OpenDialogOptions{Parent: a.win, Title: "Import documents", Multiple: true, Filters: []mygo.FileFilter{{Name: "Documents", Extensions: []string{"md", "markdown", "xml"}}}})
+		paths, err := openDialog(options)
 		a.win.Update(func() {
 			if a.fail(err) {
 				return
@@ -56,8 +57,9 @@ func (a *app) chooseExport(format string) {
 		md = doc.Root.Markdown()
 	}
 	ext := map[string]string{"Markdown": "md", "DocxXML": "xml", "HTML": "html", "PDF": "pdf"}[format]
+	options := mygo.SaveDialogOptions{Parent: a.win, Title: a.tr("Export ") + format, DefaultPath: document.Filename(note.Title) + "." + ext, Filters: []mygo.FileFilter{{Name: format, Extensions: []string{ext}}}}
 	go func() {
-		path, err := saveDialog(mygo.SaveDialogOptions{Parent: a.win, Title: "Export " + format, DefaultPath: document.Filename(note.Title) + "." + ext, Filters: []mygo.FileFilter{{Name: format, Extensions: []string{ext}}}})
+		path, err := saveDialog(options)
 		if err != nil || path == "" {
 			a.win.Update(func() { a.fail(err) })
 			return
@@ -165,8 +167,9 @@ func (a *app) chooseAttachment() {
 		return
 	}
 	id := a.current.ID
+	options := mygo.OpenDialogOptions{Parent: a.win, Title: a.tr("Insert image or attachment")}
 	go func() {
-		paths, err := openDialog(mygo.OpenDialogOptions{Parent: a.win, Title: "Insert image or attachment"})
+		paths, err := openDialog(options)
 		if err != nil || len(paths) == 0 {
 			a.win.Update(func() { a.fail(err) })
 			return
@@ -198,7 +201,7 @@ func (a *app) chooseAttachment() {
 // Only PDF export uses a temporary system WebKit window. The editing surface,
 // library, previews, menus and plugin host stay native. CSP disables active content.
 func (a *app) exportPDF(path, html string) {
-	w := mygo.NewWindow(mygo.WindowOptions{Title: "Mory PDF export", Hidden: true, Width: 850, Height: 1100})
+	w := mygo.NewWindow(mygo.WindowOptions{Title: a.tr("Mory PDF export"), Hidden: true, Width: 850, Height: 1100})
 	ready := make(chan error, 1)
 	w.Page().OnDidFinishLoad(func() {
 		select {

@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
-	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/richtext"
 	"github.com/yuluo-yx/mory/internal/blocks"
@@ -12,6 +12,7 @@ import (
 
 type shortcut struct {
 	Name, Key string
+	// Native responder-chain commands use menu roles and leave Run nil.
 	Run       func()
 }
 
@@ -25,6 +26,11 @@ func (a *app) actions() []shortcut {
 		}
 	}
 	items := []shortcut{
+		{"Search notes", "Cmd+J", func() { a.home("All notes"); a.searchFocus = a.current == nil }},
+		{"Import folder", "", func() { a.chooseLocal(true) }},
+		{"Insert image or attachment", "", a.chooseAttachment},
+		{"Plugins", "", func() { a.pluginsOpen = true }},
+		{"New folder", "", func() { a.folderName, a.folderFrom = "", ""; a.folderOpen = true }},
 		{"New note", "Cmd+N", func() { a.createNote("", "Untitled") }},
 		{"Quick note", "Cmd+Alt+N", a.quickNote},
 		{"Import", "Cmd+O", a.chooseImport},
@@ -86,6 +92,17 @@ func (a *app) actions() []shortcut {
 			}
 		}},
 		{"Paste", "Cmd+V", a.pasteStructured},
+		{"Cut", "Cmd+X", nil}, {"Copy", "Cmd+C", nil}, {"Select all", "Cmd+A", nil},
+		{"Close window", "Cmd+W", nil}, {"Quit", "Cmd+Q", nil},
+		{"Hide", "Cmd+H", nil}, {"Hide others", "Cmd+Alt+H", nil},
+		{"Full screen", "Ctrl+Cmd+F", nil},
+		{"Open in new window", "", func() {
+			if a.current != nil {
+				a.openWindow(a.current)
+			}
+		}},
+		{"Outline on Left", "", func() { a.setOutlineSide("Left") }},
+		{"Outline on Right", "", func() { a.setOutlineSide("Right") }},
 	}
 	for level := 0; level <= 9; level++ {
 		items = append(items, shortcut{fmt.Sprintf("Heading %d", level), fmt.Sprintf("Cmd+Ctrl+%d", level), func() { a.setHeading(level) }})
@@ -108,11 +125,11 @@ func parseKey(source string) (ui.Modifiers, ui.Key, error) {
 		part = strings.ToLower(strings.TrimSpace(part))
 		if i < len(parts)-1 {
 			switch part {
-			case "cmd", "command":
+			case "cmd", "command", "meta", "super":
 				mods |= ui.Cmd
 			case "ctrl", "control":
 				mods |= ui.Ctrl
-			case "alt", "option":
+			case "alt", "option", "opt":
 				mods |= ui.Alt
 			case "shift":
 				mods |= ui.Shift
@@ -121,12 +138,20 @@ func parseKey(source string) (ui.Modifiers, ui.Key, error) {
 			}
 			continue
 		}
-		if len(part) == 1 && part[0] >= 'a' && part[0] <= 'z' {
+		if len(part) >= 2 && part[0] == 'f' && func() bool {
+			n, err := strconv.Atoi(part[1:])
+			if err == nil && n >= 1 && n <= 12 {
+				key = ui.KeyF1 + ui.Key(n-1)
+				return true
+			}
+			return false
+		}() {
+		} else if len(part) == 1 && part[0] >= 'a' && part[0] <= 'z' {
 			key = ui.KeyA + ui.Key(part[0]-'a')
 		} else if len(part) == 1 && part[0] >= '0' && part[0] <= '9' {
 			key = ui.Key0 + ui.Key(part[0]-'0')
 		} else {
-			key = map[string]ui.Key{",": ui.KeyComma, "/": ui.KeySlash, ".": ui.KeyPeriod, "[": ui.KeyBracketLeft, "]": ui.KeyBracketRight, "space": ui.KeySpace, "enter": ui.KeyEnter, "tab": ui.KeyTab, "escape": ui.KeyEscape, "backspace": ui.KeyBackspace, "delete": ui.KeyDelete, "left": ui.KeyLeft, "right": ui.KeyRight, "up": ui.KeyUp, "down": ui.KeyDown, "home": ui.KeyHome, "end": ui.KeyEnd}[part]
+			key = map[string]ui.Key{",": ui.KeyComma, "/": ui.KeySlash, ".": ui.KeyPeriod, "[": ui.KeyBracketLeft, "]": ui.KeyBracketRight, "space": ui.KeySpace, "enter": ui.KeyEnter, "tab": ui.KeyTab, "escape": ui.KeyEscape, "backspace": ui.KeyBackspace, "delete": ui.KeyDelete, "left": ui.KeyLeft, "right": ui.KeyRight, "up": ui.KeyUp, "down": ui.KeyDown, "home": ui.KeyHome, "end": ui.KeyEnd, "return": ui.KeyEnter, "esc": ui.KeyEscape, "pageup": ui.KeyPageUp, "pagedown": ui.KeyPageDown, "-": ui.KeyMinus, "=": ui.KeyEqual, ";": ui.KeySemicolon, "\"": ui.KeyQuote, "backslash": ui.KeyBackslash, "`": ui.KeyBackquote}[part]
 		}
 	}
 	if key == ui.KeyUnknown {
@@ -136,25 +161,33 @@ func parseKey(source string) (ui.Modifiers, ui.Key, error) {
 }
 
 func (a *app) handleShortcuts(c *ui.Context) {
-	for _, action := range a.actions() {
-		if isTextAction(action.Name) && (!a.textFocused || a.mode != "Write" || a.settingsOpen || a.helpOpen || a.renameOpen || a.linkOpen) {
+	if a.settingsOpen || a.helpOpen {
+		return
+	}
+	actions := a.actions()
+	assigned := map[string]bool{}
+	for _, action := range actions {
+		key, _ := canonicalKey(a.keyFor(action.Name, action.Key))
+		if key != "" {
+			assigned[key] = true
+		}
+		if action.Run == nil || isTextAction(action.Name) && (!a.textFocused || a.mode != "Write" || a.renameOpen || a.linkOpen) {
 			continue
 		}
-		if a.current == nil && action.Name == "Find" {
+		if mods, k, err := parseKey(key); err == nil && c.Shortcut(mods, k) {
+			action.Run()
+		}
+	}
+	// Consume disabled/rebound defaults only when no other action owns them.
+	for _, action := range actions {
+		if isTextAction(action.Name) && (!a.textFocused || a.mode != "Write") {
 			continue
 		}
-		key := a.keyFor(action.Name, action.Key)
-		if key != action.Key {
-			if mods, k, err := parseKey(action.Key); err == nil {
+		key, _ := canonicalKey(action.Key)
+		if key != "" && !assigned[key] {
+			if mods, k, err := parseKey(key); err == nil {
 				_ = c.Shortcut(mods, k)
 			}
-		}
-		if key == "" {
-			continue
-		}
-		mods, k, err := parseKey(key)
-		if err == nil && c.Shortcut(mods, k) {
-			action.Run()
 		}
 	}
 }
@@ -198,81 +231,4 @@ func (a *app) setHeading(level int) {
 		a.doc.SetHeading(level)
 		a.capture()
 	}
-}
-
-var quickKey string
-
-func (a *app) registerQuickNote() {
-	key := a.lib.Settings.QuickNote
-	if key == "" {
-		key = "Alt+Space"
-	}
-	if key == quickKey {
-		return
-	}
-	if err := mygo.GlobalShortcut.Register(key, a.quickNote); a.fail(err) {
-		return
-	}
-	if quickKey != "" {
-		mygo.GlobalShortcut.Unregister(quickKey)
-	}
-	quickKey = key
-}
-
-func (a *app) shortcutSettings(c *ui.Context) {
-	ui.Column(c).Width(560).MaxHeight(680).Gap(12).Children(func() {
-		ui.Text(c, "Keyboard shortcuts").FontSize(24)
-		ui.Text(c, "Use Cmd, Ctrl, Alt and Shift separated by +. Leave a field empty to disable it.").FontSize(12)
-		ui.Scroll(c).MaxHeight(500).Gap(6).Children(func() {
-			for _, action := range a.actions() {
-				ui.Row(c.Key(action.Name)).Gap(12).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, action.Name).Grow(1)
-					value := a.keyFor(action.Name, action.Key)
-					if ui.TextInput(c, &value).Label("Shortcut " + action.Name).Width(190).Changed() {
-						a.lib.Settings.Keys[action.Name] = value
-					}
-				})
-			}
-			ui.Text(c, "Global quick note")
-			ui.TextInput(c, &a.lib.Settings.QuickNote).Label("Global quick note shortcut").Placeholder("Alt+Space").FillWidth()
-		})
-		ui.Row(c).Gap(12).Children(func() {
-			if ui.Button(c, "Restore defaults").Clicked() {
-				a.lib.Settings.Keys = map[string]string{}
-				a.lib.Settings.QuickNote = ""
-			}
-			if ui.PrimaryButton(c, "Save shortcuts").Clicked() {
-				used := map[string]string{}
-				valid := true
-				for _, action := range a.actions() {
-					key := a.keyFor(action.Name, action.Key)
-					if key == "" {
-						continue
-					}
-					mods, k, err := parseKey(key)
-					if a.fail(err) {
-						valid = false
-						break
-					}
-					identity := fmt.Sprintf("%d:%d", mods, k)
-					if other := used[identity]; other != "" {
-						a.problem = "Shortcut conflict: " + other + " and " + action.Name
-						valid = false
-						break
-					}
-					used[identity] = action.Name
-				}
-				if valid && !a.fail(a.lib.SaveSettings()) {
-					a.helpOpen = false
-					if a.win != nil {
-						a.installMenu()
-						a.registerQuickNote()
-					}
-				}
-			}
-			if ui.Button(c, "Done").Clicked() {
-				a.helpOpen = false
-			}
-		})
-	})
 }

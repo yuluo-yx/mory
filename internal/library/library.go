@@ -47,6 +47,8 @@ type Note struct {
 }
 
 type Settings struct {
+	Language        string            `json:"language,omitempty"`
+	OutlineSide     string            `json:"outlineSide,omitempty"`
 	Folders         []string          `json:"folders,omitempty"`
 	Keys            map[string]string `json:"keys,omitempty"`
 	QuickNote       string            `json:"quickNote,omitempty"`
@@ -200,6 +202,26 @@ func checkVersion(path string, want [32]byte) error {
 	if sha256.Sum256(b) != want {
 		return ErrConflict
 	}
+	return nil
+}
+
+// ReloadSettings refreshes preferences without disturbing open note versions.
+func (l *Library) ReloadSettings() error {
+	b, err := os.ReadFile(filepath.Join(l.Dir, "settings.json"))
+	if err != nil {
+		return err
+	}
+	var settings Settings
+	if err := json.Unmarshal(b, &settings); err != nil {
+		return err
+	}
+	if settings.Keys == nil {
+		settings.Keys = map[string]string{}
+	}
+	if settings.DisabledPlugins == nil {
+		settings.DisabledPlugins = map[string]bool{}
+	}
+	l.Settings, l.settingsVersion = settings, sha256.Sum256(b)
 	return nil
 }
 

@@ -43,12 +43,12 @@ func (a *app) blockTable(c *ui.Context, n *blocks.Node, readOnly bool, depth int
 				label string
 				run   func(*blocks.Table) error
 			}{{"+ Row", func(t *blocks.Table) error { return t.InsertRow(selection.Bottom + 1) }}, {"+ Column", func(t *blocks.Table) error { return t.InsertColumn(selection.Right + 1) }}, {"Merge cells", func(t *blocks.Table) error { return t.Merge(selection) }}, {"Split cell", func(t *blocks.Table) error { return t.Split(selection.Top, selection.Left) }}, {"Delete row", func(t *blocks.Table) error { return t.DeleteRows(selection.Top, selection.Bottom+1) }}, {"Delete column", func(t *blocks.Table) error { return t.DeleteColumns(selection.Left, selection.Right+1) }}} {
-				if ghostButton(c, action.label).FontSize(11).Padding(5, 7).Clicked() {
+				if ghostButton(c, a.tr(action.label)).FontSize(11).Padding(5, 7).Clicked() {
 					s.tableID = n.ID
 					a.tableChange(n.ID, action.run)
 				}
 			}
-			if ghostButton(c, "Table options").FontSize(11).Clicked() {
+			if ghostButton(c, a.tr("Table options")).FontSize(11).Clicked() {
 				s.tableID = n.ID
 				a.editBlockProperties(n)
 			}
@@ -67,7 +67,7 @@ func (a *app) blockTable(c *ui.Context, n *blocks.Node, readOnly bool, depth int
 					for column, width := range table.Widths {
 						ui.Row(c.Key(column)).Width(float32(width)).Gap(2).AlignItems(ui.Center).Children(func() {
 							label := fmt.Sprintf("%c", 'A'+rune(column))
-							if ghostButton(c, label).Label("Select column " + label).Grow(1).Clicked() {
+							if ghostButton(c, label).Label(a.tr("Select column ") + label).Grow(1).Clicked() {
 								s.tableID = n.ID
 								s.cells = blocks.Rect{Top: 0, Bottom: table.Rows - 1, Left: column, Right: column}
 							}
@@ -101,7 +101,7 @@ func (a *app) blockTable(c *ui.Context, n *blocks.Node, readOnly bool, depth int
 					}
 					box.Children(func() {
 						if !readOnly {
-							button := ghostButton(c, fmt.Sprintf("%c%d", 'A'+rune(cell.Column), cell.Row+1)).Label(fmt.Sprintf("Select cell %d %d", cell.Row+1, cell.Column+1)).FontSize(9).Padding(1, 3).TextColor(t.TextMuted).KeepFocus()
+							button := ghostButton(c, fmt.Sprintf("%c%d", 'A'+rune(cell.Column), cell.Row+1)).Label(a.trf("Select cell %d %d", cell.Row+1, cell.Column+1)).FontSize(9).Padding(1, 3).TextColor(t.TextMuted).KeepFocus()
 							if button.Clicked() {
 								if button.ClickModifiers()&ui.Shift == 0 || s.tableID != n.ID {
 									s.cellAnchor = [2]int{cell.Row, cell.Column}
@@ -121,29 +121,29 @@ func (a *app) blockTable(c *ui.Context, n *blocks.Node, readOnly bool, depth int
 					if !readOnly {
 						box.PopoverMenu(func(m *ui.Menu) {
 							s.tableID = n.ID
-							if m.Item("Merge selected cells").Chosen() {
+							if m.Item(a.tr("Merge selected cells")).Chosen() {
 								a.tableChange(n.ID, func(t *blocks.Table) error { return t.Merge(s.cells) })
 							}
-							if m.Item("Split cell").Chosen() {
+							if m.Item(a.tr("Split cell")).Chosen() {
 								a.tableChange(n.ID, func(t *blocks.Table) error { return t.Split(cell.Row, cell.Column) })
 							}
-							m.Submenu("Cell background", func(m *ui.Menu) {
+							m.Submenu(a.tr("Cell background"), func(m *ui.Menu) {
 								for _, name := range []string{"light-gray", "light-yellow", "light-green", "light-blue", "light-red"} {
-									if m.Item(name).Chosen() {
+									if m.Item(a.tr(name)).Chosen() {
 										a.fail(s.doc.Transform(cell.Node.ID, func(n *blocks.Node) { n.Set("background-color", name) }))
 									}
 								}
 							})
-							if m.Item("Move row up").Disabled(cell.Row == 0).Chosen() {
+							if m.Item(a.tr("Move row up")).Disabled(cell.Row == 0).Chosen() {
 								a.tableChange(n.ID, func(t *blocks.Table) error { return t.MoveRows(cell.Row, cell.Row+1, cell.Row-1) })
 							}
-							if m.Item("Move row down").Disabled(cell.Row == table.Rows-1).Chosen() {
+							if m.Item(a.tr("Move row down")).Disabled(cell.Row == table.Rows-1).Chosen() {
 								a.tableChange(n.ID, func(t *blocks.Table) error { return t.MoveRows(cell.Row, cell.Row+1, cell.Row+2) })
 							}
-							if m.Item("Move column left").Disabled(cell.Column == 0).Chosen() {
+							if m.Item(a.tr("Move column left")).Disabled(cell.Column == 0).Chosen() {
 								a.tableChange(n.ID, func(t *blocks.Table) error { return t.MoveColumns(cell.Column, cell.Column+1, cell.Column-1) })
 							}
-							if m.Item("Move column right").Disabled(cell.Column == table.Columns-1).Chosen() {
+							if m.Item(a.tr("Move column right")).Disabled(cell.Column == table.Columns-1).Chosen() {
 								a.tableChange(n.ID, func(t *blocks.Table) error { return t.MoveColumns(cell.Column, cell.Column+1, cell.Column+2) })
 							}
 						})
@@ -168,12 +168,12 @@ func (a *app) blockColumns(c *ui.Context, n *blocks.Node, readOnly bool, depth i
 				}
 				if !readOnly {
 					ui.Row(c).Gap(4).Children(func() {
-						if ghostButton(c, "+ Block").Clicked() {
+						if ghostButton(c, a.tr("+ Block")).Clicked() {
 							p := blocks.Paragraph("")
 							a.fail(a.blockEditor.doc.Splice(column.ID, len(column.Children), 0, p))
 							a.blockEditor.focus = p.ID
 						}
-						if ghostButton(c, "Width…").Clicked() {
+						if ghostButton(c, a.tr("Width…")).Clicked() {
 							a.editBlockProperties(column)
 						}
 					})
@@ -183,12 +183,12 @@ func (a *app) blockColumns(c *ui.Context, n *blocks.Node, readOnly bool, depth i
 	})
 	if !readOnly {
 		ui.Row(c).Gap(8).Children(func() {
-			if ghostButton(c, "+ Column").Clicked() {
+			if ghostButton(c, a.tr("+ Column")).Clicked() {
 				column := blocks.New("column", blocks.Paragraph(""))
 				column.Set("width-ratio", fmt.Sprint(1/float64(len(columns)+1)))
 				a.fail(a.blockEditor.doc.Splice(n.ID, len(n.Children), 0, column))
 			}
-			if len(columns) > 2 && ghostButton(c, "Remove last column").Clicked() {
+			if len(columns) > 2 && ghostButton(c, a.tr("Remove last column")).Clicked() {
 				last := columns[len(columns)-1]
 				previous := columns[len(columns)-2]
 				a.fail(a.blockEditor.doc.Transaction(func() error {
@@ -212,7 +212,7 @@ func (a *app) blockPicture(c *ui.Context, n *blocks.Node, readOnly bool) {
 	}
 	bitmap := a.blockImage(path)
 	if bitmap == nil {
-		ui.Text(c, "Image: "+path).TextColor(c.Theme().TextMuted)
+		ui.Text(c, a.tr("Image: ")+path).TextColor(c.Theme().TextMuted)
 	} else {
 		if crop := n.Attr("image.crop"); crop != "" {
 			bitmap = a.croppedImage(path, crop, bitmap)
@@ -233,7 +233,7 @@ func (a *app) blockPicture(c *ui.Context, n *blocks.Node, readOnly bool) {
 	if caption := n.Attr("caption"); caption != "" {
 		ui.Text(c, caption).TextColor(c.Theme().TextMuted).FontSize(12)
 	}
-	if !readOnly && ghostButton(c, "Image size, crop & caption").Clicked() {
+	if !readOnly && ghostButton(c, a.tr("Image size, crop & caption")).Clicked() {
 		a.editBlockProperties(n)
 	}
 }
@@ -291,8 +291,8 @@ func (a *app) blockOverlays(c *ui.Context) {
 	}
 	ui.Modal(c, &s.formulaOpen, func() {
 		ui.Column(c).Width(520).Gap(14).Children(func() {
-			ui.Text(c, "Edit equation").FontSize(24)
-			ui.TextArea(c, &s.formulaText).Label("LaTeX source").Font("Menlo").Height(110).FillWidth().AutoFocus()
+			ui.Text(c, a.tr("Edit equation")).FontSize(24)
+			ui.TextArea(c, &s.formulaText).Label(a.tr("LaTeX source")).Font("Menlo").Height(110).FillWidth().AutoFocus()
 			formula, err := mathrender.Layout(s.formulaText, true, 22, c.Theme().Text, 0)
 			if err != nil {
 				ui.Text(c, err.Error()).TextColor(c.Theme().Danger).MaxHeight(90).Clip()
@@ -300,13 +300,13 @@ func (a *app) blockOverlays(c *ui.Context) {
 				ui.Box(c).FillWidth().Height(formula.Ascent + formula.Depth + 20).Draw(func(p *ui.Painter, r ui.Rect) { formula.Draw(p, r) })
 			}
 			ui.Row(c).Gap(8).Children(func() {
-				if ui.PrimaryButton(c, "Apply equation").Disabled(err != nil).Clicked() {
+				if ui.PrimaryButton(c, a.tr("Apply equation")).Disabled(err != nil).Clicked() {
 					a.fail(s.doc.Transform(s.formulaID, func(n *blocks.Node) { n.Children = []*blocks.Node{blocks.Text(s.formulaText)} }))
 					s.formulaOpen = false
 					s.fields = map[string]*blockField{}
 					a.captureBlocks()
 				}
-				if ui.Button(c, "Cancel").Clicked() {
+				if ui.Button(c, a.tr("Cancel")).Clicked() {
 					s.formulaOpen = false
 				}
 			})
@@ -319,7 +319,7 @@ func (a *app) blockOverlays(c *ui.Context) {
 			return
 		}
 		ui.Column(c).Width(440).Gap(12).Children(func() {
-			ui.Text(c, "Block properties · "+n.Kind).FontSize(22)
+			ui.Text(c, a.tr("Block properties · ")+n.Kind).FontSize(22)
 			keys := []string{"align", "background-color"}
 			switch n.Kind {
 			case "img":
@@ -346,7 +346,7 @@ func (a *app) blockOverlays(c *ui.Context) {
 				keys = []string{"vertical-align", "background-color"}
 			}
 			if n.Kind == "doc-link" || n.Kind == "cite" {
-				labels := []string{"Choose document"}
+				labels := []string{a.tr("Choose document")}
 				ids := map[string]string{}
 				for _, note := range a.lib.Notes {
 					if !note.Deleted {
@@ -355,14 +355,14 @@ func (a *app) blockOverlays(c *ui.Context) {
 						ids[label] = note.ID
 					}
 				}
-				choice := "Choose document"
-				if ui.Select(c, &choice, labels).Label("Referenced document").FillWidth().Changed() {
+				choice := a.tr("Choose document")
+				if ui.Select(c, &choice, labels).Label(a.tr("Referenced document")).FillWidth().Changed() {
 					if note := a.lib.Get(ids[choice]); note != nil {
 						s.props["doc-id"] = note.ID
 						s.props["title"] = note.Title
 					}
 				}
-				if note := a.lib.Get(s.props["doc-id"]); note != nil && ui.Button(c, "Open referenced document").Clicked() {
+				if note := a.lib.Get(s.props["doc-id"]); note != nil && ui.Button(c, a.tr("Open referenced document")).Clicked() {
 					s.properties = false
 					a.openNote(note)
 					return
@@ -374,19 +374,19 @@ func (a *app) blockOverlays(c *ui.Context) {
 					if key == "image.crop" {
 						label = "Crop: left top right bottom"
 					}
-					ui.Text(c, label).Width(180).FontSize(12)
+					ui.Text(c, a.tr(label)).Width(180).FontSize(12)
 					value := s.props[key]
-					if ui.TextInput(c, &value).Label("Property " + key).Grow(1).Changed() {
+					if ui.TextInput(c, &value).Label(a.tr("Property ") + key).Grow(1).Changed() {
 						s.props[key] = value
 					}
 				})
 			}
 			if n.Kind == "img" {
-				ui.Text(c, "Crop uses fractions from 0 to 1; e.g. 0.1 0.1 0.9 0.9.").FontSize(11).TextColor(c.Theme().TextMuted)
+				ui.Text(c, a.tr("Crop uses fractions from 0 to 1; e.g. 0.1 0.1 0.9 0.9.")).FontSize(11).TextColor(c.Theme().TextMuted)
 				a.cropEditor(c, n)
 			}
 			ui.Row(c).Gap(8).Children(func() {
-				if ui.PrimaryButton(c, "Apply properties").Clicked() {
+				if ui.PrimaryButton(c, a.tr("Apply properties")).Clicked() {
 					valid := true
 					for _, key := range []string{"width", "height", "width-ratio", "duration"} {
 						if value := s.props[key]; value != "" {
@@ -408,7 +408,7 @@ func (a *app) blockOverlays(c *ui.Context) {
 						a.captureBlocks()
 					}
 				}
-				if ui.Button(c, "Cancel").Clicked() {
+				if ui.Button(c, a.tr("Cancel")).Clicked() {
 					s.properties = false
 				}
 			})

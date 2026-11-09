@@ -85,29 +85,29 @@ func (a *app) namedColor(kind, name string, fallback ui.Color) ui.Color {
 }
 
 func (a *app) themeControls(c *ui.Context) {
-	if ui.Select(c, &a.lib.Settings.Theme, doctheme.Names(filepath.Join(a.lib.Dir, "themes"))).Label("Writing style").FillWidth().Changed() {
-		a.fail(a.lib.SaveSettings())
+	if ui.Select(c, &a.lib.Settings.Theme, doctheme.Names(filepath.Join(a.lib.Dir, "themes"))).Label(a.tr("Writing style")).FillWidth().Changed() {
+		a.savePreferences()
 		a.reloadTheme()
 	}
 	ui.Row(c).Gap(8).Children(func() {
-		if ui.Button(c, "Edit CSS").Clicked() {
+		if ui.Button(c, a.tr("Edit CSS")).Clicked() {
 			a.cssName = a.lib.Settings.Theme
 			a.cssText = a.docTheme.Source
 			a.cssOpen = true
 			a.settingsOpen = false
 		}
-		if ui.Button(c, "Duplicate theme").Clicked() {
+		if ui.Button(c, a.tr("Duplicate theme")).Clicked() {
 			a.cssName = strings.ToLower(a.lib.Settings.Theme) + "-copy"
 			a.cssText = a.docTheme.Source
 			a.cssOpen = true
 			a.settingsOpen = false
 		}
-		if ui.Button(c, "Import CSS…").Clicked() {
+		if ui.Button(c, a.tr("Import CSS…")).Clicked() {
 			a.chooseTheme()
 		}
 	})
 	ui.Row(c).Gap(8).Children(func() {
-		if ui.Button(c, "Reset theme").Clicked() {
+		if ui.Button(c, a.tr("Reset theme")).Clicked() {
 			path := filepath.Join(a.lib.Dir, "themes", strings.ToLower(a.lib.Settings.Theme)+".css")
 			err := os.Remove(path)
 			if err == nil || os.IsNotExist(err) {
@@ -117,21 +117,21 @@ func (a *app) themeControls(c *ui.Context) {
 				a.fail(err)
 			}
 		}
-		if ui.Button(c, "Open themes folder").Clicked() {
+		if ui.Button(c, a.tr("Open themes folder")).Clicked() {
 			a.reveal(filepath.Join(a.lib.Dir, "themes"))
 		}
 	})
 	if a.docTheme != nil && len(a.docTheme.Warnings) > 0 {
-		ui.Textf(c, "%d unsupported or invalid declarations", len(a.docTheme.Warnings)).FontSize(11).TextColor(c.Theme().TextMuted)
+		ui.Textf(c, a.tr("%d unsupported or invalid declarations"), len(a.docTheme.Warnings)).FontSize(11).TextColor(c.Theme().TextMuted)
 	}
 }
 
 func (a *app) themeOverlay(c *ui.Context) {
 	ui.Modal(c, &a.cssOpen, func() {
 		ui.Column(c).Width(720).MaxHeight(700).Gap(12).Children(func() {
-			ui.Text(c, "Document stylesheet").FontSize(24)
-			ui.TextInput(c, &a.cssName).Label("Theme name").FillWidth()
-			ui.TextArea(c, &a.cssText).Label("Theme CSS").Font("monospace").FontSize(12).Height(360).FillWidth()
+			ui.Text(c, a.tr("Document stylesheet")).FontSize(24)
+			ui.TextInput(c, &a.cssName).Label(a.tr("Theme name")).FillWidth()
+			ui.TextArea(c, &a.cssText).Label(a.tr("Theme CSS")).Font("monospace").FontSize(12).Height(360).FillWidth()
 			parsed := doctheme.Parse(a.cssText)
 			ui.Scroll(c).MaxHeight(100).Children(func() {
 				for _, warning := range parsed.Warnings {
@@ -139,19 +139,19 @@ func (a *app) themeOverlay(c *ui.Context) {
 				}
 			})
 			ui.Row(c).Gap(10).Children(func() {
-				if ui.PrimaryButton(c, "Apply stylesheet").Clicked() {
+				if ui.PrimaryButton(c, a.tr("Apply stylesheet")).Clicked() {
 					name := strings.TrimSpace(a.cssName)
 					if name == "" || filepath.Base(name) != name || strings.ContainsAny(name, "/\\") {
 						a.problem = "Use a simple theme name."
 					} else if !a.fail(library.AtomicWrite(filepath.Join(a.lib.Dir, "themes", strings.ToLower(name)+".css"), []byte(a.cssText))) {
 						a.lib.Settings.Theme = name
-						a.fail(a.lib.SaveSettings())
+						a.savePreferences()
 						a.docTheme = nil
 						a.reloadTheme()
 						a.cssOpen = false
 					}
 				}
-				if ui.Button(c, "Cancel").Clicked() {
+				if ui.Button(c, a.tr("Cancel")).Clicked() {
 					a.cssOpen = false
 				}
 			})
@@ -163,8 +163,9 @@ func (a *app) chooseTheme() {
 	if a.win == nil {
 		return
 	}
+	options := mygo.OpenDialogOptions{Parent: a.win, Title: a.tr("Import document theme"), Filters: []mygo.FileFilter{{Name: "CSS stylesheet", Extensions: []string{"css"}}}}
 	go func() {
-		paths, err := openDialog(mygo.OpenDialogOptions{Parent: a.win, Title: "Import document theme", Filters: []mygo.FileFilter{{Name: "CSS stylesheet", Extensions: []string{"css"}}}})
+		paths, err := openDialog(options)
 		a.win.Update(func() {
 			if a.fail(err) || len(paths) == 0 {
 				return

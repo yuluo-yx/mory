@@ -22,6 +22,10 @@ import (
 )
 
 type app struct {
+	searchFocus                                                                     bool
+	settingsTab                                                                     string
+	shortcutDraft                                                                   map[string]string
+	quickDraft                                                                      string
 	selected                                                                        map[string]bool
 	selecting, batchMove, folderOpen, emptyTrashOpen, historyOpen, recoveryOpen     bool
 	folderFrom, folderName                                                          string
@@ -185,6 +189,7 @@ func (a *app) openNote(n *library.Note) {
 		return
 	}
 	a.current = n
+	a.settingsOpen, a.helpOpen = false, false
 	if a.lib.Changed(n) {
 		if a.fail(a.lib.Reload(n.ID)) {
 			return
@@ -301,6 +306,7 @@ func (a *app) home(section string) {
 		return
 	}
 	a.current = nil
+	a.settingsOpen, a.helpOpen = false, false
 	a.section = section
 	a.folder = ""
 	a.query = ""
