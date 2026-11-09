@@ -68,7 +68,7 @@ func (a *app) pageTheme(base *ui.Theme) *ui.Theme {
 }
 
 func (a *app) writingFont(selector string) ui.Font {
-	font := ui.Font{Family: "Helvetica Neue", Size: 17, LineHeight: 1.5}
+	font := ui.Font{Family: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif", Size: 16, LineHeight: 1.6}
 	if a.docTheme != nil {
 		font = a.docTheme.Font(selector, font)
 	}

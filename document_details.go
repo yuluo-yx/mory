@@ -96,7 +96,7 @@ func (a *app) documentHeader(c *ui.Context) {
 		if n.Icon != "" {
 			ui.Text(c, n.Icon).FontSize(30)
 		}
-		if ui.TextInput(c, &n.Title).Label("Document title").Font("Georgia").FontSize(30).Bold().Grow(1).Background(ui.Transparent).Border(0, ui.Transparent).Changed() {
+		if ui.TextInput(c, &n.Title).Label("Document title").Font("-apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif").FontSize(28).Bold().LetterSpacing(-0.4).Grow(1).Background(ui.Transparent).Border(0, ui.Transparent).Changed() {
 			a.syncMetadata()
 		}
 	})

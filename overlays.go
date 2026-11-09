@@ -11,46 +11,14 @@ func (a *app) overlays(c *ui.Context) {
 	a.libraryOverlays(c)
 	a.themeOverlay(c)
 	a.blockOverlays(c)
-	ui.Modal(c, &a.settingsOpen, func() {
-		ui.Column(c).Width(410).Gap(18).Children(func() {
-			ui.Text(c, "Make it yours").Font("Georgia").FontSize(26)
-			ui.Text(c, "Appearance").Bold()
-			if ui.Select(c, &a.lib.Settings.Appearance, []string{"System", "Light", "Dark"}).Label("Appearance").FillWidth().Changed() {
-				a.fail(a.lib.SaveSettings())
-			}
-			ui.Text(c, "Writing style").Bold()
-			a.themeControls(c)
-			ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
-				ui.Textf(c, "Text size: %.0f", a.lib.Settings.FontSize).Grow(1)
-				if ui.Button(c, "−").Label("Smaller text").Clicked() {
-					a.lib.Settings.FontSize = max(12, a.lib.Settings.FontSize-1)
-					a.docTheme = nil
-					a.fail(a.lib.SaveSettings())
-				}
-				if ui.Button(c, "+").Label("Larger text").Clicked() {
-					a.lib.Settings.FontSize = min(30, a.lib.Settings.FontSize+1)
-					a.docTheme = nil
-					a.fail(a.lib.SaveSettings())
-				}
-			})
-			ui.Text(c, "Library").Bold()
-			ui.Text(c, a.lib.Dir).FontSize(11).TextColor(c.Theme().TextMuted)
-			if ui.Button(c, "Reveal library in Finder").Clicked() {
-				a.reveal(a.lib.Dir)
-			}
-			if ui.Button(c, "Keyboard shortcuts").Clicked() {
-				a.helpOpen = true
-				a.settingsOpen = false
-			}
-			ui.Text(c, "Mory 0.1.0 · Made for macOS").FontSize(11).TextColor(c.Theme().TextMuted)
-			if ui.PrimaryButton(c, "Done").Clicked() {
-				a.settingsOpen = false
-			}
+	if a.focus {
+		ui.Modal(c, &a.settingsOpen, func() {
+			a.settingsContent(c)
 		})
-	})
+	}
 	ui.Modal(c, &a.pluginsOpen, func() {
 		ui.Column(c).Width(480).Gap(14).Children(func() {
-			ui.Text(c, "Your writing workbench").Font("Georgia").FontSize(26)
+			ui.Text(c, "Your writing workbench").FontSize(22).Bold().LetterSpacing(-0.3)
 			ui.Text(c, "JavaScript transforms run locally in moejs.").TextColor(c.Theme().TextMuted)
 			for _, p := range a.plugins {
 				ui.Row(c.Key(p.Name)).Gap(10).AlignItems(ui.Center).Children(func() {
@@ -82,8 +50,8 @@ func (a *app) overlays(c *ui.Context) {
 		})
 	})
 	ui.Modal(c, &a.insertOpen, func() {
-		ui.Column(c).Width(390).Gap(12).Children(func() {
-			ui.Text(c, "Give your idea a shape").Font("Georgia").FontSize(24)
+		ui.Column(c).Width(400).Gap(12).Children(func() {
+			ui.Text(c, "Give your idea a shape").FontSize(22).Bold().LetterSpacing(-0.3)
 			ui.TextInput(c, &a.insertQuery).Label("Search blocks").Placeholder("Search blocks…").FillWidth().AutoFocus()
 			for _, b := range []struct{ name, source string }{{"Heading", "\n## Heading\n"}, {"Bullet list", "\n- List item\n"}, {"To-do list", "\n- [ ] A small next step\n"}, {"Quote", "\n> A thought worth keeping.\n"}, {"Code block", "\n```go\nfunc main() {}\n```\n"}, {"Table", "\n| Column A | Column B |\n| --- | --- |\n| Value | Value |\n"}, {"Math", "\n$$\nE = mc^2\n$$\n"}, {"Callout", "\n> [!NOTE]\n> Something to remember.\n"}, {"Divider", "\n---\n"}} {
 				if strings.Contains(strings.ToLower(b.name), strings.ToLower(a.insertQuery)) {
@@ -140,7 +108,7 @@ func (a *app) overlays(c *ui.Context) {
 			return
 		}
 		ui.Column(c).Width(400).Gap(16).Children(func() {
-			ui.Text(c, "Document details").Font("Georgia").FontSize(24)
+			ui.Text(c, "Document details").FontSize(22).Bold().LetterSpacing(-0.3)
 			ui.TextInput(c, &a.renameTitle).Label("Note name").FillWidth().AutoFocus()
 			a.documentControls(c)
 			ui.Row(c).Gap(8).Children(func() {
@@ -246,7 +214,7 @@ func (a *app) overlays(c *ui.Context) {
 	})
 	ui.Modal(c, &a.exportOpen, func() {
 		ui.Column(c).Width(360).Gap(12).Children(func() {
-			ui.Text(c, "Take your words with you").Font("Georgia").FontSize(24)
+			ui.Text(c, "Take your words with you").FontSize(22).Bold().LetterSpacing(-0.3)
 			for _, format := range []string{"Markdown", "DocxXML", "HTML", "PDF"} {
 				if ui.Button(c, "Export "+format).FillWidth().Clicked() {
 					a.exportOpen = false
@@ -298,4 +266,91 @@ func (a *app) exportMenuOpen() {
 	if a.current != nil {
 		a.exportOpen = true
 	}
+}
+
+func (a *app) settingsContent(c *ui.Context) {
+		ui.Column(c).Width(460).Gap(16).Children(func() {
+			ui.Row(c).AlignItems(ui.Center).Children(func() {
+				ui.Column(c).Grow(1).Gap(2).Children(func() {
+					ui.Text(c, "Settings").FontSize(22).Bold().LetterSpacing(-0.3)
+					ui.Text(c, "Preferences for writing and appearance").FontSize(12).TextColor(c.Theme().TextMuted)
+				})
+			})
+
+			// Appearance & Style Section
+			ui.Column(c).Padding(12).Radius(8).Background(c.Theme().Surface).Gap(10).Border(1, c.Theme().Border.Alpha(0.6)).Children(func() {
+				ui.Text(c, "Appearance & Style").Bold().FontSize(13)
+				if ui.Select(c, &a.lib.Settings.Appearance, []string{"System", "Light", "Dark"}).Label("Appearance").FillWidth().Changed() {
+					a.fail(a.lib.SaveSettings())
+				}
+				a.themeControls(c)
+			})
+
+			// Editor & Typography Section
+			ui.Column(c).Padding(12).Radius(8).Background(c.Theme().Surface).Gap(10).Border(1, c.Theme().Border.Alpha(0.6)).Children(func() {
+				ui.Text(c, "Editor Preferences").Bold().FontSize(13)
+				ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
+					ui.Textf(c, "Text size: %.0f", a.lib.Settings.FontSize).Grow(1).FontSize(13)
+					if ui.Button(c, "−").Label("Smaller text").Padding(4, 10).Radius(5).Clicked() {
+						a.lib.Settings.FontSize = max(12, a.lib.Settings.FontSize-1)
+						a.docTheme = nil
+						a.fail(a.lib.SaveSettings())
+					}
+					if ui.Button(c, "+").Label("Larger text").Padding(4, 10).Radius(5).Clicked() {
+						a.lib.Settings.FontSize = min(30, a.lib.Settings.FontSize+1)
+						a.docTheme = nil
+						a.fail(a.lib.SaveSettings())
+					}
+				})
+				ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
+					if ui.Checkbox(c, &a.showToolbar, "Show formatting toolbar").Changed() {}
+					if ui.Checkbox(c, &a.outline, "Show outline").Changed() {}
+				})
+				if a.current != nil {
+					ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, "Page width").FontSize(13)
+						width := a.current.Width
+						if width == "" {
+							width = "Standard"
+						}
+						if ui.Select(c, &width, []string{"Standard", "Wide", "Full"}).Label("Page width").Width(120).Changed() {
+							a.mutate(a.current, func() { a.current.Width = width })
+						}
+					})
+				}
+			})
+
+			// Shortcuts & Keybindings Section
+			ui.Column(c).Padding(12).Radius(8).Background(c.Theme().Surface).Gap(10).Border(1, c.Theme().Border.Alpha(0.6)).Children(func() {
+				ui.Text(c, "Shortcuts & Keybindings").Bold().FontSize(13)
+				if ui.Checkbox(c, &a.lib.Settings.ShowShortcuts, "Show shortcut hints beside buttons").Changed() {
+					a.fail(a.lib.SaveSettings())
+				}
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					if ui.Button(c, "Keyboard shortcuts").Padding(5, 10).Radius(5).Clicked() {
+						a.helpOpen = true
+						a.settingsOpen = false
+					}
+					ui.Text(c, "Custom keys (Cmd, Ctrl, Alt, Shift)").FontSize(11).TextColor(c.Theme().TextMuted)
+				})
+			})
+
+			// Library & Storage Section
+			ui.Column(c).Padding(12).Radius(8).Background(c.Theme().Surface).Gap(10).Border(1, c.Theme().Border.Alpha(0.6)).Children(func() {
+				ui.Text(c, "Library & Storage").Bold().FontSize(13)
+				ui.Text(c, a.lib.Dir).FontSize(11).TextColor(c.Theme().TextMuted)
+				ui.Row(c).Gap(8).Children(func() {
+					if ui.Button(c, "Reveal library in Finder").Padding(5, 10).Radius(5).Clicked() {
+						a.reveal(a.lib.Dir)
+					}
+				})
+			})
+
+			ui.Row(c).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, "Mory 0.1.0 · Made for macOS").FontSize(11).TextColor(c.Theme().TextMuted).Grow(1)
+				if ui.PrimaryButton(c, "Done").Padding(6, 16).Radius(6).Clicked() {
+					a.settingsOpen = false
+				}
+			})
+		})
 }

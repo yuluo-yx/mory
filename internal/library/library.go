@@ -55,6 +55,7 @@ type Settings struct {
 	FontSize        float32           `json:"fontSize"`
 	Wide            bool              `json:"wide"`
 	List            bool              `json:"list"`
+	ShowShortcuts   bool              `json:"showShortcuts,omitempty"`
 	DisabledPlugins map[string]bool   `json:"disabledPlugins,omitempty"`
 }
 

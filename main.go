@@ -84,7 +84,18 @@ func main() {
 }
 
 func (a *app) newWindow() {
-	options := mygo.WindowOptions{Title: "Mory", Width: 1280, Height: 820, MinWidth: 1000, MinHeight: 620, StateKey: "mory-main", BackgroundColor: "#fffefa", Content: ui.View(a.view)}
+	options := mygo.WindowOptions{
+		Title:          "Mory",
+		Width:          1280,
+		Height:         820,
+		MinWidth:       1000,
+		MinHeight:      620,
+		StateKey:       "mory-main",
+		TitleBarStyle:  mygo.TitleBarHiddenInset,
+		TitleBarHeight: 48,
+		Vibrancy:       mygo.VibrancySidebar,
+		Content:        ui.View(a.view),
+	}
 	if a.quick {
 		options.Title = "Mory Quick Note"
 		options.Width = 800
@@ -167,7 +178,7 @@ func (a *app) installMenu() {
 			}
 		}), action("Print", "Cmd+Alt+P", a.printDocument), action("Export…", "Cmd+Shift+E", a.exportMenuOpen), {Role: mygo.RoleClose}}},
 		{Label: "Edit", Submenu: []*mygo.MenuItem{{Role: mygo.RoleUndo, Accelerator: a.keyFor("Undo", "Cmd+Z")}, {Role: mygo.RoleRedo, Accelerator: a.keyFor("Redo", "Cmd+Shift+Z")}, mygo.Separator(), {Role: mygo.RoleCut}, {Role: mygo.RoleCopy}, {Role: mygo.RolePaste, Accelerator: a.keyFor("Paste", "Cmd+V")}, {Role: mygo.RoleSelectAll}}}, {Label: "Format", Submenu: formatItems},
-		{Label: "View", Submenu: []*mygo.MenuItem{action("Library", "Cmd+Shift+F", func() { a.home("All notes") }), action("Focus mode", "Cmd+Shift+L", func() { a.focus = !a.focus }), action("Insert block…", "Cmd+P", func() { a.insertOpen = true }), action("Settings…", "Cmd+,", func() { a.settingsOpen = true }), {Role: mygo.RoleToggleFullScreen}}},
+		{Label: "View", Submenu: []*mygo.MenuItem{action("Library", "Cmd+Shift+F", func() { a.home("All notes") }), action("Focus mode", "Cmd+Shift+L", func() { a.focus = !a.focus }), action("Toggle toolbar", "Cmd+Shift+T", func() { a.showToolbar = !a.showToolbar }), action("Toggle outline", "Cmd+Shift+H", func() { a.outline = !a.outline }), action("Insert block…", "Cmd+P", func() { a.insertOpen = true }), action("Settings…", "Cmd+,", func() { a.settingsOpen = true }), {Role: mygo.RoleToggleFullScreen}}},
 		{Role: mygo.RoleWindowMenu}, {Label: "Help", Submenu: []*mygo.MenuItem{action("Shortcuts", "Cmd+/", func() { a.helpOpen = true })}},
 	}))
 }

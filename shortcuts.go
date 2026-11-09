@@ -52,6 +52,7 @@ func (a *app) actions() []shortcut {
 		{"Source mode", "Cmd+Alt+3", func() { a.changeMode("Source") }},
 		{"Split mode", "Cmd+Alt+4", func() { a.changeMode("Split") }},
 		{"Outline", "Cmd+Shift+H", func() { a.outline = !a.outline }},
+		{"Formatting toolbar", "Cmd+Shift+T", func() { a.showToolbar = !a.showToolbar }},
 		{"Bold", "Cmd+B", edit((*richtext.Document).ToggleBold)},
 		{"Italic", "Cmd+I", edit((*richtext.Document).ToggleItalic)},
 		{"Underline", "Cmd+U", edit((*richtext.Document).ToggleUnderline)},

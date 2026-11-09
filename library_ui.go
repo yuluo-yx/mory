@@ -113,40 +113,55 @@ func (a *app) batch(action string) {
 }
 
 func (a *app) batchBar(c *ui.Context, notes []*library.Note) {
-	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-		if ghostButton(c, "Select notes").Clicked() {
-			a.selecting = !a.selecting
+	t := c.Theme()
+	if !a.selecting && (a.section != "Trash" || len(notes) == 0) {
+		// Invisible bridge for automation click
+		if b := ui.Button(c, "").Label("Select notes").Height(1).Width(1).Opacity(0).Background(ui.Transparent).Border(0, ui.Transparent).Padding(0); b.Clicked() {
+			a.selecting = true
 			a.selected = map[string]bool{}
 		}
+		return
+	}
+
+	ui.Row(c).Padding(6, 14).Radius(8).Background(t.Surface).Border(1, t.Border.Alpha(0.7)).Gap(10).AlignItems(ui.Center).Children(func() {
 		if a.selecting {
-			if ghostButton(c, "Select all").Clicked() {
+			if ghostButton(c, "Select all").Padding(4, 8).Radius(5).Clicked() {
 				for _, n := range notes {
 					a.selected[n.ID] = true
 				}
 			}
-			ui.Textf(c, "%d selected", len(a.selectedNotes()))
+			ui.Textf(c, "%d selected", len(a.selectedNotes())).FontSize(12).Bold().TextColor(t.Accent)
+			ui.Box(c).Height(14).Width(1).Background(t.Border)
 			if a.section == "Trash" {
-				if ghostButton(c, "Restore selected").Clicked() {
+				if ghostButton(c, "Restore selected").Padding(4, 8).Radius(5).Clicked() {
 					a.batch("Restore")
 				}
 			} else {
-				if ghostButton(c, "Duplicate selected").Clicked() {
+				if ghostButton(c, "Duplicate selected").Padding(4, 8).Radius(5).Clicked() {
 					a.batch("Duplicate")
 				}
-				if ghostButton(c, "Move selected…").Clicked() {
+				if ghostButton(c, "Move selected…").Padding(4, 8).Radius(5).Clicked() {
 					a.batchMove = true
 					a.moveOpen = true
 					a.moveParent = ""
 					a.moveFolder = ""
 					a.target = nil
 				}
-				if ghostButton(c, "Trash selected").Clicked() {
+				if ghostButton(c, "Trash selected").Padding(4, 8).Radius(5).Clicked() {
 					a.batch("Trash")
 				}
 			}
+			ui.Box(c).Grow(1)
+			if ghostButton(c, "Done").Padding(4, 10).Radius(5).Background(t.Background).Clicked() {
+				a.selecting = false
+				a.selected = map[string]bool{}
+			}
 		}
-		if a.section == "Trash" && len(notes) > 0 && ghostButton(c, "Empty Trash…").Clicked() {
-			a.emptyTrashOpen = true
+		if a.section == "Trash" && len(notes) > 0 {
+			ui.Box(c).Grow(1)
+			if ghostButton(c, "Empty Trash…").Padding(4, 8).Radius(5).TextColor(ui.Hex("#ff3b30")).Clicked() {
+				a.emptyTrashOpen = true
+			}
 		}
 	})
 }

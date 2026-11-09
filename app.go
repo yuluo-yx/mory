@@ -67,6 +67,7 @@ type app struct {
 	slashPending                                                                    bool
 	slashOffset                                                                     int
 	plugins                                                                         []*plugins.Plugin
+	showToolbar                                                                     bool
 	settingsOpen, pluginsOpen, insertOpen, linkOpen, helpOpen, findOpen, exportOpen bool
 	linkURL, findText, replaceText                                                  string
 	renameOpen, moveOpen, deleteOpen                                                bool
@@ -80,7 +81,7 @@ func newApp(dir string) (*app, error) {
 	if err != nil {
 		return nil, err
 	}
-	a := &app{lib: l, section: "All notes", order: "Modified", mode: "Write", status: "All changes saved", outline: true, selected: map[string]bool{}}
+	a := &app{lib: l, section: "All notes", order: "Modified", mode: "Write", status: "All changes saved", outline: true, showToolbar: true, selected: map[string]bool{}}
 	a.recoveries, err = l.Recoveries()
 	if err != nil {
 		return nil, err
