@@ -168,16 +168,39 @@ func (a *app) batchBar(c *ui.Context, notes []*library.Note) {
 
 func (a *app) libraryOverlays(c *ui.Context) {
 	ui.Modal(c, &a.folderOpen, func() {
-		ui.Column(c).Width(380).Gap(12).Children(func() {
-			ui.Text(c, a.tr("Folder")).FontSize(24)
-			ui.TextInput(c, &a.folderName).Label(a.tr("Folder title")).FillWidth().AutoFocus()
-			if ui.PrimaryButton(c, a.tr("Save folder")).Clicked() && !a.fail(a.lib.RenameFolder(a.folderFrom, a.folderName)) {
-				a.folderOpen = false
-			}
-			if a.folderFrom != "" && ui.Button(c, a.tr("Remove folder, keep notes")).Clicked() && !a.fail(a.lib.DeleteFolder(a.folderFrom)) {
-				a.folderOpen = false
-				a.folder = ""
-			}
+		t := c.Theme()
+		titleText := a.tr("New folder")
+		if a.folderFrom != "" {
+			titleText = a.tr("Edit folder…")
+		}
+		ui.Column(c).Width(380).Gap(16).Children(func() {
+			ui.Row(c).AlignItems(ui.Center).Children(func() {
+				ui.Column(c).Grow(1).Gap(2).Children(func() {
+					ui.Text(c, titleText).FontSize(18).Bold().LetterSpacing(-0.3)
+					ui.Text(c, a.tr("Organize notes into a workspace folder")).FontSize(12).TextColor(t.TextMuted)
+				})
+			})
+
+			ui.Column(c).Padding(12).Radius(8).Background(t.Surface).Border(1, t.Border.Alpha(0.6)).Gap(6).Children(func() {
+				ui.Text(c, a.tr("Folder title")).FontSize(12).Bold().TextColor(t.TextMuted)
+				ui.TextInput(c, &a.folderName).Label(a.tr("Folder title")).Placeholder(a.tr("e.g. Work, Ideas, Journal…")).FillWidth().AutoFocus()
+			})
+
+			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+				if a.folderFrom != "" {
+					if ui.Button(c, a.tr("Remove folder, keep notes")).Padding(5, 10).Radius(6).TextColor(ui.Hex("#ff3b30")).Clicked() && !a.fail(a.lib.DeleteFolder(a.folderFrom)) {
+						a.folderOpen = false
+						a.folder = ""
+					}
+				}
+				ui.Box(c).Grow(1)
+				if ui.Button(c, a.tr("Cancel")).Padding(5, 12).Radius(6).Clicked() {
+					a.folderOpen = false
+				}
+				if ui.PrimaryButton(c, a.tr("Save folder")).Padding(5, 14).Radius(6).Clicked() && !a.fail(a.lib.RenameFolder(a.folderFrom, a.folderName)) {
+					a.folderOpen = false
+				}
+			})
 		})
 	})
 	ui.Modal(c, &a.emptyTrashOpen, func() {

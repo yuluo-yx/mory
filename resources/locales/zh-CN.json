@@ -425,5 +425,17 @@
   "Import document theme": "导入文稿主题",
   "Clean whitespace": "清理多余空白",
   "Insert table of contents": "插入目录",
-  "Reading statistics": "阅读统计"
+  "Reading statistics": "阅读统计",
+  "Add cover": "添加封面",
+  "Change cover": "更换封面",
+  "Add icon": "添加图标",
+  "Change icon": "更换图标",
+  "Remove icon": "移除图标",
+  "Reposition": "重新调整位置",
+  "Metadata": "元数据",
+  "Cover": "封面",
+  "Actions": "操作",
+  "New sub-note": "新建子文档",
+  "Add sub-page": "添加子页面",
+  "Sub-notes": "子文档"
 }

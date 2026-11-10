@@ -75,9 +75,9 @@ func (a *app) applyLocale() {
 func (a *app) selectText(c *ui.Context, value *string, options []string) ui.Element {
 	t := c.Theme()
 	sel := ui.SelectBase(c, value)
-	sel.Trigger.Padding(6, 10).Gap(8).Radius(6).Border(1, t.Border).Background(t.Surface).Children(func() {
-		ui.Text(c, a.tr(*value)).Grow(1)
-		ui.Text(c, "⌄").TextColor(t.TextMuted)
+	sel.Trigger.Padding(5, 10).Gap(8).Radius(6).Border(1, t.Border).Background(t.Surface).AlignItems(ui.Center).Children(func() {
+		ui.Text(c, a.tr(*value)).Grow(1).FontSize(13)
+		ui.Icon(c, iconChevronDown()).Width(12).Height(12).TextColor(t.TextMuted)
 	})
 	sel.Popup(func(panel ui.Element) {
 		panel.Padding(4).Radius(8).Background(t.Background).Border(1, t.Border)

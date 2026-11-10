@@ -27,6 +27,8 @@ type app struct {
 	shortcutDraft                                                                   map[string]string
 	quickDraft                                                                      string
 	selected                                                                        map[string]bool
+	collapsedFolders                                                                map[string]bool
+	collapsedNotes                                                                  map[string]bool
 	selecting, batchMove, folderOpen, emptyTrashOpen, historyOpen, recoveryOpen     bool
 	folderFrom, folderName                                                          string
 	revisions                                                                       []library.Revision
@@ -74,7 +76,7 @@ type app struct {
 	showToolbar                                                                     bool
 	settingsOpen, pluginsOpen, insertOpen, linkOpen, helpOpen, findOpen, exportOpen bool
 	linkURL, findText, replaceText                                                  string
-	renameOpen, moveOpen, deleteOpen                                                bool
+	renameOpen, moveOpen, deleteOpen, iconPickerOpen                                                bool
 	renameTitle, moveFolder, moveParent                                             string
 	target                                                                          *library.Note
 	insertQuery                                                                     string
@@ -85,7 +87,7 @@ func newApp(dir string) (*app, error) {
 	if err != nil {
 		return nil, err
 	}
-	a := &app{lib: l, section: "All notes", order: "Modified", mode: "Write", status: "All changes saved", outline: true, showToolbar: true, selected: map[string]bool{}}
+	a := &app{lib: l, section: "All notes", order: "Modified", mode: "Write", status: "All changes saved", outline: true, showToolbar: true, selected: map[string]bool{}, collapsedFolders: map[string]bool{}, collapsedNotes: map[string]bool{}}
 	a.recoveries, err = l.Recoveries()
 	if err != nil {
 		return nil, err
@@ -298,6 +300,19 @@ func (a *app) createNote(source, title string) {
 		return
 	}
 	n.Folder = a.folder
+	a.openNote(n)
+}
+
+func (a *app) createChildNote(parent *library.Note) {
+	if !a.save() {
+		return
+	}
+	n, err := a.lib.Create("Untitled", "", "markdown")
+	if a.fail(err) {
+		return
+	}
+	n.Folder = parent.Folder
+	n.Parent = parent.ID
 	a.openNote(n)
 }
 

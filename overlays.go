@@ -102,48 +102,69 @@ func (a *app) overlays(c *ui.Context) {
 		if a.target == nil {
 			return
 		}
-		ui.Column(c).Width(400).Gap(16).Children(func() {
-			ui.Text(c, a.tr("Document details")).FontSize(22).Bold().LetterSpacing(-0.3)
-			ui.TextInput(c, &a.renameTitle).Label(a.tr("Note name")).FillWidth().AutoFocus()
+		t := c.Theme()
+		ui.Column(c).Width(440).Gap(14).Children(func() {
+			ui.Row(c).AlignItems(ui.Center).Children(func() {
+				ui.Column(c).Grow(1).Gap(2).Children(func() {
+					ui.Text(c, a.tr("Document details")).FontSize(20).Bold().LetterSpacing(-0.3)
+					ui.Text(c, a.tr("Configure note title, layout and metadata")).FontSize(12).TextColor(t.TextMuted)
+				})
+			})
+
+			// Note Name Input Card
+			ui.Column(c).Padding(12).Radius(8).Background(t.Surface).Border(1, t.Border.Alpha(0.6)).Gap(6).Children(func() {
+				ui.Text(c, a.tr("Note name")).FontSize(12).Bold().TextColor(t.TextMuted)
+				ui.TextInput(c, &a.renameTitle).Label(a.tr("Note name")).FillWidth().AutoFocus()
+			})
+
 			a.documentControls(c)
-			ui.Row(c).Gap(8).Children(func() {
-				if ui.PrimaryButton(c, a.tr("Rename")).Clicked() {
-					if strings.TrimSpace(a.renameTitle) == "" {
-						a.problem = "Give your note a name."
-					} else {
-						a.mutate(a.target, func() {
-							a.target.Title = strings.TrimSpace(a.renameTitle)
-							if a.target == a.current {
-								a.syncMetadata()
-							}
-						})
-						a.renameOpen = false
-					}
+
+			// Actions Footer
+			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
+				if ui.Button(c, a.tr("Favorite")).Padding(5, 10).Radius(6).Clicked() {
+					a.mutate(a.target, func() { a.target.Starred = !a.target.Starred })
+					a.renameOpen = false
 				}
-				if ui.Button(c, a.tr("Move…")).Clicked() {
+				if ui.Button(c, a.tr("Pin")).Padding(5, 10).Radius(6).Clicked() {
+					a.mutate(a.target, func() { a.target.Pinned = !a.target.Pinned })
+					a.renameOpen = false
+				}
+				if ui.Button(c, a.tr("Duplicate")).Padding(5, 10).Radius(6).Clicked() {
+					a.duplicate(a.target)
+					a.renameOpen = false
+				}
+				if ui.Button(c, a.tr("Move…")).Padding(5, 10).Radius(6).Clicked() {
 					a.moveFolder = a.target.Folder
 					a.moveParent = a.target.Parent
 					a.renameOpen = false
 					a.moveOpen = true
 				}
-				if ui.Button(c, a.tr("Duplicate")).Clicked() {
-					a.duplicate(a.target)
-					a.renameOpen = false
-				}
 			})
-			ui.Row(c).Gap(8).Children(func() {
-				if ui.Button(c, a.tr("Favorite")).Clicked() {
-					a.mutate(a.target, func() { a.target.Starred = !a.target.Starred })
-					a.renameOpen = false
-				}
-				if ui.Button(c, a.tr("Pin")).Clicked() {
-					a.mutate(a.target, func() { a.target.Pinned = !a.target.Pinned })
-					a.renameOpen = false
-				}
-				if ui.Button(c, a.tr("Move to Trash")).Clicked() {
+
+			ui.Row(c).AlignItems(ui.Center).Children(func() {
+				if ui.Button(c, a.tr("Move to Trash")).Padding(5, 10).Radius(6).TextColor(ui.Hex("#ff3b30")).Clicked() {
 					a.trash(a.target)
 					a.renameOpen = false
 				}
+				ui.Box(c).Grow(1)
+				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+					if ui.Button(c, a.tr("Cancel")).Padding(5, 14).Radius(6).Clicked() {
+						a.renameOpen = false
+					}
+					if ui.PrimaryButton(c, a.tr("Rename")).Padding(5, 16).Radius(6).Clicked() {
+						if strings.TrimSpace(a.renameTitle) == "" {
+							a.problem = "Give your note a name."
+						} else {
+							a.mutate(a.target, func() {
+								a.target.Title = strings.TrimSpace(a.renameTitle)
+								if a.target == a.current {
+									a.syncMetadata()
+								}
+							})
+							a.renameOpen = false
+						}
+					}
+				})
 			})
 		})
 	})

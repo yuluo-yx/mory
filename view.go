@@ -188,44 +188,18 @@ func (a *app) sidebar(c *ui.Context) {
 
 		// Document & Folder Tree
 		ui.Scroll(c).Grow(1).Gap(1).Children(func() {
-			for _, folder := range a.lib.Folders() {
-				button := ghostButton(c, "").Label(a.tr("Folder ")+folder).FillWidth().Radius(6).Padding(6, 8)
-				if a.folder == folder {
-					button.Background(t.Accent.Alpha(0.12))
-				} else if button.Hovered() {
-					button.Background(t.SurfaceHover)
-				}
-				button.Children(func() {
-					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-						ui.Icon(c, iconFolder()).Width(14).Height(14).TextColor(t.Accent)
-						txt := ui.Text(c, folder).FontSize(13).Grow(1)
-						if a.folder == folder {
-							txt.Bold().TextColor(t.Accent)
-						}
-					})
-				})
-				button.PopoverMenu(func(m *ui.Menu) {
-					if m.Item(a.tr("Edit folder…")).Chosen() {
-						a.folderFrom = folder
-						a.folderName = folder
-						a.folderOpen = true
-					}
-				})
-				if drag, ok := ui.Drop[noteDrag](button); ok {
-					if n := a.lib.Get(drag.ID); n != nil {
-						a.fail(a.lib.Move(n, folder, ""))
-					}
-				}
-				if button.Clicked() {
-					if a.save() {
-						a.current = nil
-						a.section = "All notes"
-						a.folder = folder
-					}
-				}
-			}
 			seen := map[string]bool{}
+
+			// Render Folders
+			for _, folder := range a.lib.Folders() {
+				a.treeFolder(c, folder, 0, seen)
+			}
+
+			// Root level notes (no folder assigned)
 			for _, n := range a.lib.Query("All notes", "", "", "Manual") {
+				if n.Folder != "" {
+					continue
+				}
 				if n.Parent != "" && a.lib.Get(n.Parent) != nil && !a.lib.Get(n.Parent).Deleted {
 					continue
 				}
@@ -274,22 +248,177 @@ func (a *app) sidebar(c *ui.Context) {
 	})
 }
 
+func (a *app) treeFolder(c *ui.Context, folder string, depth int, seen map[string]bool) {
+	t := c.Theme()
+	isCollapsed := a.collapsedFolders[folder]
+	isActiveFolder := a.folder == folder
+	leftPad := float32(4 + depth*16)
+
+	btnFolder := ghostButton(c.Key("folder-"+folder), "").Label(a.tr("Folder ")+folder).FillWidth().Radius(6).Padding(4, 6, 4, leftPad)
+	if isActiveFolder {
+		btnFolder.Background(t.Accent.Alpha(0.12))
+	} else if btnFolder.Hovered() {
+		btnFolder.Background(t.SurfaceHover)
+	}
+
+	btnFolder.Children(func() {
+		ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
+			// Expand / Collapse Chevron Button (Only visible on hover or when collapsed)
+			showChevron := btnFolder.Hovered() || isCollapsed
+			if showChevron {
+				chevronIcon := iconChevronDown()
+				if isCollapsed {
+					chevronIcon = iconChevronRight()
+				}
+				btnChevron := ghostButton(c.Key("chev-"+folder), "").Padding(1, 2).Radius(3)
+				btnChevron.Children(func() {
+					ui.Icon(c, chevronIcon).Width(11).Height(11).TextColor(t.TextMuted)
+				})
+				if btnChevron.Clicked() {
+					a.collapsedFolders[folder] = !isCollapsed
+				}
+			} else {
+				ui.Box(c).Width(15)
+			}
+
+			ui.Icon(c, iconFolder()).Width(14).Height(14).TextColor(t.Accent)
+			displayName := folder
+			if idx := strings.LastIndex(folder, "/"); idx >= 0 {
+				displayName = folder[idx+1:]
+			}
+			txt := ui.Text(c, displayName).FontSize(13).Grow(1).NoWrap().Clip()
+			if isActiveFolder {
+				txt.Bold().TextColor(t.Accent)
+			}
+
+			// Pinned Action Buttons on the Right on Hover: [New Folder] [+ New Note] [··· More]
+			if btnFolder.Hovered() || isActiveFolder {
+				btnAddSubFolder := ghostButton(c.Key("add-sf-"+folder), "").Tooltip(a.tr("New folder")).Padding(2, 3).Radius(4)
+				btnAddSubFolder.Children(func() {
+					ui.Icon(c, iconFolderPlus()).Width(13).Height(13).TextColor(t.TextMuted)
+				})
+				if btnAddSubFolder.Clicked() {
+					a.folderFrom = ""
+					a.folderName = folder + "/"
+					a.folderOpen = true
+				}
+
+				btnAdd := ghostButton(c.Key("add-f-"+folder), "").Label(a.tr("New note")).Tooltip(a.tr("New note")).Padding(2, 3).Radius(4)
+				btnAdd.Children(func() {
+					ui.Icon(c, iconPlus()).Width(12).Height(12).TextColor(t.TextMuted)
+				})
+				if btnAdd.Clicked() {
+					a.folder = folder
+					a.createNote("", "Untitled")
+				}
+
+				btnMoreFolder := ghostButton(c.Key("more-f-"+folder), "").Tooltip(a.tr("Folder")).Padding(2, 3).Radius(4)
+				btnMoreFolder.Children(func() {
+					ui.Icon(c, iconMore()).Width(12).Height(12).TextColor(t.TextMuted)
+				})
+				btnMoreFolder.PopoverMenuButton(func(m *ui.Menu) {
+					if m.Item(a.tr("New note")).Chosen() {
+						a.folder = folder
+						a.createNote("", "Untitled")
+					}
+					if m.Item(a.tr("New folder")).Chosen() {
+						a.folderFrom = ""
+						a.folderName = folder + "/"
+						a.folderOpen = true
+					}
+					if m.Item(a.tr("Edit folder…")).Chosen() {
+						a.folderFrom = folder
+						a.folderName = folder
+						a.folderOpen = true
+					}
+				})
+			}
+		})
+	})
+
+	btnFolder.PopoverMenu(func(m *ui.Menu) {
+		if m.Item(a.tr("New note")).Chosen() {
+			a.folder = folder
+			a.createNote("", "Untitled")
+		}
+		if m.Item(a.tr("Edit folder…")).Chosen() {
+			a.folderFrom = folder
+			a.folderName = folder
+			a.folderOpen = true
+		}
+	})
+
+	if drag, ok := ui.Drop[noteDrag](btnFolder); ok {
+		if n := a.lib.Get(drag.ID); n != nil {
+			a.fail(a.lib.Move(n, folder, ""))
+		}
+	}
+	if btnFolder.Clicked() {
+		if a.save() {
+			a.current = nil
+			a.section = "All notes"
+			a.folder = folder
+		}
+	}
+
+	// Notes belonging directly to this folder (nested with indentation)
+	if !isCollapsed {
+		for _, n := range a.lib.Query("All notes", "", folder, "Manual") {
+			if n.Parent != "" && a.lib.Get(n.Parent) != nil && !a.lib.Get(n.Parent).Deleted {
+				continue
+			}
+			a.treeNote(c, n, depth+1, seen)
+		}
+	}
+}
+
 func (a *app) treeNote(c *ui.Context, n *library.Note, depth int, seen map[string]bool) {
 	if seen[n.ID] || depth > 20 {
 		return
 	}
 	seen[n.ID] = true
-	b := ghostButton(c.Key("tree-"+n.ID), "").Label(a.tr("Open ")+n.Title).FillWidth().Padding(5, 8+float32(depth)*12).MaxHeight(32).Radius(6).Drag(noteDrag{n.ID})
-	if a.current == n {
+
+	// Check if this note has children
+	hasChildren := false
+	for _, child := range a.lib.Notes {
+		if !child.Deleted && child.Parent == n.ID {
+			hasChildren = true
+			break
+		}
+	}
+	isCollapsed := a.collapsedNotes[n.ID]
+
+	leftPad := float32(4 + depth*16)
+	b := ghostButton(c.Key("tree-"+n.ID), "").Label(a.tr("Open ")+n.Title).FillWidth().Padding(4, 6, 4, leftPad).MaxHeight(32).Radius(6).Drag(noteDrag{n.ID})
+	isActive := a.current == n
+	if isActive {
 		b.Background(c.Theme().Accent.Alpha(0.12))
 	} else if b.Hovered() {
 		b.Background(c.Theme().SurfaceHover)
 	}
 	b.Children(func() {
-		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-			ui.Icon(c, iconFileText()).Width(13).Height(13).TextColor(c.Theme().TextMuted)
-			txt := ui.Text(c, n.Title).FontSize(13).Grow(1).Clip()
-			if a.current == n {
+		ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
+			// Leading slot (15px): Chevron button if has children (visible on hover or when collapsed), otherwise spacer
+			showChevron := hasChildren && (b.Hovered() || isCollapsed)
+			if showChevron {
+				chevronIcon := iconChevronDown()
+				if isCollapsed {
+					chevronIcon = iconChevronRight()
+				}
+				btnChevron := ghostButton(c.Key("chev-n-"+n.ID), "").Padding(1, 2).Radius(3)
+				btnChevron.Children(func() {
+					ui.Icon(c, chevronIcon).Width(11).Height(11).TextColor(c.Theme().TextMuted)
+				})
+				if btnChevron.Clicked() {
+					a.collapsedNotes[n.ID] = !isCollapsed
+				}
+			} else {
+				ui.Box(c).Width(15)
+			}
+
+			ui.Icon(c, iconFileText()).Width(14).Height(14).TextColor(c.Theme().TextMuted)
+			txt := ui.Text(c, n.Title).FontSize(13).Grow(1).NoWrap().Clip()
+			if isActive {
 				txt.Bold().TextColor(c.Theme().Accent)
 			}
 			if n.Pinned {
@@ -298,8 +427,28 @@ func (a *app) treeNote(c *ui.Context, n *library.Note, depth int, seen map[strin
 			if n.Starred {
 				ui.Icon(c, iconStar()).Width(11).Height(11).TextColor(ui.Hex("#ff9500"))
 			}
+
+			// Pinned Action Buttons on the Right on Hover: [+ New Sub-note] and [··· More Actions]
+			if b.Hovered() || isActive {
+				btnAddSub := ghostButton(c.Key("add-sub-"+n.ID), "").Label(a.tr("New sub-note")).Tooltip(a.tr("New sub-note")).Padding(2, 3).Radius(4)
+				btnAddSub.Children(func() {
+					ui.Icon(c, iconPlus()).Width(11).Height(11).TextColor(c.Theme().TextMuted)
+				})
+				if btnAddSub.Clicked() {
+					a.createChildNote(n)
+				}
+
+				btnMore := ghostButton(c.Key("more-n-"+n.ID), "").Label(a.tr("Actions ")+n.Title).Tooltip(a.tr("Document actions")).Padding(2, 3).Radius(4)
+				btnMore.Children(func() {
+					ui.Icon(c, iconMore()).Width(12).Height(12).TextColor(c.Theme().TextMuted)
+				})
+				btnMore.PopoverMenuButton(func(m *ui.Menu) {
+					a.noteMenu(m, n)
+				})
+			}
 		})
 	})
+
 	if drag, ok := ui.Drop[noteDrag](b); ok {
 		if moving := a.lib.Get(drag.ID); moving != nil {
 			a.fail(a.lib.Move(moving, n.Folder, n.ID))
@@ -309,9 +458,13 @@ func (a *app) treeNote(c *ui.Context, n *library.Note, depth int, seen map[strin
 		a.openNote(n)
 	}
 	b.PopoverMenu(func(m *ui.Menu) { a.noteMenu(m, n) })
-	for _, child := range a.lib.Notes {
-		if !child.Deleted && child.Parent == n.ID {
-			a.treeNote(c, child, depth+1, seen)
+
+	// Render children if not collapsed
+	if !isCollapsed {
+		for _, child := range a.lib.Notes {
+			if !child.Deleted && child.Parent == n.ID {
+				a.treeNote(c, child, depth+1, seen)
+			}
 		}
 	}
 }
@@ -338,7 +491,18 @@ func (a *app) homeView(c *ui.Context) {
 		header.DragWindow()
 	}
 	header.Children(func() {
-		ui.Text(c, a.tr("Home")).FontSize(17).Bold().LetterSpacing(-0.2).TextColor(t.Text)
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			if a.focus {
+				btnSidebar := ghostButton(c, "").Label(a.tr("Toggle sidebar")).Tooltip(a.tr("Toggle sidebar")).Padding(4, 6).Radius(5)
+				btnSidebar.Children(func() {
+					ui.Icon(c, iconSidebar()).Width(15).Height(15).TextColor(t.TextMuted)
+				})
+				if btnSidebar.Clicked() {
+					a.focus = false
+				}
+			}
+			ui.Text(c, a.tr("Home")).FontSize(17).Bold().LetterSpacing(-0.2).TextColor(t.Text)
+		})
 
 		ui.Row(c).Grow(1).Justify(ui.Center).Children(func() {
 			ui.Row(c).Width(340).Height(32).Padding(0, 10).Radius(8).Background(t.Surface).Border(1, t.Border.Alpha(0.6)).AlignItems(ui.Center).Gap(8).Children(func() {
@@ -674,6 +838,9 @@ func (a *app) noteMenu(m *ui.Menu, n *library.Note) {
 	if m.Item(a.tr("Open")).Chosen() {
 		a.openNote(n)
 	}
+	if m.Item(a.tr("New sub-note")).Chosen() {
+		a.createChildNote(n)
+	}
 	if m.Item(a.tr("Open in new window")).Chosen() {
 		a.openWindow(n)
 	}
@@ -725,6 +892,16 @@ func (a *app) editorView(c *ui.Context) {
 		header.DragWindow()
 	}
 	header.Children(func() {
+		if a.focus {
+			btnSidebar := ghostButton(c, "").Label(a.tr("Toggle sidebar")).Tooltip(a.tr("Toggle sidebar")).Padding(4, 6).Radius(5)
+			btnSidebar.Children(func() {
+				ui.Icon(c, iconSidebar()).Width(15).Height(15).TextColor(t.TextMuted)
+			})
+			if btnSidebar.Clicked() {
+				a.focus = false
+			}
+		}
+
 		btnBack := ghostButton(c, "").Label(a.tr("Back to library")).Padding(5, 8).Radius(6)
 		btnBack.Children(func() {
 			ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
@@ -890,9 +1067,9 @@ func (a *app) toolbar(c *ui.Context) {
 			on          bool
 			run         func()
 		}{{"B", "Bold", f.Bold == richtext.FormatOn, doc.ToggleBold}, {"I", "Italic", f.Italic == richtext.FormatOn, doc.ToggleItalic}, {"U", "Underline", f.Underline == richtext.FormatOn, doc.ToggleUnderline}, {"S", "Strikethrough", f.Strikethrough == richtext.FormatOn, doc.ToggleStrikethrough}, {"‹›", "Inline code", f.Code == richtext.FormatOn, doc.ToggleCode}, {"•", "Bullet list", f.Paragraph.List == richtext.Bullets, func() { doc.ToggleList(richtext.Bullets) }}, {"1.", "Numbered list", f.Paragraph.List == richtext.Numbers, func() { doc.ToggleList(richtext.Numbers) }}, {"☑", "Task list", f.Paragraph.List == richtext.Tasks, func() { doc.ToggleList(richtext.Tasks) }}, {"❝", "Quote", f.Paragraph.Quote, doc.ToggleQuote}, {"{}", "Code block", f.Paragraph.CodeBlock, doc.ToggleCodeBlock}} {
-			button := ghostButton(c, b.text).Label(a.tr(b.label)).Tooltip(a.tr(b.label)).KeepFocus().Padding(5, 9).Radius(5)
+			button := ghostButton(c, b.text).Label(a.tr(b.label)).Tooltip(a.tr(b.label)).KeepFocus().Padding(4, 8).Radius(5)
 			if b.on {
-				button.Background(t.Accent.Alpha(0.18)).TextColor(t.Accent).Bold()
+				button.Background(t.Accent.Alpha(0.15)).TextColor(t.Accent).Bold()
 			} else if button.Hovered() {
 				button.Background(t.SurfaceHover)
 			}
