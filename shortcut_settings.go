@@ -148,6 +148,9 @@ func (a *app) shortcutSettings(c *ui.Context) {
 		a.quickDraft = a.lib.Settings.QuickNote
 	}
 	ui.Column(c).Grow(1).MinHeight(0).FillWidth().Gap(12).Children(func() {
+		if ui.Checkbox(c, &a.lib.Settings.ShowShortcuts, a.tr("Show shortcut hints beside buttons")).Changed() {
+			a.savePreferences()
+		}
 		ui.Text(c, a.tr("Use Cmd, Ctrl, Alt and Shift separated by +. Leave a field empty to disable it.")).FontSize(12)
 		ui.Column(c).Padding(14).Radius(8).Background(c.Theme().Surface).Gap(8).Children(func() {
 			ui.Text(c, a.tr("Global quick note")).Bold()

@@ -49,6 +49,8 @@ type Note struct {
 type Settings struct {
 	Language        string            `json:"language,omitempty"`
 	OutlineSide     string            `json:"outlineSide,omitempty"`
+	OutlineFontSize float32           `json:"outlineFontSize,omitempty"`
+	PagePosition    string            `json:"pagePosition,omitempty"`
 	Folders         []string          `json:"folders,omitempty"`
 	Keys            map[string]string `json:"keys,omitempty"`
 	QuickNote       string            `json:"quickNote,omitempty"`

@@ -72,6 +72,8 @@ func (a *app) syncMetadata() {
 	a.markDirty()
 }
 
+const documentCoverHeight, documentCoverBottomGap float32 = 180, 16
+
 func (a *app) documentHeader(c *ui.Context) {
 	t := c.Theme()
 	n := a.current
@@ -83,7 +85,7 @@ func (a *app) documentHeader(c *ui.Context) {
 	if n.Cover != "" {
 		bitmap := a.loadAssetBitmap(n.Cover)
 		if bitmap != nil {
-			handle := ui.Box(c).FillWidth().Height(180).Radius(10).Clip().Label(a.tr("Document cover")).Margin(0, 0, 16)
+			handle := ui.Box(c).FillWidth().Height(documentCoverHeight).Radius(10).Clip().Label(a.tr("Document cover")).Margin(0, 0, documentCoverBottomGap)
 			handle.Draw(func(p *ui.Painter, r ui.Rect) {
 				bw, bh := bitmap.Size()
 				w, h := float32(bw), float32(bh)
@@ -91,7 +93,7 @@ func (a *app) documentHeader(c *ui.Context) {
 					return
 				}
 				scale := max(r.W/w, r.H/h)
-				dw, dh := w * scale, h * scale
+				dw, dh := w*scale, h*scale
 				p.Clip(r, 10, func() {
 					p.Image(bitmap, ui.Rect{X: r.X + (r.W-dw)*(n.CoverX+1)/2, Y: r.Y + (r.H-dh)*(n.CoverY+1)/2, W: dw, H: dh}, ui.Cover)
 				})

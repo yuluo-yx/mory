@@ -8,10 +8,11 @@ The library, editors, document previews and settings use native GPU controls. Pr
 
 ## Writing and organizing
 
-- Write, Source, Split and Read modes. Opening or switching an unchanged document preserves its original source bytes.
+- Write, Source, Split and Read modes. Split keeps the source editor and rendered preview below the document header and synchronizes scrolling in both directions by matching source blocks to preview paragraphs. Re-entering Split or editing the source refreshes their alignment. Opening or switching an unchanged document preserves its original source bytes.
 - Rich paragraphs, nine heading levels, nested lists, tasks, quotations, callouts, code blocks, dividers, links, text colors and highlights.
 - Native tables with rectangular selection, merged cells, row/column insertion, deletion and reordering, column resizing and editable cell contents.
 - Multiple columns, folding, block drag ordering, block selection, rich copy/paste, outline, find/replace, focus mode and slash insertion.
+- In Write mode, hover over a heading to show its level and fold control in the left margin. Folding hides its section up to the next heading of the same or higher level, preserves nested fold states, and leaves the document source unchanged. Outline navigation reveals a target's collapsed parent sections.
 - Block and inline LaTeX, including fractions, matrices, integrals and equation numbers. KaTeX executes in moejs; the editor draws its output natively.
 - Images with captions, size, alignment and visual cropping; document covers and emoji icons. Local attachments support Quick Look and thumbnail previews.
 - Inline reminders, document references, buttons, child-page lists and countdown timers. Reminders are checked while the app is running.
@@ -27,15 +28,30 @@ Export Markdown, DocxXML, self-contained HTML or paginated PDF, or print through
 
 Imports copy local assets. Markdown/XML exports include an `assets` folder; HTML/PDF exports embed local images. Resources must resolve inside the selected import folder. Remote images are not downloaded.
 
+## Docusaurus documents
+
+Mory opens `.md` and `.mdx` with a native, static document preview. Compatibility follows the [document format](https://docusaurus.io/docs/create-doc) and [Markdown features](https://docusaurus.io/docs/markdown-features), with these supported extensions:
+
+- YAML front matter remains byte-for-byte source metadata and is omitted from the body and outline.
+- `:::note`, `:::tip`, `:::info`, `:::warning`, `:::danger` and `:::caution` render as callouts, including titles and nested directives. Edits retain the directive syntax.
+- Heading IDs such as `## Heading {#stable-id}` are hidden from displayed text, retained on edits and HTML export, and used for native anchor navigation.
+- Fenced code retains its metadata, displays `title`, supports `showLineNumbers`, `{1,3-5}` highlighting and standard `highlight-next-line` / `highlight-start` / `highlight-end` comments. Magic comments remain visible and editable in the native code editor.
+- `<details><summary>…</summary>…</details>` and static `<Tabs><TabItem value="…" label="…">…</TabItem></Tabs>` support nested Markdown. Details collapse; tabs switch and share selection through `groupId` within a document. Static `defaultValue` and `default` are supported. View choices do not modify source; HTML/PDF exports include every tab.
+- Standard Markdown tables, tasks, links, local images and math use Mory's existing document support. Source mode preserves original Markdown and MDX spelling.
+
+This is not a Docusaurus site runtime. React components, JavaScript expressions and imports/exports are retained for source editing, not executed. Computed JSX props (including `values` arrays), site routing, `@site` aliases, live code execution, custom remark/rehype plugins and Mermaid rendering require the original site's build. Mermaid fences remain editable code. Source-only MDX is shown explicitly rather than replaced with invented output. Generic remote JavaScript plugins remain deferred.
+
 ## Appearance and shortcuts
 
-Craft, Feishu, Notion and Obsidian document styles are built in, with System, Light and Dark appearance. Document CSS is separate from the app interface. Settings can edit, duplicate, import and reset styles. Files in the library's `themes/` folder reload after they change. Invalid or unsupported declarations appear in the stylesheet editor.
+Craft, Feishu, Notion, Obsidian and Docusaurus document styles are built in, with System, Light and Dark appearance. Document CSS is separate from the app interface. Settings can edit, duplicate, import and reset styles. Files in the library's `themes/` folder reload after they change. Invalid or unsupported declarations appear in the stylesheet editor.
 
-Settings opens as a full workspace page, with General and Keyboard shortcuts tabs. **General → Language** switches the application between English and Simplified Chinese immediately, including app menus and MyGo controls. The choice is saved and shared by open windows. Document contents, titles, folder names and stored theme identifiers remain unchanged. Some macOS-owned system dialog text follows the app language on its next launch.
+**General → Default application** registers the running Mory app bundle as the macOS handler for `.md`, `.markdown` and `.mdx`. The operation runs only when the button is clicked and reports success or a system error. Open the installed application before using it; an unpackaged command-line binary cannot become a Finder application. To undo the association, choose another application in Finder's **Get Info → Open with → Change All**.
 
-The document outline has two position icons for **Left** and **Right**. Its placement is also available under General and persists across launches. Opening Settings retains the active document and edit buffer; Done or Escape returns to it.
+Settings opens as a full workspace page with four categories: **General** for language and library storage, **Editor** for text size, page width and the document outline, **Themes** for appearance and document styles, and **Keyboard shortcuts** for bindings and shortcut hints. **General → Language** switches the application between English and Simplified Chinese immediately, including app menus and MyGo controls. The choice is saved and shared by open windows. Document contents, titles, folder names and stored theme identifiers remain unchanged. Some macOS-owned system dialog text follows the app language on its next launch.
 
-Selectors include `.page`, `.title`, `h1`–`h9`, `p`, `pre`, `code`, tables, lists, tasks, quotations and callouts. CSS custom properties, `var()` fallbacks, hexadecimal/RGB/HSL colors and relative lengths are supported. Built-in styles in `internal/doctheme/assets/` provide editable examples.
+The document outline has two position icons for **Left** and **Right**. It stays beside the page and starts near the document title, below any cover. Its placement and text size are available under **Editor → Document outline** and persist across launches. Outline text defaults to 14 and can be set from 12 to 22 independently of document text, with a live preview and a reset to the default. Existing libraries without an outline size use the new default without a data migration. **Editor → Page placement** positions the cover, title, body and nearby outline together on the Left, Center or Right of the available writing area. Pages are centered by default; Full width and Split use all available width. Paragraph alignment remains a separate formatting choice. Opening Settings retains the active document and edit buffer; Done or Escape returns to it.
+
+The stylesheet editor provides CSS syntax highlighting, line numbers, bracket matching and undo/redo, with colors that follow the app's light or dark appearance. Selectors include `.page`, `.title`, `h1`–`h9`, `p`, `pre`, `code`, tables, lists, tasks, quotations and callouts. CSS custom properties, `var()` fallbacks, hexadecimal/RGB/HSL colors and relative lengths are supported. Built-in styles in `internal/doctheme/assets/` provide editable examples.
 
 Open **Settings → Keyboard shortcuts** to change bindings. Defaults: **Cmd+N** new note, **Cmd+O** import, **Cmd+Shift+O** open a local file, **Cmd+S** save, **Cmd+F** find, **Cmd+P** insert a block, **Cmd+Alt+P** print, **Cmd+,** settings.
 
@@ -97,17 +113,20 @@ The macOS-only GitHub workflow builds a universal Apple Silicon/Intel app and up
 
 Local builds are ad-hoc signed. Developer ID signing, Apple notarization and signed in-app update distribution require the owner's release credentials and update-signing configuration. The native update UI reports availability for the current build. Physical Intel hardware and older macOS releases require separate runtime validation.
 
-Last local verification: **2026-11-09**, macOS 27.0.1, Apple M4, Go 1.27.3.
-`make check` passed at **5,563 / 6,160 production statements (90.31%)**.
+Last local verification: **2026-11-11**, macOS 27.0.1, Apple M4, Go 1.27.3.
+`make check` passed at **6,360 / 7,046 production statements (90.26%)**.
 `make race`, `go mod verify`, the universal build, strict code-signature verification
-and DMG integrity verification passed. The packaged application launched with an
-isolated library. Native E2E includes original-file saves, folder import, covers,
+and DMG integrity verification passed. The development app was opened for preview;
+native E2E used an isolated library. Native E2E includes original-file saves, folder import, covers,
 CSS import, Quick Look thumbnails, multiple windows, language switching, shortcut
-configuration, outline placement and the native print renderer.
+configuration, outline placement, Docusaurus theme selection, static details/tabs,
+source preservation and the native print renderer. Default-application tests cover
+native API binding, unpackaged-app rejection, requested extensions and failure
+reporting without changing the developer's or CI runner's system associations.
 The interactive printer-selection sheet is replaced by PDF output in E2E.
 
-Ten-iteration regression benchmarks measured **0.325 ms** per million-character
-editing frame, **9.710 ms** for Unicode counting and **1.991 ms** for a query over
+Ten-iteration regression benchmarks measured **0.244 ms** per million-character
+editing frame, **9.448 ms** for Unicode counting and **1.975 ms** for a query over
 1,000 notes. These samples are not P95 latency or end-to-end save measurements.
 Power-loss injection, long-duration stress and physical Intel testing remain
 outside the completed local validation.

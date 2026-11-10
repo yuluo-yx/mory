@@ -22,6 +22,7 @@ import (
 )
 
 type app struct {
+	associationStatus                                                               string
 	searchFocus                                                                     bool
 	settingsTab                                                                     string
 	shortcutDraft                                                                   map[string]string
@@ -41,6 +42,7 @@ type app struct {
 	themeStamp                                                                      time.Time
 	themeChecked                                                                    time.Time
 	cssOpen                                                                         bool
+	cssEditor                                                                       *stylesheetEditor
 	cssText, cssName                                                                string
 	services                                                                        ui.Services
 	textFocused                                                                     bool
@@ -76,7 +78,7 @@ type app struct {
 	showToolbar                                                                     bool
 	settingsOpen, pluginsOpen, insertOpen, linkOpen, helpOpen, findOpen, exportOpen bool
 	linkURL, findText, replaceText                                                  string
-	renameOpen, moveOpen, deleteOpen, iconPickerOpen                                                bool
+	renameOpen, moveOpen, deleteOpen, iconPickerOpen                                bool
 	renameTitle, moveFolder, moveParent                                             string
 	target                                                                          *library.Note
 	insertQuery                                                                     string
@@ -267,6 +269,10 @@ func (a *app) changeMode(mode string) {
 			a.code.Buffer.Set(a.current.Source)
 		}
 		a.codeVersion = a.code.Buffer.Version()
+		if mode == "Split" && a.blockEditor != nil {
+			// Re-entering split view follows the source, not a stale read-mode position.
+			a.blockEditor.split = splitScrollState{}
+		}
 	}
 	a.mode = mode
 }

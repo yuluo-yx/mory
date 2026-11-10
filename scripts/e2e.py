@@ -48,6 +48,10 @@ def exercise(binary, root):
             result = json.loads(stream.readline())
             if "error" in result:
                 raise RuntimeError(result["error"])
+            # Input is consumed during rendering. Force a native frame even
+            # when the window is occluded before the next command reads or saves.
+            if method in {"act", "input"}:
+                call("capture")
             return result.get("result", {})
 
         def nodes():
@@ -113,9 +117,11 @@ def exercise(binary, root):
         act("Favorites")
         act("Note " + title)
         act("Settings")
+        act("Editor")
         act("Larger text")
         act("Smaller text")
         assert not any(n.get("label") == "Document editor" for n in nodes()), "Settings is still an overlay"
+        act("General")
         act("Application language")
         act("简体中文")
         assert any(n.get("label") == "应用语言" for n in nodes()), "Chinese interface did not activate"
@@ -156,7 +162,7 @@ def exercise(binary, root):
         assert "data:image/" in (fixtures / "Fixture import.html").read_text()
         assert (fixtures / "Fixture import.pdf").read_bytes().startswith(b"%PDF-")
         act("Settings")
-        act("General")
+        act("Themes")
         act("Import CSS…")
         act("Apply stylesheet")
         act("Document actions")
@@ -193,6 +199,32 @@ def exercise(binary, root):
                 raise AssertionError("Native print renderer did not finish")
             time.sleep(0.05)
         assert (fixtures / "print.pdf").read_bytes().startswith(b"%PDF-")
+        # Static Docusaurus components render in the actual native window and
+        # their view state must not rewrite front matter or MDX wrappers.
+        docusaurus = ('---\ntitle: Native guide\n---\n\n# Native guide {#guide}\n\n'
+                      ':::tip Remember\nPreserve this text.\n:::\n\n'
+                      '<details><summary>More</summary>\n\nHidden detail.\n\n</details>\n\n'
+                      '<Tabs><TabItem value="a" label="First">First body.</TabItem>\n'
+                      '<TabItem value="b" label="Second">Second body.</TabItem></Tabs>\n')
+        (fixtures / "Fixture import.md").write_text(docusaurus)
+        call("menu", path=["File", "Import…"])
+        act("Document title", "setValue", text="Native Docusaurus")
+        act("Write")
+        act("Settings")
+        act("General")
+        assert any(n.get("label") == "Make Mory the default Markdown app" for n in nodes())
+        act("Themes")
+        act("Writing style")
+        act("Docusaurus")
+        act("Back from settings")
+        act("Toggle details More")
+        assert any(n.get("value", "").strip() == "Hidden detail." for n in nodes())
+        act("Tab Second")
+        assert any(n.get("value", "").strip() == "Second body." for n in nodes())
+        call("menu", path=["File", "Save"])
+        native_guide = next(json.loads(p.read_text()) for p in (root / "library" / "notes").glob("*.json")
+                            if json.loads(p.read_text())["title"] == "Native Docusaurus")
+        assert native_guide["source"] == docusaurus, "Docusaurus preview changed source"
         # Independent windows keep separate edit buffers and version stamps.
         call("menu", path=["File", "Open in new window"])
         time.sleep(0.15)

@@ -50,7 +50,7 @@ func (a *app) importIndexedLibrary(root string) {
 			continue
 		}
 		ext := strings.ToLower(filepath.Ext(file.Name()))
-		if ext != ".xml" && ext != ".md" && ext != ".markdown" {
+		if ext != ".xml" && ext != ".md" && ext != ".markdown" && ext != ".mdx" {
 			continue
 		}
 		old := strings.TrimSuffix(file.Name(), filepath.Ext(file.Name()))

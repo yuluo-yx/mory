@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,69 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/yuluo-yx/mory/internal/blocks"
 )
+
+func TestSplitPanesStayBelowDocumentHeader(t *testing.T) {
+	for _, format := range []string{"markdown", "xml"} {
+		for _, cover := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/cover=%t", format, cover), func(t *testing.T) {
+				a := testApp(t)
+				source := "# Preview heading\n\n" + strings.Repeat("A paragraph in the preview.\n\n", 40)
+				if format == "xml" {
+					source = "<h1>Preview heading</h1>" + strings.Repeat("<p>A paragraph in the preview.</p>", 40)
+				}
+				n, err := a.lib.Create("Split preview", source, format)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if cover {
+					image, err := os.ReadFile("resources/icon.png")
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(filepath.Join(a.lib.Dir, "assets", "cover.png"), image, 0o600); err != nil {
+						t.Fatal(err)
+					}
+					n.Cover = "assets/cover.png"
+				}
+				a.openNote(n)
+				a.changeMode("Split")
+				tt := ui.NewTester(a.view, 1280, 820)
+				for _, size := range [][2]int{{1000, 620}, {1280, 820}, {1600, 1000}} {
+					tt.SetSize(size[0], size[1])
+					tt.Frame()
+					ed, ok := tt.Find("Source editor")
+					if !ok || ed.W < 200 || ed.H < 100 {
+						t.Fatalf("source editor has no usable viewport at %v: %+v", size, ed)
+					}
+					title, ok := tt.Find("Document title")
+					if !ok || ed.Y < title.Y+title.H || ed.Y+ed.H > float32(size[1]-30) {
+						t.Fatalf("source editor overlaps the header or status bar at %v: editor=%+v title=%+v", size, ed, title)
+					}
+					preview, ok := tt.Find("Block text " + a.blockEditor.doc.Root.Children[0].ID)
+					if !ok || preview.X < ed.X+ed.W || preview.Y < ed.Y || preview.Y+preview.H > ed.Y+ed.H {
+						t.Fatalf("preview escaped its pane at %v: editor=%+v preview=%+v", size, ed, preview)
+					}
+					if dir := os.Getenv("MORY_TEST_IMAGES"); dir != "" {
+						saveImage(t, tt, filepath.Join(dir, fmt.Sprintf("split-%s-%t-%d.png", format, cover, size[0])))
+					}
+				}
+				// Editing the visible source pane must refresh the adjacent rendered document.
+				click(t, tt, "Source editor")
+				tt.Key(ui.Cmd, ui.KeyA)
+				updated := "# Updated preview\n\nEdited in split mode."
+				if format == "xml" {
+					updated = "<h1>Updated preview</h1><p>Edited in split mode.</p>"
+				}
+				tt.Type(updated)
+				tt.Frame()
+				tt.Frame()
+				if a.current.Source != updated || !strings.Contains(a.blockEditor.doc.Root.Plain(), "Updated preview") {
+					t.Fatal("split preview did not follow source edits")
+				}
+			})
+		}
+	}
+}
 
 func TestNativeStructuredDocument(t *testing.T) {
 	a := testApp(t)

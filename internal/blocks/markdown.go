@@ -12,6 +12,10 @@ import (
 // ParseMarkdown preserves the original spelling of each top-level block. Only
 // blocks changed in the native editor are serialized again.
 func ParseMarkdown(source string) (*Node, error) {
+	return parseDocusaurus(source, true)
+}
+
+func parseCommonMarkdown(source string) (*Node, error) {
 	p := parser.New(parser.Default | parser.ExtDollarMath)
 	p.Set(source)
 	root := New("root")
@@ -82,11 +86,17 @@ func (n *Node) Markdown() string {
 	if n.markdown != "" && n.signature() == n.mdBaseline {
 		return n.markdown
 	}
+	if source, ok := extensionMarkdown(n); ok {
+		return source
+	}
 	if n.Kind == "root" || n.Kind == "markdown-group" {
 		var b strings.Builder
 		for _, c := range n.Children {
 			part := c.Markdown()
 			b.WriteString(part)
+			if c.markdown != "" && c.signature() == c.mdBaseline {
+				continue
+			}
 			if !strings.HasSuffix(part, "\n\n") {
 				if c.Kind != "#raw" && !strings.HasSuffix(part, "\n") {
 					b.WriteByte('\n')
@@ -100,6 +110,13 @@ func (n *Node) Markdown() string {
 	}
 	if n.Kind == "#raw" {
 		return n.Text
+	}
+	if n.Kind == "pre" && n.Attr("code-meta") != "" {
+		fence := "```"
+		for strings.Contains(n.Plain(), fence) {
+			fence += "`"
+		}
+		return fence + n.Attr("lang") + " " + n.Attr("code-meta") + "\n" + strings.TrimSuffix(n.Plain(), "\n") + "\n" + fence + "\n\n"
 	}
 	if len(n.Kind) == 2 && n.Kind[0] == 'h' && n.Kind[1] > '6' {
 		return n.XML() + "\n\n"
@@ -149,6 +166,9 @@ func (n *Node) Markdown() string {
 	if err != nil {
 		return n.XML() + "\n\n"
 	}
+	if id := n.Attr("heading-id"); id != "" {
+		md = strings.TrimRight(md, "\n") + " {#" + id + "}\n"
+	}
 	return md + "\n"
 }
 
@@ -159,6 +179,15 @@ func markdownBlock(p *parser.Document, index int) *Node {
 	case parser.Heading:
 		n.Kind = "h" + strconv.Itoa(b.Level)
 		n.Children = markdownInlines(p.Inlines(index))
+		if match := headingID.FindStringSubmatch(n.Plain()); match != nil {
+			n.Set("heading-id", match[1])
+			if len(n.Children) > 0 {
+				last := n.Children[len(n.Children)-1]
+				if last.Kind == "#text" {
+					last.Text = headingID.ReplaceAllString(last.Text, "")
+				}
+			}
+		}
 	case parser.Paragraph:
 		n.Children = markdownInlines(p.Inlines(index))
 		if len(n.Children) == 1 && n.Children[0].Kind == "img" {
@@ -170,6 +199,17 @@ func markdownBlock(p *parser.Document, index int) *Node {
 		n.Kind = "pre"
 		n.Set("lang", b.Language())
 		n.Children = []*Node{New("code", Text(p.Lines(index)))}
+		line := strings.TrimSpace(p.Source()[b.Start:lineEnd(p.Source(), b.Start)])
+		if strings.HasPrefix(line, "```") || strings.HasPrefix(line, "~~~") {
+			info := strings.TrimLeft(line, string(line[0]))
+			_, meta, _ := strings.Cut(info, " ")
+			n.Set("code-meta", meta)
+			for _, m := range staticAttribute.FindAllStringSubmatch(meta, -1) {
+				if m[1] == "title" {
+					n.Set("caption", m[2]+m[3])
+				}
+			}
+		}
 	case parser.MathBlock:
 		n.Kind = "latex"
 		n.Set("display", "true")

@@ -21,8 +21,8 @@ func (a *app) settingsPage(c *ui.Context) {
 				a.shortcutDraft = nil
 			}
 		})
-		ui.Row(c).Gap(8).Children(func() {
-			for _, tab := range []string{"General", "Keyboard shortcuts"} {
+		ui.Row(c).Gap(8).Shrink(0).Children(func() {
+			for _, tab := range []string{"General", "Editor", "Themes", "Keyboard shortcuts"} {
 				button := ghostButton(c, a.tr(tab)).Label(a.tr(tab)).Padding(8, 14)
 				if a.settingsTab == tab || a.settingsTab == "" && tab == "General" {
 					button.Background(c.Theme().SurfaceHover)
@@ -36,9 +36,55 @@ func (a *app) settingsPage(c *ui.Context) {
 		if a.settingsTab == "Keyboard shortcuts" {
 			a.shortcutSettings(c)
 		} else {
-			ui.Scroll(c).Grow(1).MinHeight(0).FillWidth().Children(func() { a.settingsContent(c) })
+			// Each category keeps its own scroll position.
+			ui.Scroll(c.Key(a.settingsTab)).Grow(1).MinHeight(0).FillWidth().Children(func() { a.settingsContent(c) })
 		}
 	})
+}
+
+const defaultOutlineFontSize float32 = 14
+
+func (a *app) pagePosition() string {
+	if position := a.lib.Settings.PagePosition; position == "Left" || position == "Right" {
+		return position
+	}
+	return "Center"
+}
+
+func (a *app) pageAlignment() ui.Align {
+	switch a.pagePosition() {
+	case "Left":
+		return ui.Start
+	case "Right":
+		return ui.End
+	default:
+		return ui.Center
+	}
+}
+
+func (a *app) setPagePosition(position string) {
+	previous := a.lib.Settings.PagePosition
+	a.lib.Settings.PagePosition = position
+	if !a.savePreferences() {
+		a.lib.Settings.PagePosition = previous
+	}
+}
+
+// Missing and invalid legacy values use a readable default without rewriting
+// settings until the user makes a change.
+func (a *app) outlineFontSize() float32 {
+	if size := a.lib.Settings.OutlineFontSize; size >= 12 && size <= 22 {
+		return size
+	}
+	return defaultOutlineFontSize
+}
+
+func (a *app) setOutlineFontSize(size float32) {
+	previous := a.lib.Settings.OutlineFontSize
+	a.lib.Settings.OutlineFontSize = max(12, min(22, size))
+	if !a.savePreferences() {
+		a.lib.Settings.OutlineFontSize = previous
+	}
 }
 
 func (a *app) outlineSide() string {

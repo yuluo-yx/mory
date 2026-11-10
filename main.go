@@ -141,7 +141,7 @@ func (a *app) newWindow() {
 				}
 				if info.IsDir() {
 					a.importFolder(path)
-				} else if ext := strings.ToLower(filepath.Ext(path)); ext == ".md" || ext == ".xml" || ext == ".markdown" {
+				} else if ext := strings.ToLower(filepath.Ext(path)); ext == ".md" || ext == ".xml" || ext == ".markdown" || ext == ".mdx" {
 					a.importFile(path)
 				} else if a.current != nil {
 					a.attachFile(path)

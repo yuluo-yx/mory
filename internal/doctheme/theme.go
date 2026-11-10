@@ -52,7 +52,7 @@ func Load(dir, name string) (*Theme, error) {
 }
 
 func Names(dir string) []string {
-	out := []string{"Craft", "Feishu", "Notion", "Obsidian"}
+	out := []string{"Craft", "Feishu", "Notion", "Obsidian", "Docusaurus"}
 	entries, _ := os.ReadDir(dir)
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".css") {
@@ -69,7 +69,7 @@ func Names(dir string) []string {
 			out = append(out, name)
 		}
 	}
-	sort.Strings(out[4:])
+	sort.Strings(out[5:])
 	return out
 }
 

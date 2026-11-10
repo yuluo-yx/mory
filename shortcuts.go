@@ -13,7 +13,7 @@ import (
 type shortcut struct {
 	Name, Key string
 	// Native responder-chain commands use menu roles and leave Run nil.
-	Run       func()
+	Run func()
 }
 
 func (a *app) actions() []shortcut {
@@ -161,7 +161,7 @@ func parseKey(source string) (ui.Modifiers, ui.Key, error) {
 }
 
 func (a *app) handleShortcuts(c *ui.Context) {
-	if a.settingsOpen || a.helpOpen {
+	if a.settingsOpen || a.helpOpen || a.cssOpen {
 		return
 	}
 	actions := a.actions()

@@ -255,6 +255,7 @@ func TestViewsAndOverlays(t *testing.T) {
 		saveImage(t, tt, filepath.Join(dir, "home.png"))
 	}
 	click(t, tt, "Settings")
+	click(t, tt, "Editor")
 	click(t, tt, "Larger text")
 	click(t, tt, "Smaller text")
 	click(t, tt, "Done")

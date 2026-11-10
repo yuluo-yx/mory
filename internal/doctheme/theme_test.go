@@ -113,7 +113,7 @@ func TestThemeFiles(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "craft.css"), []byte(".page{font-size:19px}"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if len(Names(dir)) != 5 {
+	if len(Names(dir)) != 6 {
 		t.Fatal(Names(dir))
 	}
 	theme, err := Load(dir, "Custom")

@@ -66,6 +66,15 @@ func (d *Document) HTML(opts ExportOptions) (string, error) {
 			return ""
 		case "root", "markdown-group":
 			return content
+		case "details":
+			content = "<summary>" + html.EscapeString(n.Attr("summary")) + "</summary>" + content
+		case "tabs", "tab-item":
+			tag = "section"
+			if n.Kind == "tab-item" {
+				content = "<h4>" + html.EscapeString(n.Attr("label")) + "</h4>" + content
+			}
+		case "mdx-source":
+			return "<pre><code>" + html.EscapeString(n.Plain()) + "</code></pre>"
 		case "latex":
 			if opts.Math != nil {
 				s, err := opts.Math(n.Plain(), !inline)
@@ -85,6 +94,13 @@ func (d *Document) HTML(opts ExportOptions) (string, error) {
 			tag = "aside"
 			attrs += ` class="callout"`
 			content = html.EscapeString(n.Attr("emoji")) + content
+			if n.Attr("directive") != "" {
+				title := n.Attr("title")
+				if title == "" {
+					title = n.Attr("directive")
+				}
+				content = "<strong>" + html.EscapeString(title) + "</strong>" + content
+			}
 		case "checkbox":
 			tag = "div"
 			attrs += ` class="task"`
@@ -164,6 +180,9 @@ func (d *Document) HTML(opts ExportOptions) (string, error) {
 		}
 		if style != "" {
 			attrs += ` style="` + html.EscapeString(style) + `"`
+		}
+		if id := n.Attr("heading-id"); id != "" {
+			attrs += ` id="` + html.EscapeString(id) + `"`
 		}
 		if tag == "hr" || tag == "br" {
 			return "<" + tag + attrs + ">"

@@ -60,18 +60,28 @@ func (a *app) focusBlock(id string, offset int) {
 		if p == nil || p == s.doc.Root {
 			break
 		}
+		if p.Kind == "details" || p.Kind == "tabs" {
+			if s.componentChoice == nil {
+				s.componentChoice = map[string]string{}
+			}
+			if p.Kind == "details" {
+				s.componentChoice[p.ID] = "open"
+			} else if child := s.doc.Find(top); child != nil && child.Kind == "tab-item" {
+				key := p.ID
+				if group := p.Attr("groupId"); group != "" {
+					key = "group:" + group
+				}
+				s.componentChoice[key] = child.Attr("value")
+			}
+		}
 		top = p.ID
 	}
-	i := 0
-	for _, n := range blocks.Visible(s.doc.Root.Children) {
-		if n.Kind == "title" {
-			continue
-		}
+	s.revealHeadingParents(top)
+	for i, n := range s.visibleBlocks() {
 		if n.ID == top {
 			s.list.ScrollTo(i, ui.Center)
 			break
 		}
-		i++
 	}
 }
 

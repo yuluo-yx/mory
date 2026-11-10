@@ -24,9 +24,16 @@ type Heading struct {
 // RichSafe rejects constructs the framework's paragraph editor would flatten.
 // Source editing always retains the original bytes, including unknown XML blocks.
 func RichSafe(source string) bool {
+	if strings.Contains(source, ":::") || strings.Contains(source, "{#") {
+		return false
+	}
 	d := parser.Parse(source)
 	for i := 1; i < d.Len(); i++ {
 		switch d.Block(i).Kind {
+		case parser.CodeBlock:
+			if strings.ContainsAny(d.Block(i).Info(), " \t") || strings.Contains(d.Lines(i), "highlight-") {
+				return false
+			}
 		case parser.Table, parser.HTMLBlock, parser.MathBlock, parser.FootnoteDefinition, parser.ThematicBreak:
 			return false
 		}
@@ -38,6 +45,9 @@ func RichSafe(source string) bool {
 	}
 	for _, line := range strings.Split(source, "\n") {
 		s := strings.TrimSpace(line)
+		if strings.HasPrefix(s, "import ") || strings.HasPrefix(s, "export ") {
+			return false
+		}
 		if strings.HasPrefix(s, "[") && strings.Contains(s, "]:") {
 			return false
 		}
@@ -46,6 +56,22 @@ func RichSafe(source string) bool {
 }
 
 func Headings(source string) []Heading {
+	base := 0
+	if strings.HasPrefix(source, "---\n") || strings.HasPrefix(source, "---\r\n") {
+		for offset := strings.IndexByte(source, '\n') + 1; offset < len(source); {
+			end := strings.IndexByte(source[offset:], '\n')
+			if end < 0 {
+				end = len(source) - offset - 1
+			}
+			end += offset + 1
+			if line := strings.TrimSpace(source[offset:end]); line == "---" || line == "..." {
+				base = end
+				source = source[end:]
+				break
+			}
+			offset = end
+		}
+	}
 	d := parser.Parse(source)
 	var result []Heading
 	for i := 1; i < d.Len(); i++ {
@@ -53,7 +79,8 @@ func Headings(source string) []Heading {
 		if b.Kind == parser.Heading {
 			text := strings.TrimSpace(d.Lines(i))
 			text = strings.TrimSpace(strings.Trim(text, "#"))
-			result = append(result, Heading{Level: b.Level, Offset: b.Start, Text: text})
+			text = regexp.MustCompile(`\s+\{#[^{}\s]+\}\s*$`).ReplaceAllString(text, "")
+			result = append(result, Heading{Level: b.Level, Offset: base + b.Start, Text: text})
 		}
 	}
 	return result

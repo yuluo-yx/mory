@@ -327,7 +327,7 @@ func (a *app) importFolder(path string) {
 			return nil
 		}
 		ext := strings.ToLower(filepath.Ext(file))
-		if ext != ".md" && ext != ".markdown" && ext != ".xml" {
+		if ext != ".md" && ext != ".markdown" && ext != ".mdx" && ext != ".xml" {
 			return nil
 		}
 		a.importFileFrom(file, path)

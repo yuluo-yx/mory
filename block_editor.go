@@ -24,11 +24,17 @@ type blockField struct {
 }
 type blockDrag struct{ ID string }
 type blockSession struct {
+	componentChoice        map[string]string
 	doc                    *blocks.Document
 	fields                 map[string]*blockField
 	active, focus          string
 	focusAt                int
 	list                   ui.ListState
+	split                  splitScrollState
+	foldedHeadings         map[string]bool
+	foldPresentation       bool
+	restoreRich            bool
+	restoreHeading         int
 	selection              map[string]bool
 	tableID                string
 	cells                  blocks.Rect
@@ -303,33 +309,15 @@ func (a *app) blockImage(path string) *ui.Bitmap {
 func (a *app) blockView(c *ui.Context, readOnly bool) {
 	s := a.blockEditor
 	a.captureBlocks()
-	nodes := blocks.Visible(s.doc.Root.Children)
-	var visible []*blocks.Node
-	hiddenLevel := 0
-	for _, n := range nodes {
-		if n.Kind == "title" {
-			continue
-		}
-		level := 0
-		if len(n.Kind) == 2 && n.Kind[0] == 'h' {
-			level = int(n.Kind[1] - '0')
-		}
-		if hiddenLevel > 0 {
-			if level > 0 && level <= hiddenLevel {
-				hiddenLevel = 0
-			} else {
-				continue
-			}
-		}
-		visible = append(visible, n)
-		if level > 0 && n.Attr("folded") == "true" {
-			hiddenLevel = level
-		}
-	}
+	visible := s.visibleBlocks()
 	s.list.Key = func(i int) any { return visible[i].ID }
 	s.list.Selection = &s.chosen
+	if s.foldPresentation {
+		s.list.Selection = nil
+		s.list.Reorder = nil
+	}
 	s.list.MenuKeepsSelection = true
-	if !readOnly {
+	if !readOnly && !s.foldPresentation {
 		s.list.Reorder = func(rows []int, to int) {
 			if len(rows) == 0 {
 				return
@@ -348,8 +336,35 @@ func (a *app) blockView(c *ui.Context, readOnly bool) {
 			a.captureBlocks()
 		}
 	}
-	ui.List(c, &s.list, len(visible), func(i int) { a.blockNode(c, visible[i], readOnly, 0) }).Grow(1).FillWidth().Gap(7).Padding(4, 0, 48)
-	if !readOnly {
+	syncSplit := readOnly && a.mode == "Split"
+	if syncSplit {
+		s.split.sync(c, a.code, &s.list, a.current.Source, a.current.Format, visible)
+	}
+	list := ui.List(c, &s.list, len(visible), func(i int) {
+		if syncSplit {
+			ui.Column(c).FillWidth().Draw(func(_ *ui.Painter, r ui.Rect) {
+				s.split.rows[i] = r
+			}).Children(func() { a.blockNode(c, visible[i], readOnly, 0) })
+		} else {
+			a.blockNode(c, visible[i], readOnly, 0)
+		}
+	}).Grow(1).Gap(7)
+	if syncSplit {
+		list.FillWidth().Padding(4, 0, 48).TrackScroll(&s.split.scroll).Draw(func(_ *ui.Painter, r ui.Rect) {
+			s.split.viewport = r
+			clear(s.split.rows)
+		}).DrawOver(func(_ *ui.Painter, _ ui.Rect) {
+			s.split.geometryScroll = s.split.scroll.Y
+			// Programmatic movement must not be echoed back as user input.
+			if s.split.driven {
+				s.split.lastPreview = s.split.scroll.Y
+				s.split.driven = false
+			}
+		})
+	} else {
+		list.Margin(0, 0, 0, -headingGutterWidth).Padding(4, 0, 48, headingGutterWidth)
+	}
+	if !readOnly && !s.foldPresentation {
 		ui.Row(c).Gap(8).Padding(6).Children(func() {
 			if s.chosen.Len() > 1 {
 				if ghostButton(c, a.tr("Copy blocks")).Clicked() {
@@ -384,8 +399,12 @@ func (a *app) blockNode(c *ui.Context, n *blocks.Node, readOnly bool, depth int)
 	t := c.Theme()
 	row := ui.Row(c.Key(n.ID)).FillWidth().MinWidth(0).AlignItems(ui.Start).Gap(6)
 	row.Children(func() {
-		if !readOnly && depth == 0 {
+		if !readOnly && depth == 0 && !s.foldPresentation {
 			handle := ghostButton(c.Key("handle"), "⠿").Label(a.tr("Block actions ") + n.Kind).Padding(3).Width(21).Drag(blockDrag{n.ID})
+			if headingLevel(n) > 0 {
+				// The heading toggle occupies this gutter slot without moving the text.
+				handle.Opacity(0)
+			}
 			if handle.Clicked() {
 				s.active = n.ID
 			}
@@ -415,6 +434,11 @@ func (a *app) blockNode(c *ui.Context, n *blocks.Node, readOnly bool, depth int)
 				a.blockColumns(c, n, readOnly, depth)
 			case n.Kind == "pre":
 				a.blockCode(c, n, readOnly)
+			case n.Kind == "details" || n.Kind == "tabs" || n.Kind == "tab-item":
+				a.docusaurusComponent(c, n, readOnly, depth)
+			case n.Kind == "mdx-source":
+				ui.Text(c, a.tr("MDX source · edit in Source mode")).FontSize(12).TextColor(t.TextMuted)
+				ui.Text(c, n.Plain()).Font("Menlo").FontSize(12)
 			case n.Kind == "latex":
 				a.blockMath(c, n, readOnly)
 			case n.Kind == "img":
@@ -422,13 +446,24 @@ func (a *app) blockNode(c *ui.Context, n *blocks.Node, readOnly bool, depth int)
 			case n.Kind == "hr":
 				ui.Box(c).Height(1).FillWidth().Background(t.Border).Margin(12, 0)
 			case n.Kind == "callout":
-				ui.Row(c).Padding(14).Radius(8).Background(blockColor(n.Attr("background-color"), t.Accent.Alpha(.08))).Border(1, blockColor(n.Attr("border-color"), t.Accent.Alpha(.2))).Gap(12).Children(func() {
+				accent := t.Accent
+				if color := map[string]string{"note": "#708090", "tip": "#2e8555", "info": "#3088bd", "warning": "#b78000", "caution": "#b78000", "danger": "#d12d3f"}[n.Attr("directive")]; color != "" {
+					accent = ui.Hex(color)
+				}
+				ui.Row(c).Padding(14).Radius(8).Background(blockColor(n.Attr("background-color"), accent.Alpha(.08))).Border(1, blockColor(n.Attr("border-color"), accent.Alpha(.3))).Gap(12).Children(func() {
 					emoji := n.Attr("emoji")
 					if emoji == "" {
 						emoji = "💡"
 					}
 					ui.Text(c, emoji).FontSize(22)
 					ui.Column(c).Grow(1).Children(func() {
+						if n.Attr("directive") != "" {
+							title := n.Attr("title")
+							if title == "" {
+								title = strings.ToUpper(n.Attr("directive"))
+							}
+							ui.Text(c, title).Bold()
+						}
 						for _, child := range blocks.Visible(n.Children) {
 							a.blockNode(c, child, readOnly, depth+1)
 						}
@@ -476,6 +511,28 @@ func (a *app) blockNode(c *ui.Context, n *blocks.Node, readOnly bool, depth int)
 			}
 		})
 	})
+	if level := headingLevel(n); level > 0 && depth == 0 && a.mode != "Split" {
+		row.Children(func() {
+			left := float32(-headingGutterWidth)
+			if !readOnly && !s.foldPresentation {
+				left += 27
+			}
+			top := float32(4)
+			if field := s.fields[n.ID]; field != nil && field.doc != nil {
+				if boxes := field.doc.VisibleParagraphs(); len(boxes) > 0 {
+					top = boxes[0].Top + max(0, min(boxes[0].Height, 40)-24)/2
+				}
+			}
+			button := a.headingToggle(c.Key("heading-toggle"), level, n.Plain(), s.headingFolded(n)).Absolute().Left(left).Top(top)
+			if !row.Hovered() && !button.Hovered() && !button.Focused() && !s.headingFolded(n) {
+				button.Opacity(0)
+			}
+			if button.Clicked() {
+				a.toggleHeading(n)
+				c.AnimationFrame()
+			}
+		})
+	}
 }
 
 func (a *app) blockText(c *ui.Context, n *blocks.Node, readOnly bool) {
@@ -623,14 +680,22 @@ func (a *app) blockMenu(m *ui.Menu, n *blocks.Node) {
 			a.fail(s.doc.Splice(p.ID, index+1, 0, copy))
 		}
 	}
-	if m.Item(a.tr("Fold content")).Checked(n.Attr("folded") == "true").Chosen() {
-		a.fail(s.doc.Transform(n.ID, func(n *blocks.Node) {
-			if n.Attr("folded") == "true" {
-				n.Set("folded", "")
-			} else {
-				n.Set("folded", "true")
-			}
-		}))
+	folded := n.Attr("folded") == "true"
+	if headingLevel(n) > 0 {
+		folded = s.headingFolded(n)
+	}
+	if m.Item(a.tr("Fold content")).Checked(folded).Chosen() {
+		if headingLevel(n) > 0 {
+			a.toggleHeading(n)
+		} else {
+			a.fail(s.doc.Transform(n.ID, func(n *blocks.Node) {
+				if folded {
+					n.Set("folded", "")
+				} else {
+					n.Set("folded", "true")
+				}
+			}))
+		}
 	}
 	if m.Item(a.tr("Properties…")).Chosen() {
 		a.editBlockProperties(n)
@@ -664,6 +729,9 @@ func (a *app) blockCode(c *ui.Context, n *blocks.Node, readOnly bool) {
 		f = &blockField{nodeID: n.ID, code: &editor.State{Buffer: b, SoftWrap: n.Attr("wrap") == "true"}, version: b.Version()}
 		s.fields[n.ID] = f
 	}
+	if title := n.Attr("caption"); title != "" {
+		ui.Text(c, title).FontSize(12).Bold().Padding(8).FillWidth().Background(c.Theme().Surface)
+	}
 	ui.Row(c).Gap(8).Children(func() {
 		language := n.Attr("lang")
 		if ui.TextInput(c, &language).Label(a.tr("Code language")).Width(120).Disabled(readOnly).Changed() {
@@ -695,14 +763,15 @@ func (a *app) blockCode(c *ui.Context, n *blocks.Node, readOnly bool) {
 	} else {
 		f.code.LineNumbers = editor.LineNumbersOn
 	}
+	if strings.Contains(n.Attr("code-meta"), "showLineNumbers") {
+		f.code.LineNumbers = editor.LineNumbersOn
+	}
+	f.code.LineBackgrounds = docusaurusCodeHighlights(f.code.Buffer.String(), n.Attr("code-meta"), c.Theme().Accent.Alpha(.10))
 	if c.Theme().Dark {
 		f.code.Theme = editor.DefaultTheme(c.Theme())
 	}
 	lines := strings.Count(f.code.Buffer.String(), "\n") + 1
 	editor.View(c.Key("code"), f.code).Height(float32(min(24, max(3, lines)))*22 + 12).FillWidth().Label(a.tr("Code block"))
-	if n.Attr("caption") != "" {
-		ui.Text(c, n.Attr("caption")).FontSize(12).TextColor(c.Theme().TextMuted)
-	}
 }
 
 func codeLanguage(name string) *editor.Language {

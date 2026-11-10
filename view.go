@@ -63,6 +63,7 @@ func (a *app) view(c *ui.Context) {
 	a.services = c.Services()
 	a.theme(c)
 	a.capture()
+	a.restoreUnfoldedEditor()
 	if a.win != nil {
 		a.refreshDisk()
 		c.After(2 * time.Second)
@@ -262,7 +263,8 @@ func (a *app) treeFolder(c *ui.Context, folder string, depth int, seen map[strin
 	}
 
 	btnFolder.Children(func() {
-		ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
+		// Fill the button so trailing actions stay at the sidebar's right edge.
+		ui.Row(c).FillWidth().Gap(5).AlignItems(ui.Center).Children(func() {
 			// Expand / Collapse Chevron Button (Only visible on hover or when collapsed)
 			showChevron := btnFolder.Hovered() || isCollapsed
 			if showChevron {
@@ -286,7 +288,7 @@ func (a *app) treeFolder(c *ui.Context, folder string, depth int, seen map[strin
 			if idx := strings.LastIndex(folder, "/"); idx >= 0 {
 				displayName = folder[idx+1:]
 			}
-			txt := ui.Text(c, displayName).FontSize(13).Grow(1).NoWrap().Clip()
+			txt := ui.Text(c, displayName).FontSize(13).Grow(1).MinWidth(0).SingleLine()
 			if isActiveFolder {
 				txt.Bold().TextColor(t.Accent)
 			}
@@ -397,7 +399,8 @@ func (a *app) treeNote(c *ui.Context, n *library.Note, depth int, seen map[strin
 		b.Background(c.Theme().SurfaceHover)
 	}
 	b.Children(func() {
-		ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
+		// Keep parent and child actions aligned regardless of title or indentation.
+		ui.Row(c).FillWidth().Gap(5).AlignItems(ui.Center).Children(func() {
 			// Leading slot (15px): Chevron button if has children (visible on hover or when collapsed), otherwise spacer
 			showChevron := hasChildren && (b.Hovered() || isCollapsed)
 			if showChevron {
@@ -417,7 +420,7 @@ func (a *app) treeNote(c *ui.Context, n *library.Note, depth int, seen map[strin
 			}
 
 			ui.Icon(c, iconFileText()).Width(14).Height(14).TextColor(c.Theme().TextMuted)
-			txt := ui.Text(c, n.Title).FontSize(13).Grow(1).NoWrap().Clip()
+			txt := ui.Text(c, n.Title).FontSize(13).Grow(1).MinWidth(0).SingleLine()
 			if isActive {
 				txt.Bold().TextColor(c.Theme().Accent)
 			}
@@ -983,52 +986,66 @@ func (a *app) editorView(c *ui.Context) {
 	if a.findOpen && a.mode == "Write" {
 		a.findBar(c)
 	}
-	ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
-		if a.outline && !a.focus && a.mode != "Split" && a.lib.Settings.OutlineSide == "Left" {
-			a.outlineView(c)
-		}
-		column := ui.Column(c).Grow(1).MinWidth(0).Padding(32, 40, 16)
+	ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Justify(a.pageAlignment()).Children(func() {
+		// Move the outline with the page so wide windows keep navigation nearby.
+		group := ui.Row(c).Grow(1).MinWidth(0).MinHeight(0).AlignItems(ui.Stretch)
 		if n.Width != "Full" && a.mode != "Split" {
 			width := float32(820)
 			if n.Width == "Wide" {
 				width = 1020
 			}
-			column.MaxWidth(width)
+			if a.outline && !a.focus {
+				width += max(200, a.outlineFontSize()*12)
+			}
+			group.MaxWidth(width)
 		}
-		column.Children(func() {
-			base := c.Theme()
-			c.SetTheme(a.pageTheme(base))
-			defer c.SetTheme(base)
-			column.Background(c.Theme().Background)
-			a.documentHeader(c)
-			switch a.mode {
-			case "Write":
-				if a.blockEditor != nil {
-					a.blockView(c, false)
-					break
+		group.Children(func() {
+			if a.outline && !a.focus && a.mode != "Split" && a.outlineSide() == "Left" {
+				a.outlineView(c)
+			}
+			column := ui.Column(c).Grow(1).MinWidth(0).Padding(32, 40, 16)
+			if n.Width != "Full" && a.mode != "Split" {
+				width := float32(820)
+				if n.Width == "Wide" {
+					width = 1020
 				}
-				font := a.writingFont(".page")
-				ed := richtext.EditorBase(c.Key(n.ID), a.doc, richtext.EditorOptions{Label: a.tr("Document editor"), Placeholder: a.tr("Start writing…"), Font: font, OnLink: a.openLink, OnLinkCommand: func() { a.linkURL = a.doc.Formatting().Link; a.linkOpen = true }, Theme: a.docTheme.Rich(c.Theme(), font)}).Grow(1).FillWidth()
-				a.textFocused = ed.Focused()
-			case "Source":
-				editor.View(c.Key(n.ID), a.code).Label(a.tr("Source editor")).Fill()
-			case "Split":
-				ui.Row(c).Grow(1).MinHeight(0).Gap(22).Children(func() {
-					editor.View(c.Key(n.ID), a.code).Label(a.tr("Source editor")).Grow(1).MinWidth(0)
-					ui.Box(c).Width(1).Background(t.Border)
-					ui.Column(c).Grow(1).MinWidth(0).Children(func() { a.splitPreview(c) })
-				})
-			case "Read":
-				if a.blockEditor != nil {
-					a.blockView(c, true)
-				} else {
-					ui.Scroll(c).Grow(1).Children(func() { markdown.View(c, a.markdownSource(), &a.preview).FillWidth() })
+				column.MaxWidth(width)
+			}
+			column.Children(func() {
+				base := c.Theme()
+				c.SetTheme(a.pageTheme(base))
+				defer c.SetTheme(base)
+				column.Background(c.Theme().Background)
+				a.documentHeader(c)
+				switch a.mode {
+				case "Write":
+					if a.blockEditor != nil {
+						a.blockView(c, false)
+						break
+					}
+					a.richDocumentEditor(c)
+				case "Source":
+					editor.View(c.Key(n.ID), a.code).Label(a.tr("Source editor")).Grow(1).FillWidth().MinHeight(0)
+				case "Split":
+					// Both panes must use the remaining height below the document header.
+					// A centered row leaves the source editor at zero height and lets the preview overflow.
+					ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Gap(22).Children(func() {
+						editor.View(c.Key(n.ID), a.code).Label(a.tr("Source editor")).Grow(1).MinWidth(0).MinHeight(0)
+						ui.Box(c).Width(1).Shrink(0).Background(t.Border)
+						ui.Column(c).Grow(1).MinWidth(0).MinHeight(0).Clip().Children(func() { a.splitPreview(c) })
+					})
+				case "Read":
+					if a.blockEditor != nil {
+						a.blockView(c, true)
+					} else {
+						ui.Scroll(c).Grow(1).Children(func() { markdown.View(c, a.markdownSource(), &a.preview).FillWidth() })
+					}
 				}
+			})
+			if a.outline && !a.focus && a.mode != "Split" && a.outlineSide() == "Right" {
+				a.outlineView(c)
 			}
 		})
-		if a.outline && !a.focus && a.mode != "Split" && a.lib.Settings.OutlineSide != "Left" {
-			a.outlineView(c)
-		}
 	})
 	a.capture()
 	ui.Row(c).Height(30).Shrink(0).Padding(4, 24).Gap(16).BorderWidth(1, 0, 0).BorderColor(t.Border).AlignItems(ui.Center).Children(func() {
@@ -1122,9 +1139,15 @@ func (a *app) toolbar(c *ui.Context) {
 
 func (a *app) outlineView(c *ui.Context) {
 	t := c.Theme()
-	ui.Scroll(c).Width(176).Shrink(0).Padding(34, 12).Gap(10).Children(func() {
+	size := a.outlineFontSize()
+	// Start beside the document title, below the cover and its action row.
+	top := float32(60)
+	if a.current != nil && a.current.Cover != "" && a.loadAssetBitmap(a.current.Cover) != nil {
+		top += documentCoverHeight + documentCoverBottomGap
+	}
+	ui.Scroll(c).Width(max(200, size*12)).Shrink(0).Padding(top, 12, 16).Gap(6).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Gap(4).Children(func() {
-			ui.Text(c, a.tr("ON THIS PAGE")).FontSize(9).TextColor(t.TextMuted).Grow(1)
+			ui.Text(c, a.tr("ON THIS PAGE")).FontSize(11).TextColor(t.TextMuted).Grow(1)
 			for _, side := range []string{"Left", "Right"} {
 				button := ghostButton(c, "").Label(a.tr("Outline on " + side)).Tooltip(a.tr("Outline on " + side)).Padding(3).Radius(4)
 				if a.outlineSide() == side {
@@ -1139,7 +1162,7 @@ func (a *app) outlineView(c *ui.Context) {
 		if a.structured() {
 			a.blockEditor.doc.Root.Walk(func(n *blocks.Node) {
 				if len(n.Kind) == 2 && n.Kind[0] == 'h' && n.Kind[1] >= '1' && n.Kind[1] <= '9' {
-					if ghostButton(c.Key(n.ID), n.Plain()).Label(a.tr("Heading ")+n.Plain()).FontSize(11).Padding(5, 8+float32(n.Kind[1]-'1')*8).FillWidth().Clicked() {
+					if a.outlineHeading(c.Key(n.ID), n.Plain(), int(n.Kind[1]-'0')).Clicked() {
 						a.focusBlock(n.ID, 0)
 					}
 				}
@@ -1152,7 +1175,7 @@ func (a *app) outlineView(c *ui.Context) {
 			a.headings = document.Headings(source)
 		}
 		for _, h := range a.headings {
-			if ghostButton(c.Key(h.Offset), h.Text).Label(a.tr("Heading ")+h.Text).FontSize(11).Padding(5, 8+float32(h.Level-1)*8).MaxHeight(38).Clip().TextAlign(ui.Start).FillWidth().Clicked() {
+			if a.outlineHeading(c.Key(h.Offset), h.Text, h.Level).Clicked() {
 				if a.mode == "Write" {
 					for pos, p := range a.doc.Text().Paragraphs() {
 						if p.Style.Heading == h.Level && strings.TrimSpace(pText(p)) == h.Text {
@@ -1169,6 +1192,13 @@ func (a *app) outlineView(c *ui.Context) {
 			}
 		}
 	})
+}
+
+func (a *app) outlineHeading(c *ui.Context, title string, level int) ui.Element {
+	// Keep hierarchy on the leading edge and reserve a stable trailing margin.
+	return ghostButton(c, title).Label(a.tr("Heading ")+title).Tooltip(title).
+		FontSize(a.outlineFontSize()).Padding(6, 8, 6, 8+float32(level-1)*8).
+		Justify(ui.Start).TextAlign(ui.Start).FillWidth()
 }
 
 func pText(p richtext.Paragraph) string {

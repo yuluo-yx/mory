@@ -26,14 +26,16 @@ func TestLanguagePageAndDocumentPreservation(t *testing.T) {
 	}
 	click(t, tt, "Application language")
 	click(t, tt, "简体中文")
-	if !tt.HasText("外观与样式") || a.lib.Settings.Language != "zh-CN" {
+	if !tt.HasText("应用语言") || a.lib.Settings.Language != "zh-CN" {
 		t.Fatal("language did not switch")
 	}
+	click(t, tt, "主题")
 	click(t, tt, "外观")
 	click(t, tt, "深色")
 	if a.lib.Settings.Appearance != "Dark" {
 		t.Fatal("translated option changed its persisted value")
 	}
+	click(t, tt, "编辑器")
 	click(t, tt, "大纲显示位置")
 	click(t, tt, "左侧")
 	if a.outlineSide() != "Left" {
@@ -60,6 +62,120 @@ func TestLanguagePageAndDocumentPreservation(t *testing.T) {
 	tt.Frame()
 	if !tt.HasText("All changes saved") {
 		t.Fatal("English did not return")
+	}
+}
+
+func TestSettingsCategoriesAndOutlineSize(t *testing.T) {
+	a := testApp(t)
+	a.createNote("# Heading\n\nBody", "Outline settings")
+	note, original := a.current, a.current.Source
+	tt := ui.NewTester(a.view, 1280, 820)
+	before, _ := tt.Find("Heading Heading")
+	click(t, tt, "Settings")
+	for _, category := range []struct {
+		tab, present, absent string
+	}{
+		{"General", "Application language", "Writing style"},
+		{"Themes", "Writing style", "Outline text size"},
+		{"Keyboard shortcuts", "Global quick note shortcut", "Application language"},
+		{"Editor", "Outline text size", "Writing style"},
+	} {
+		click(t, tt, category.tab)
+		if !tt.HasText(category.present) || tt.HasText(category.absent) {
+			t.Fatalf("settings category %s contains the wrong controls", category.tab)
+		}
+	}
+	previewBefore, _ := tt.Find("Outline font preview")
+	click(t, tt, "Outline text size")
+	click(t, tt, "22")
+	previewAfter, _ := tt.Find("Outline font preview")
+	if a.outlineFontSize() != 22 || previewAfter.H <= previewBefore.H {
+		t.Fatal("outline size or live preview did not change")
+	}
+	if dir := os.Getenv("MORY_TEST_IMAGES"); dir != "" {
+		saveImage(t, tt, filepath.Join(dir, "settings-editor.png"))
+	}
+	click(t, tt, "Back from settings")
+	after, _ := tt.Find("Heading Heading")
+	if after.H <= before.H || a.current != note || note.Source != original || a.lib.Settings.FontSize != 17 {
+		t.Fatal("outline size did not apply independently of document text")
+	}
+	reopened, err := newApp(a.lib.Dir)
+	if err != nil || reopened.outlineFontSize() != 22 {
+		t.Fatalf("outline size did not persist: %v", err)
+	}
+	click(t, tt, "Settings")
+	click(t, tt, "Use default size")
+	if a.outlineFontSize() != defaultOutlineFontSize {
+		t.Fatal("outline size did not reset")
+	}
+}
+
+func TestOutlineSizeAcrossFormatsAndWindows(t *testing.T) {
+	for _, format := range []string{"markdown", "xml"} {
+		t.Run(format, func(t *testing.T) {
+			a := testApp(t)
+			source := "# Heading\n\n## Child\n\nBody"
+			if format == "xml" {
+				source = "<h1>Heading</h1><h2>Child</h2><p>Body</p>"
+			}
+			n, err := a.lib.Create("Outline", source, format)
+			if err != nil {
+				t.Fatal(err)
+			}
+			a.openNote(n)
+			tt := ui.NewTester(a.view, 1280, 820)
+			for _, size := range []float32{12, 14, 22} {
+				a.setOutlineFontSize(size)
+				tt.Frame()
+				parent, ok := tt.Find("Heading Heading")
+				child, childOK := tt.Find("Heading Child")
+				if !ok || !childOK || parent.H < size || child.Y < parent.Y+parent.H || child.X+child.W > 1280 {
+					t.Fatalf("outline entries overlap or overflow at size %v: parent=%+v child=%+v", size, parent, child)
+				}
+			}
+			b, err := newApp(a.lib.Dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			previous := appWindows
+			appWindows = []*app{a, b}
+			t.Cleanup(func() { appWindows = previous })
+			a.setOutlineFontSize(18)
+			if b.outlineFontSize() != 18 {
+				t.Fatal("sibling window did not receive outline size")
+			}
+		})
+	}
+}
+
+func TestOutlineSizeDefaultsAndFailedSave(t *testing.T) {
+	a := testApp(t)
+	for _, value := range []float32{0, -1, 11, 23} {
+		a.lib.Settings.OutlineFontSize = value
+		if a.outlineFontSize() != defaultOutlineFontSize {
+			t.Fatalf("invalid outline size %v did not use the default", value)
+		}
+	}
+	a.setOutlineFontSize(100)
+	if a.outlineFontSize() != 22 {
+		t.Fatal("upper limit not enforced")
+	}
+	a.setOutlineFontSize(1)
+	if a.outlineFontSize() != 12 {
+		t.Fatal("lower limit not enforced")
+	}
+	other, err := library.Open(a.lib.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other.Settings.OutlineFontSize = 20
+	if err := other.SaveSettings(); err != nil {
+		t.Fatal(err)
+	}
+	a.setOutlineFontSize(16)
+	if a.problem == "" || a.outlineFontSize() != 12 {
+		t.Fatal("failed settings write did not preserve the previous size")
 	}
 }
 

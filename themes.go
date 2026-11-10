@@ -8,6 +8,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
 	"github.com/yuluo-yx/mory/internal/blocks"
 	"github.com/yuluo-yx/mory/internal/doctheme"
 	"github.com/yuluo-yx/mory/internal/library"
@@ -131,7 +132,7 @@ func (a *app) themeOverlay(c *ui.Context) {
 		ui.Column(c).Width(720).MaxHeight(700).Gap(12).Children(func() {
 			ui.Text(c, a.tr("Document stylesheet")).FontSize(24)
 			ui.TextInput(c, &a.cssName).Label(a.tr("Theme name")).FillWidth()
-			ui.TextArea(c, &a.cssText).Label(a.tr("Theme CSS")).Font("monospace").FontSize(12).Height(360).FillWidth()
+			a.stylesheetField(c)
 			parsed := doctheme.Parse(a.cssText)
 			ui.Scroll(c).MaxHeight(100).Children(func() {
 				for _, warning := range parsed.Warnings {
@@ -157,6 +158,34 @@ func (a *app) themeOverlay(c *ui.Context) {
 			})
 		})
 	})
+	if !a.cssOpen {
+		// A new edit/import session starts with its own selection and undo history.
+		a.cssEditor = nil
+	}
+}
+
+type stylesheetEditor struct {
+	state  editor.State
+	source string
+}
+
+func (a *app) stylesheetField(c *ui.Context) {
+	if a.cssEditor == nil {
+		buffer := editor.NewBuffer(a.cssText)
+		buffer.SetLanguage(editor.LanguageFor("theme.css"))
+		a.cssEditor = &stylesheetEditor{
+			state:  editor.State{Buffer: buffer, Font: ui.Font{Family: "monospace", Size: 13}, SoftWrap: true, NoScrollPastEnd: true},
+			source: a.cssText,
+		}
+	} else if a.cssText != a.cssEditor.source {
+		// Imported or replaced drafts must reach the buffer before it is drawn.
+		a.cssEditor.state.Buffer.Set(a.cssText)
+	}
+	editor.View(c.Key("stylesheet-editor"), &a.cssEditor.state).Label(a.tr("Theme CSS")).
+		Height(360).FillWidth().Border(1, c.Theme().Border).Radius(8).Clip().AutoFocus()
+	// Validation and Apply always consume the same draft shown by the editor.
+	a.cssText = a.cssEditor.state.Buffer.String()
+	a.cssEditor.source = a.cssText
 }
 
 func (a *app) chooseTheme() {

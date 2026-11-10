@@ -10,6 +10,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/markdown"
 	"github.com/yuluo-yx/mory/internal/blocks"
 	"github.com/yuluo-yx/mory/internal/document"
 	"github.com/yuluo-yx/mory/internal/library"
@@ -26,7 +27,7 @@ func (a *app) chooseImport() {
 	if a.win == nil {
 		return
 	}
-	options := mygo.OpenDialogOptions{Parent: a.win, Title: a.tr("Import documents"), Multiple: true, Filters: []mygo.FileFilter{{Name: "Documents", Extensions: []string{"md", "markdown", "xml"}}}}
+	options := mygo.OpenDialogOptions{Parent: a.win, Title: a.tr("Import documents"), Multiple: true, Filters: []mygo.FileFilter{{Name: "Documents", Extensions: []string{"md", "markdown", "mdx", "xml"}}}}
 	go func() {
 		paths, err := openDialog(options)
 		a.win.Update(func() {
@@ -134,6 +135,19 @@ func (a *app) openLink(raw string) {
 		return
 	}
 	if strings.HasPrefix(raw, "#") {
+		if a.blockEditor != nil {
+			anchor, _ := url.PathUnescape(strings.TrimPrefix(raw, "#"))
+			var target *blocks.Node
+			a.blockEditor.doc.Root.Walk(func(n *blocks.Node) {
+				if target == nil && headingLevel(n) > 0 && (n.Attr("heading-id") == anchor || markdown.Slug(n.Plain()) == anchor) {
+					target = n
+				}
+			})
+			if target != nil {
+				a.focusBlock(target.ID, 0)
+				return
+			}
+		}
 		a.preview.Anchor = raw
 		a.preview.AnchorVersion++
 		return

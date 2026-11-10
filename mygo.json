@@ -7,7 +7,7 @@
   "license": "MIT",
   "out": "build",
   "fileAssociations": [
-    { "ext": ["md", "markdown"], "name": "Markdown Document", "role": "Editor" },
+    { "ext": ["md", "markdown", "mdx"], "name": "Markdown Document", "role": "Editor" },
     { "ext": ["xml"], "name": "DocxXML Document", "role": "Editor" }
   ],
   "macos": {

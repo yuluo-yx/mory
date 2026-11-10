@@ -197,6 +197,7 @@ func writeTest(t *testing.T, path, text string) {
 func TestThemesShortcutsAndDocumentControls(t *testing.T) {
 	a, tt := xmlApp(t, `<title icon="🌱">Document</title><p>Theme preview</p>`)
 	click(t, tt, "Settings")
+	click(t, tt, "Themes")
 	click(t, tt, "Edit CSS")
 	a.cssName = "Personal"
 	a.cssText = `:root{--theme-name:"Personal"}.page{font-size:18px;color:#345678;background-color:#ffffff} h1{font-size:2em}.unsupported{color:red}`
