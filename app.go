@@ -542,30 +542,3 @@ func (a *app) flushSource() {
 		a.codePending = false
 	}
 }
-
-const welcome = `# A little room to think
-
-Welcome to **Mory**, your local writing space.
-
-Start with a thought. Make a list. Give an idea room to grow.
-
-## Make yourself at home
-
-- [x] Open your writing space
-- [ ] Create your first note with ⌘N
-- [ ] Try a heading, a list, or a quote
-
-## Write without the noise
-
-Type # followed by a space to create a heading. Use **bold**, *italic*, and inline code. Paste formatted text from your browser, or use the formatting toolbar.
-
-> Good writing begins with a calm place and an open page.
-
-## Everything stays here
-
-Your library lives on this Mac. Import Markdown or DocxXML, and export your notes whenever you need them. Edit tables, equations, columns and other blocks directly in your document.
-
-## A small workbench
-
-Open Plugins to clean whitespace, count words, or generate a table of contents. Add your own JavaScript transforms to the library's plugins folder.
-`

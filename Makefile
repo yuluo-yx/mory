@@ -1,6 +1,6 @@
 GO ?= go
 
-.PHONY: run test check race bench build
+.PHONY: run test check race bench perf build
 
 run:
 	$(GO) tool mygo dev
@@ -17,6 +17,10 @@ race:
 
 bench:
 	$(GO) test -run '^$$' -bench . -benchtime=10x -benchmem ./...
+
+# Real-window measurements require a logged-in macOS desktop session.
+perf:
+	python3 scripts/performance.py
 
 build:
 	$(GO) tool mygo build -platform darwin/universal -skip-notarize

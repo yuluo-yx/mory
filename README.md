@@ -8,6 +8,8 @@ The library, editors, document previews and settings use native GPU controls. Pr
 
 ## Writing and organizing
 
+The built-in [welcome guide](resources/welcome.md) is an editable syntax gallery, with Markdown examples, heading levels 1–9, tables and merged cells, equations, offline artwork, Docusaurus callouts/details/tabs, colors, alignment, columns, a countdown, and instructions for attachments, reminders, document references, shortcuts, exports and local JavaScript transforms. Switch between Write, Source and Split to compare the examples with their source. **Help → Open welcome guide** opens the current guide for existing libraries as well. An untouched current copy is reused; edited, older or trashed guides are preserved and a new copy is created.
+
 - Write, Source, Split and Read modes. Split keeps the source editor and rendered preview below the document header and synchronizes scrolling in both directions by matching source blocks to preview paragraphs. Re-entering Split or editing the source refreshes their alignment. Opening or switching an unchanged document preserves its original source bytes.
 - Rich paragraphs, nine heading levels, nested lists, tasks, quotations, callouts, code blocks, dividers, links, text colors and highlights.
 - Native tables with rectangular selection, merged cells, row/column insertion, deletion and reordering, column resizing and editable cell contents.
@@ -95,6 +97,102 @@ export function transform({ markdown }) {
 
 Built-ins clean trailing whitespace, report reading statistics and insert a table of contents. Each invocation uses a fresh moejs runtime, a 32 MiB allocation limit and a 750 ms deadline including initialization. File, network, environment and Node.js APIs are not installed. Plugins act on Markdown; export XML as Markdown first when a transform is needed.
 
+## Performance
+
+The measurements below are from **2026-11-11**, on an **Apple M4 (10 cores), 24 GiB RAM, macOS 27.0.1**, using an **APFS external USB SSD** and a native window with an effective **2560 × 1312 logical-pixel** content area. The initial matrix inherited macOS's restored maximized window rather than the application's 1280 × 820 default; a follow-up native geometry probe verified the effective size. The checked-in harness explicitly requests the measured size, records actual dimensions, and keeps benchmark window preferences in memory so subsequent runs neither depend on nor overwrite user window settings. These results describe this machine and these fixtures, not a cross-editor comparison or a performance guarantee.
+
+The native benchmark uses an optimized arm64 build (`-trimpath -ldflags="-s -w" -tags=performance,mygo_noinspector`), with neither race nor coverage instrumentation. Each scenario gets a fresh process, a separate library containing the welcome guide, and a generated UTF-8 file. Filesystem caches are **warm** because the fixtures have just been written; this is not a cold-disk or post-reboot test. Autosave and normal garbage collection remain enabled.
+
+### Startup, idle memory and CPU
+
+Across the **39 successful sessions** in the main test matrix:
+
+| Measurement | Result |
+| --- | ---: |
+| Fresh process launch to captured home frame, median / P95 | 232.0 / 250.8 ms |
+| Slowest fresh-process startup in the successful sessions | 651.6 ms |
+| Idle home-window resident memory, median | 174.3 MiB RSS |
+| Idle process CPU, median | 0.13% of one logical CPU |
+
+RSS comes from `ps`, sampled every 50 ms. Settled memory is the median of samples collected for one second after a two-second pause. Idle CPU is the change in process user + system CPU time during that one-second interval; 100% means one fully occupied logical CPU. These are short idle samples, not energy or battery-life measurements. RSS includes resident shared/native memory and is **not** macOS Activity Monitor's physical-footprint metric. Screenshot buffers used by this test can also contribute to memory use.
+
+### Opening, editing and saving ordinary Markdown
+
+Each row contains **three independent opens**, **30 sequential one-character edits per process** (90 edit samples), and one forced-dirty save per process. Open, save and settled RSS columns show medians; peak RSS is the highest observed sample across the three runs. P95 uses the nearest-rank method. With only three open/save samples, their medians are descriptive, not statistically stable tail estimates.
+
+**Open + capture** includes reading the original file, adding its library record, parsing/editor initialization, selecting the requested mode, rendering, and PNG capture. It excludes the file picker. **Edit + capture** starts before dispatch to the UI thread and ends after a fresh PNG capture, including queueing, application work, layout, drawing and PNG encoding. The adapter invokes the editor's insert API on the UI thread, without synthesizing OS keyboard or IME events. It is not physical keyboard-to-display latency or a display FPS measurement. **Save** times `app.save()` through completed synchronous writes, including pending serialization, revision/recovery work, conflict checks and atomic file replacement; a new edit is inserted immediately beforehand in the same UI callback so autosave cannot turn the measured save into a no-op. Save timing excludes that insertion and the subsequent screenshot.
+
+| Approx. UTF-8 size | Mode | Open + capture (ms) | Edit + capture P50 / P95 (ms) | Save (ms) | Loaded RSS (MiB) | Sampled peak RSS (MiB) |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| 100 KiB | Write | 91.1 | 92.0 / 124.3 | 72.0 | 190.6 | 218.5 |
+| 100 KiB | Source | 91.4 | 50.8 / 80.2 | 26.2 | 191.8 | 246.0 |
+| 1 MiB | Write | 125.3 | 46.9 / 78.5 | 470.5 | 232.4 | 303.3 |
+| 1 MiB | Source | 121.4 | 50.8 / 74.1 | 39.5 | 230.4 | 304.1 |
+| 10 MiB | Write | 448.5 | 48.0 / 4,732.6 | 4,564.6 | 980.2 | 1,181.6 |
+| 10 MiB | Source | 456.1 | 52.5 / 306.2 | 146.3 | 914.0 | 1,187.2 |
+
+These files contain repeated short paragraphs with bold text, a link, English text and Chinese text. Their exact sizes and line counts are **102,384 bytes / 1,423 lines**, **1,048,464 bytes / 14,563 lines**, and **10,485,648 bytes / 145,635 lines**. Complete paragraphs are repeated rather than cutting a UTF-8 sequence to reach a round byte count.
+
+The 10 MiB Write result exposes an important limitation: ordinary typing can have a low median while full serialization during autosave blocks progress for several seconds. Large rich documents defer serialization to the save boundary; smaller documents can serialize during editing, which also explains why the 100 KiB Write fixture has a higher median than the 1 MiB fixture. Opening speed alone does not establish smooth editing or fast saves. Source mode was substantially cheaper to save in these fixtures, but still reached roughly 1.16 GiB peak RSS at 10 MiB.
+
+### Dense blocks and very long lines
+
+Document structure matters as much as byte count. Dense fixtures repeat a heading, a Docusaurus tip and a table: **102,312 bytes / 8,821 lines** and **1,048,524 bytes / 90,391 lines**. Long-line fixtures contain a single paragraph without newline characters: **102,361 bytes** and **1,048,551 bytes**. The same three-process, 90-edit method applies to successful rows.
+
+| Fixture | Mode | Open + capture (ms) | Edit + capture P50 / P95 (ms) | Save (ms) | Loaded RSS (MiB) | Sampled peak RSS (MiB) |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Dense blocks, 100 KiB | Write | 114.2 | 65.4 / 100.3 | 43.3 | 209.1 | 274.0 |
+| Dense blocks, 100 KiB | Source | 115.4 | 53.3 / 78.1 | 29.0 | 206.4 | 285.7 |
+| Dense blocks, 1 MiB | Write | 402.4 | 330.8 / 628.9 | 156.4 | 563.8 | 680.5 |
+| Dense blocks, 1 MiB | Source | 407.0 | 58.6 / 124.5 | 46.3 | 574.2 | 777.1 |
+| Single line, 100 KiB | Write | 86.6 | 453.0 / 818.0 | 25.9 | 190.8 | 251.5 |
+| Single line, 100 KiB | Source | 78.8 | 55.9 / 85.3 | 29.2 | 188.7 | 229.1 |
+| Single line, 1 MiB | Write | See diagnostic below | **Full scenario timed out, 3/3 runs** | No comparable sample | No comparable sample | No comparable sample |
+| Single line, 1 MiB | Source | 97.5 | 57.9 / 87.0 | 42.4 | 189.0 | 250.5 |
+
+The 1 MiB single-line Write case failed to complete the full 30-edit scenario within the per-command 60-second timeout in all three runs and is **not a supported smooth-editing workload**. A separate **one-process, one-edit diagnostic**, excluded from the aggregate tables, completed: opening through capture took **39.7 seconds**; synchronous save work took **49.9 ms**, but save through the next capture took **40.4 seconds**, and undo through capture took **40.6 seconds**. Loaded RSS was **529.4 MiB**, with **625.7 MiB** sampled peak RSS. This separates long-line layout/display cost from the actual write to disk; a successful save does not establish a responsive interface.
+
+A 1 MiB file with normal paragraph breaks is a different workload and should not be used to advertise unlimited long-line support. Dense 1 MiB block documents also show substantial Write-mode latency. The application currently rejects non-UTF-8 documents and files larger than **32 MiB** through its import/open validation; this input limit is not a guarantee of interactive performance up to that size.
+
+### Scrolling and undo
+
+Source scrolling advances the viewport by 400 pixels per operation, with 10 captures per process (30 samples per row). Undo has one sample per process after the edit/save sequence. Both timings include native capture and PNG encoding; no refresh-rate claim is inferred from them.
+
+| Ordinary Markdown in Source mode | Scroll + capture P50 / P95 (ms) | Undo + capture median (ms) |
+| --- | ---: | ---: |
+| 100 KiB | 50.2 / 51.5 | 50.5 |
+| 1 MiB | 51.0 / 51.6 | 49.6 |
+| 10 MiB | 52.1 / 55.7 | 103.7 |
+
+### Reproducing and interpreting the results
+
+Run from a logged-in macOS desktop, with no other benchmark or build running concurrently:
+
+```sh
+# Full real-window matrix; outputs environment details and individual samples.
+mise exec -- python3 scripts/performance.py > performance.jsonl
+
+# Shorter smoke run; not equivalent to the published matrix.
+mise exec -- python3 scripts/performance.py --runs 1 --edits 5 --sizes 102400,1048576 --kinds prose
+
+# Internal editor/count/search microbenchmarks, separate from native captures.
+mise exec -- make bench
+```
+
+`--width` and `--height` select the content dimensions; inspect the actual `window_width` and `window_height` in each command result, especially on smaller displays. A different window size changes the layout workload. `make perf` runs the full native script too. The benchmark adapter is compiled only with the `performance` build tag and is absent from normal releases. Its private Unix socket controls the actual app code paths; it does not transfer the full document through accessibility for each keystroke. Binaries, test libraries, fixtures, histories and sockets live under a temporary `.test-output/` directory and are removed on exit. Failed scenarios are recorded explicitly in JSON rather than replaced with a zero or a fabricated throughput value. The full matrix deliberately includes a slow/unsupported long-line case and can take several minutes.
+
+The separate ten-iteration internal benchmarks on the same date produced:
+
+| Internal operation | Mean time | Go allocations per operation |
+| --- | ---: | ---: |
+| Editing frame, approximately one million characters | 0.235 ms | 81,685 bytes / 1,306 allocations |
+| Unicode word/character counting | 9.260 ms | 0 bytes / 0 allocations |
+| Search across 1,000 notes | 2.926 ms | 2,834,164 bytes / 2,014 allocations |
+
+Allocated bytes per operation describe allocation traffic, not retained process memory. The editing benchmark excludes native presentation, PNG capture, autosave serialization and disk writes; its number must not be substituted for the end-to-end columns above.
+
+Not measured here: cold filesystem caches, physical input-to-photon latency, large-image or equation-heavy documents, startup of a large existing library, network volumes, prolonged memory growth, power-loss recovery, Intel hardware, or older macOS releases. The short idle CPU sample is not a battery-use estimate, and the sampled RSS peak is not a guaranteed lifetime maximum.
+
 ## Build and verify
 
 Pinned versions: Go **1.27.3**, MyGo **0.8.3**, moejs **0.1.0-alpha.11**, KaTeX **0.16.22**.
@@ -114,22 +212,19 @@ The macOS-only GitHub workflow builds a universal Apple Silicon/Intel app and up
 Local builds are ad-hoc signed. Developer ID signing, Apple notarization and signed in-app update distribution require the owner's release credentials and update-signing configuration. The native update UI reports availability for the current build. Physical Intel hardware and older macOS releases require separate runtime validation.
 
 Last local verification: **2026-11-11**, macOS 27.0.1, Apple M4, Go 1.27.3.
-`make check` passed at **6,360 / 7,046 production statements (90.26%)**.
+`make check` passed at **6,368 / 7,061 production statements (90.19%)**.
 `make race`, `go mod verify`, the universal build, strict code-signature verification
 and DMG integrity verification passed. The development app was opened for preview;
 native E2E used an isolated library. Native E2E includes original-file saves, folder import, covers,
 CSS import, Quick Look thumbnails, multiple windows, language switching, shortcut
-configuration, outline placement, Docusaurus theme selection, static details/tabs,
+configuration, outline placement, the welcome-guide menu and offline artwork, Docusaurus theme selection, static details/tabs,
 source preservation and the native print renderer. Default-application tests cover
 native API binding, unpackaged-app rejection, requested extensions and failure
 reporting without changing the developer's or CI runner's system associations.
 The interactive printer-selection sheet is replaced by PDF output in E2E.
 
-Ten-iteration regression benchmarks measured **0.244 ms** per million-character
-editing frame, **9.448 ms** for Unicode counting and **1.975 ms** for a query over
-1,000 notes. These samples are not P95 latency or end-to-end save measurements.
-Power-loss injection, long-duration stress and physical Intel testing remain
-outside the completed local validation.
+See **Performance** above for the native-window matrix, memory measurements,
+known large-document limits and separate microbenchmark scope.
 
 ## License and artwork
 

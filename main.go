@@ -14,7 +14,7 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// nativeReadyHook is populated only by the e2e build to exercise system exporters.
+// nativeReadyHook is populated only by E2E and native performance builds.
 var nativeReadyHook func(*app)
 
 func main() {
@@ -37,7 +37,7 @@ func main() {
 		log.Fatal(err)
 	}
 	if len(a.lib.Notes) == 0 {
-		if _, err = a.lib.Create("Welcome to Mory", welcome, "markdown"); err != nil {
+		if _, err = a.welcomeNote(); err != nil {
 			log.Fatal(err)
 		}
 	}
@@ -198,7 +198,7 @@ func (a *app) buildMenu(updateItem *mygo.MenuItem) *mygo.Menu {
 		{Label: a.tr("Edit"), Submenu: []*mygo.MenuItem{role("Undo", mygo.RoleUndo), role("Redo", mygo.RoleRedo), mygo.Separator(), role("Cut", mygo.RoleCut), role("Copy", mygo.RoleCopy), role("Paste", mygo.RolePaste), role("Select all", mygo.RoleSelectAll), mygo.Separator(), action("Find"), action("Replace")}},
 		{Label: a.tr("Format"), Submenu: formats},
 		{Label: a.tr("View"), Submenu: []*mygo.MenuItem{action("Library"), action("Focus mode"), action("Formatting toolbar"), action("Outline"), action("Outline on Left"), action("Outline on Right"), action("Write mode"), action("Read mode"), action("Source mode"), action("Split mode"), action("Insert block"), role("Full screen", mygo.RoleToggleFullScreen)}},
-		{Role: mygo.RoleWindowMenu}, {Label: a.tr("Help"), Submenu: []*mygo.MenuItem{action("Shortcuts")}},
+		{Role: mygo.RoleWindowMenu}, {Label: a.tr("Help"), Submenu: []*mygo.MenuItem{action("Open welcome guide"), action("Shortcuts")}},
 	})
 	// MyGo fills role defaults during construction; explicitly clear disabled keys afterwards.
 	for item, key := range roles {

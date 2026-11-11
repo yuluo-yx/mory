@@ -86,6 +86,12 @@ def exercise(binary, root):
                 raise AssertionError("Native PDF export did not finish")
             time.sleep(0.1)
         assert (root / "export.pdf").read_bytes().startswith(b"%PDF-"), "Invalid PDF export"
+        call("menu", path=["Help", "Open welcome guide"])
+        assert any(n.get("label") == "Document title" and n.get("value") == "Welcome to Mory" for n in nodes())
+        guide = next(json.loads(p.read_text()) for p in (root / "library" / "notes").glob("*.json")
+                     if json.loads(p.read_text())["title"] == "Welcome to Mory")
+        assert guide["source"] == (Path(__file__).resolve().parent.parent / "resources" / "welcome.md").read_text()
+        assert (root / "library" / "assets" / "mory-welcome.png").read_bytes().startswith(b"\x89PNG")
         call("menu", path=["File", "New note"])
         time.sleep(0.1)
         title = "Native E2E 世界 🌱"

@@ -26,6 +26,7 @@ func (a *app) actions() []shortcut {
 		}
 	}
 	items := []shortcut{
+		{"Open welcome guide", "", a.openWelcome},
 		{"Search notes", "Cmd+J", func() { a.home("All notes"); a.searchFocus = a.current == nil }},
 		{"Import folder", "", func() { a.chooseLocal(true) }},
 		{"Insert image or attachment", "", a.chooseAttachment},
