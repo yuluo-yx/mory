@@ -23,6 +23,19 @@ def fixture(kind, size):
     if kind == "structured":
         unit = ("## A structured section\n\n:::tip Keep writing\nA useful thought.\n:::\n\n"
                 "| Name | Value |\n| --- | --- |\n| Alpha | 123 |\n\n")
+    elif kind == "table-heavy":
+        header = "| " + " | ".join(f"Column {i}" for i in range(1, 17)) + " |\n"
+        divider = "| " + " | ".join("---" for _ in range(16)) + " |\n"
+        unit = header + divider + "| " + " | ".join(
+            "**value** with [link](https://example.com) and `code`" for _ in range(16)
+        ) + " |\n"
+    elif kind == "memory-heavy":
+        unit = ("## Memory pressure section\n\n"
+                "A paragraph with **bold**, *italic*, ~~strike~~, `inline code`, "
+                "[a link](https://example.com), $x^2+y^2$, 中文文本 and emoji 🧪.\n\n"
+                "> A quoted paragraph with **nested emphasis** and a [reference](https://example.com).\n\n"
+                "- [ ] task one\n- [x] task two\n- nested item with `code`\n\n"
+                "```go\nfunc render() string { return \"large retained code\" }\n```\n\n")
     elif kind == "long-line":
         unit = "A long unbroken paragraph with words and spaces. "
     else:
@@ -130,8 +143,8 @@ def main():
     args = parser.parse_args()
     if args.runs < 1 or args.edits < 1 or args.width < 1 or args.height < 1:
         parser.error("runs, edits and window dimensions must be positive")
-    if not set(args.kinds.split(",")) <= {"prose", "structured", "long-line"}:
-        parser.error("kinds must be prose, structured or long-line")
+    if not set(args.kinds.split(",")) <= {"prose", "structured", "table-heavy", "memory-heavy", "long-line"}:
+        parser.error("kinds must be prose, structured, table-heavy, memory-heavy or long-line")
     if not set(args.modes.split(",")) <= {"Write", "Source"}:
         parser.error("editing measurements support Write and Source modes")
     try:

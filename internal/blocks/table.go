@@ -16,9 +16,18 @@ type Table struct {
 	Rows, Columns int
 	Widths        []float64
 	Cells         []Cell
+	Preview       map[[2]int]string
 }
 
 func ReadTable(node *Node) *Table {
+	if node.Compact != nil {
+		return &Table{
+			Rows:    node.Compact.Rows,
+			Columns: node.Compact.Columns,
+			Widths:  slices.Clone(node.Compact.Widths),
+			Preview: node.Compact.Preview,
+		}
+	}
 	t := &Table{}
 	var rows []*Node
 	var walk func(*Node)

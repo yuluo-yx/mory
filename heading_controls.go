@@ -26,6 +26,9 @@ func (s *blockSession) headingFolded(n *blocks.Node) bool {
 }
 
 func (s *blockSession) visibleBlocks() []*blocks.Node {
+	if s.visibleCache != nil && s.visibleCacheVersion == s.doc.Version && s.visibleCacheFold == s.foldVersion {
+		return s.visibleCache
+	}
 	var visible []*blocks.Node
 	hiddenLevel := 0
 	for _, n := range blocks.Visible(s.doc.Root.Children) {
@@ -45,12 +48,16 @@ func (s *blockSession) visibleBlocks() []*blocks.Node {
 			hiddenLevel = level
 		}
 	}
+	s.visibleCache = visible
+	s.visibleCacheVersion = s.doc.Version
+	s.visibleCacheFold = s.foldVersion
 	return visible
 }
 
 // Outline and find navigation reveal the enclosing sections of their target.
 func (s *blockSession) revealHeadingParents(target string) {
 	var parents []*blocks.Node
+	changed := false
 	for _, n := range blocks.Visible(s.doc.Root.Children) {
 		level := headingLevel(n)
 		if level > 0 {
@@ -64,8 +71,15 @@ func (s *blockSession) revealHeadingParents(target string) {
 					if s.foldedHeadings == nil {
 						s.foldedHeadings = make(map[string]bool)
 					}
-					s.foldedHeadings[parent.ID] = false
+					folded, ok := s.foldedHeadings[parent.ID]
+					if !ok || folded {
+						s.foldedHeadings[parent.ID] = false
+						changed = true
+					}
 				}
+			}
+			if changed {
+				s.foldVersion++
 			}
 			return
 		}
@@ -161,6 +175,7 @@ func (a *app) toggleHeading(n *blocks.Node) {
 		s.foldedHeadings = make(map[string]bool)
 	}
 	s.foldedHeadings[n.ID] = !s.headingFolded(n)
+	s.foldVersion++
 	s.split = splitScrollState{}
 	// Folding is presentation state: never remove or serialize hidden content.
 	if !s.foldedHeadings[n.ID] && s.foldPresentation {

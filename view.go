@@ -980,7 +980,7 @@ func (a *app) editorView(c *ui.Context) {
 	if a.current == nil {
 		return
 	}
-	if a.showToolbar && a.mode == "Write" {
+	if a.showToolbar && a.mode == "Write" && a.doc != nil {
 		a.toolbar(c)
 	}
 	if a.findOpen && a.mode == "Write" {
@@ -1160,13 +1160,21 @@ func (a *app) outlineView(c *ui.Context) {
 			}
 		})
 		if a.structured() {
-			a.blockEditor.doc.Root.Walk(func(n *blocks.Node) {
-				if len(n.Kind) == 2 && n.Kind[0] == 'h' && n.Kind[1] >= '1' && n.Kind[1] <= '9' {
-					if a.outlineHeading(c.Key(n.ID), n.Plain(), int(n.Kind[1]-'0')).Clicked() {
-						a.focusBlock(n.ID, 0)
+			s := a.blockEditor
+			if a.structuredHeadingVersion != s.doc.Version {
+				a.structuredHeadings = a.structuredHeadings[:0]
+				s.doc.Root.Walk(func(n *blocks.Node) {
+					if len(n.Kind) == 2 && n.Kind[0] == 'h' && n.Kind[1] >= '1' && n.Kind[1] <= '9' {
+						a.structuredHeadings = append(a.structuredHeadings, structuredHeading{id: n.ID, title: n.Plain(), level: int(n.Kind[1] - '0')})
 					}
+				})
+				a.structuredHeadingVersion = s.doc.Version
+			}
+			for _, h := range a.structuredHeadings {
+				if a.outlineHeading(c.Key(h.id), h.title, h.level).Clicked() {
+					a.focusBlock(h.id, 0)
 				}
-			})
+			}
 			return
 		}
 		source := a.markdownSource()

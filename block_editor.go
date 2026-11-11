@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -21,6 +22,15 @@ type blockField struct {
 	code    *editor.State
 	version uint64
 	nodeID  string
+
+	// ShapeText does not retain layouts itself. Cache the measured row height
+	// while the block text, width and font stay unchanged.
+	height        float32
+	heightWidth   float32
+	heightFont    ui.Font
+	heightVersion uint64
+	heightValid   bool
+	lastUsed      uint64
 }
 type blockDrag struct{ ID string }
 type blockSession struct {
@@ -51,6 +61,22 @@ type blockSession struct {
 	lastText               time.Time
 	lastTextVersion        uint64
 	chosen                 ui.Selection[string]
+	tables                 map[string]tableCache
+	tableMembership        map[string]bool
+	tableMembershipVersion uint64
+	fieldEpoch             uint64
+	visibleCache           []*blocks.Node
+	visibleCacheVersion    uint64
+	visibleCacheFold       uint64
+	foldVersion            uint64
+}
+
+const maxCachedBlockFields = 256
+
+type tableCache struct {
+	node   *blocks.Node
+	table  *blocks.Table
+	simple bool
 }
 
 func newBlockSession(source, format string) (*blockSession, error) {
@@ -58,7 +84,38 @@ func newBlockSession(source, format string) (*blockSession, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &blockSession{doc: doc, fields: map[string]*blockField{}, version: doc.Version, selection: map[string]bool{}, images: map[string]*ui.Bitmap{}, imageErrors: map[string]bool{}}, nil
+	return &blockSession{doc: doc, fields: map[string]*blockField{}, version: doc.Version, selection: map[string]bool{}, images: map[string]*ui.Bitmap{}, imageErrors: map[string]bool{}, tables: map[string]tableCache{}, tableMembership: map[string]bool{}}, nil
+}
+
+// ensureTableMembership builds a revision-scoped lookup for text blocks that
+// live inside table cells. Looking up a parent by walking the whole document
+// for every cell is quadratic for documents with many table rows.
+func (s *blockSession) ensureTableMembership() {
+	if s.tableMembershipVersion == s.doc.Version {
+		return
+	}
+	if s.tableMembership == nil {
+		s.tableMembership = map[string]bool{}
+	} else {
+		clear(s.tableMembership)
+	}
+	var walk func(*blocks.Node, bool)
+	walk = func(n *blocks.Node, inTable bool) {
+		if n.Kind == "td" || n.Kind == "th" {
+			inTable = true
+		}
+		s.tableMembership[n.ID] = inTable
+		for _, child := range n.Children {
+			walk(child, inTable)
+		}
+	}
+	walk(s.doc.Root, false)
+	s.tableMembershipVersion = s.doc.Version
+}
+
+func (s *blockSession) insideTable(id string) bool {
+	s.ensureTableMembership()
+	return s.tableMembership[id]
 }
 
 func (a *app) structured() bool {
@@ -119,6 +176,11 @@ func (a *app) captureBlocks() {
 		return
 	}
 	for id, f := range s.fields {
+		docChanged := f.doc != nil && f.doc.Version() != f.version
+		codeChanged := f.code != nil && f.code.Buffer.Version() != f.version
+		if !docChanged && !codeChanged {
+			continue
+		}
 		n := s.doc.Find(id)
 		if n == nil {
 			delete(s.fields, id)
@@ -193,6 +255,7 @@ func (a *app) blockUndo(redo bool) {
 func (a *app) blockField(n *blocks.Node, color ui.Color) *blockField {
 	s := a.blockEditor
 	if f := s.fields[n.ID]; f != nil {
+		f.lastUsed = s.fieldEpoch
 		return f
 	}
 	text := blocks.ToRich(n, blocks.RichOptions{Color: func(name string) ui.Color { return a.namedColor("color", name, color) }, Background: func(name string) ui.Color { return a.namedColor("highlight", name, ui.Transparent) }, Object: func(object *blocks.Node) *richtext.Attachment { return a.inlineObject(object, color) }})
@@ -204,7 +267,7 @@ func (a *app) blockField(n *blocks.Node, color ui.Color) *blockField {
 		}
 		text = richtext.TextOf(paragraphs...)
 	}
-	f := &blockField{nodeID: n.ID, doc: richtext.NewDocument(text)}
+	f := &blockField{nodeID: n.ID, doc: richtext.NewDocument(text), lastUsed: s.fieldEpoch}
 	f.version = f.doc.Version()
 	s.fields[n.ID] = f
 	if s.active == "" || s.active == n.ID {
@@ -212,6 +275,37 @@ func (a *app) blockField(n *blocks.Node, color ui.Color) *blockField {
 		a.doc = f.doc
 	}
 	return f
+}
+
+// pruneFields bounds retained editor state after the user scrolls through a
+// long document. Stable fields can be reconstructed from their block node;
+// dirty or focused fields remain resident so no edit or selection is lost.
+func (s *blockSession) pruneFields(limit int) {
+	if limit <= 0 || len(s.fields) <= limit {
+		return
+	}
+	type candidate struct {
+		id   string
+		used uint64
+	}
+	candidates := make([]candidate, 0, len(s.fields))
+	for id, f := range s.fields {
+		if id == s.active || id == s.focus || f == nil {
+			continue
+		}
+		if f.doc != nil && f.doc.Version() != f.version {
+			continue
+		}
+		if f.code != nil && f.code.Buffer.Version() != f.version {
+			continue
+		}
+		candidates = append(candidates, candidate{id: id, used: f.lastUsed})
+	}
+	sort.Slice(candidates, func(i, j int) bool { return candidates[i].used < candidates[j].used })
+	remove := len(s.fields) - limit
+	for i := 0; i < remove && i < len(candidates); i++ {
+		delete(s.fields, candidates[i].id)
+	}
 }
 
 func blockColor(name string, fallback ui.Color) ui.Color {
@@ -309,6 +403,8 @@ func (a *app) blockImage(path string) *ui.Bitmap {
 func (a *app) blockView(c *ui.Context, readOnly bool) {
 	s := a.blockEditor
 	a.captureBlocks()
+	s.fieldEpoch++
+	s.pruneFields(maxCachedBlockFields)
 	visible := s.visibleBlocks()
 	s.list.Key = func(i int) any { return visible[i].ID }
 	s.list.Selection = &s.chosen
@@ -539,11 +635,8 @@ func (a *app) blockText(c *ui.Context, n *blocks.Node, readOnly bool) {
 	s := a.blockEditor
 	field := a.blockField(n, c.Theme().Text)
 	font := a.writingFont(".page")
-	for parent, _ := s.doc.Parent(n.ID); parent != nil && parent != s.doc.Root; parent, _ = s.doc.Parent(parent.ID) {
-		if parent.Kind == "td" || parent.Kind == "th" {
-			font = a.docTheme.Font("table", font)
-			break
-		}
+	if s.insideTable(n.ID) {
+		font = a.docTheme.Font("table", font)
 	}
 	richTheme := a.docTheme.Rich(c.Theme(), font)
 	if len(n.Kind) == 2 && n.Kind[0] == 'h' && n.Kind[1] > '6' {
@@ -554,23 +647,32 @@ func (a *app) blockText(c *ui.Context, n *blocks.Node, readOnly bool) {
 	if width < 80 {
 		width = 600
 	}
-	height := float32(0)
-	for _, p := range field.doc.Text().Paragraphs() {
-		f := font
-		if p.Style.Heading > 0 {
-			f.Size *= []float32{1.8, 1.45, 1.2, 1.1, 1, .9}[p.Style.Heading-1]
-		}
-		text := pText(p)
-		if text == "" {
-			text = " "
-		}
-		_, h := ui.ShapeText(text, f, max(40, width-28)).Size()
-		for _, run := range p.Runs {
-			if run.Attributes.Attachment != nil {
-				h = max(h, run.Attributes.Attachment.Height+6)
+	height := field.height
+	version := field.doc.Version()
+	if !field.heightValid || field.heightVersion != version || field.heightWidth != width || field.heightFont != font {
+		height = float32(0)
+		for _, p := range field.doc.Text().Paragraphs() {
+			f := font
+			if p.Style.Heading > 0 {
+				f.Size *= []float32{1.8, 1.45, 1.2, 1.1, 1, .9}[p.Style.Heading-1]
 			}
+			text := pText(p)
+			if text == "" {
+				text = " "
+			}
+			_, h := ui.ShapeText(text, f, max(40, width-28)).Size()
+			for _, run := range p.Runs {
+				if run.Attributes.Attachment != nil {
+					h = max(h, run.Attributes.Attachment.Height+6)
+				}
+			}
+			height += h + 8
 		}
-		height += h + 8
+		field.height = height
+		field.heightVersion = version
+		field.heightWidth = width
+		field.heightFont = font
+		field.heightValid = true
 	}
 	ed.Height(max(32, height+10))
 	if ed.Focused() {
@@ -726,8 +828,10 @@ func (a *app) blockCode(c *ui.Context, n *blocks.Node, readOnly bool) {
 	if f == nil {
 		b := editor.NewBuffer(n.Plain())
 		b.SetLanguage(codeLanguage(n.Attr("lang")))
-		f = &blockField{nodeID: n.ID, code: &editor.State{Buffer: b, SoftWrap: n.Attr("wrap") == "true"}, version: b.Version()}
+		f = &blockField{nodeID: n.ID, code: &editor.State{Buffer: b, SoftWrap: n.Attr("wrap") == "true"}, version: b.Version(), lastUsed: s.fieldEpoch}
 		s.fields[n.ID] = f
+	} else {
+		f.lastUsed = s.fieldEpoch
 	}
 	if title := n.Attr("caption"); title != "" {
 		ui.Text(c, title).FontSize(12).Bold().Padding(8).FillWidth().Background(c.Theme().Surface)

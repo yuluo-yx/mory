@@ -31,12 +31,16 @@ func (a *app) tableChange(id string, fn func(*blocks.Table) error) {
 func (a *app) blockTable(c *ui.Context, n *blocks.Node, readOnly bool, depth int) {
 	s := a.blockEditor
 	t := c.Theme()
-	table := blocks.ReadTable(n)
+	table, simple := a.tableLayout(n)
 	selection := blocks.Rect{Top: 0, Left: 0, Bottom: 0, Right: 0}
 	if s.tableID == n.ID {
 		selection = s.cells
 	}
 	selection = table.Expand(selection)
+	if simple && table.Rows >= 200 {
+		a.largeTableFallback(c, n, table, readOnly)
+		return
+	}
 	if !readOnly {
 		ui.Row(c).Wrap().Gap(5).Padding(4, 0).Children(func() {
 			for _, action := range []struct {
@@ -152,6 +156,81 @@ func (a *app) blockTable(c *ui.Context, n *blocks.Node, readOnly bool, depth int
 			})
 		})
 	})
+}
+
+func (a *app) tableLayout(n *blocks.Node) (*blocks.Table, bool) {
+	s := a.blockEditor
+	if cached, ok := s.tables[n.ID]; ok && cached.node == n {
+		return cached.table, cached.simple
+	}
+	table := blocks.ReadTable(n)
+	if n.Compact != nil {
+		s.tables[n.ID] = tableCache{node: n, table: table, simple: true}
+		return table, true
+	}
+	simple := len(table.Cells) == table.Rows*table.Columns
+	if simple {
+		for _, cell := range table.Cells {
+			if cell.Rows != 1 || cell.Columns != 1 {
+				simple = false
+				break
+			}
+		}
+	}
+	s.tables[n.ID] = tableCache{node: n, table: table, simple: simple}
+	return table, simple
+}
+
+func (a *app) largeTableFallback(c *ui.Context, n *blocks.Node, table *blocks.Table, readOnly bool) {
+	t := c.Theme()
+	ui.Column(c).FillWidth().Padding(16).Gap(8).Background(t.Surface).Border(1, t.Border).Radius(8).Children(func() {
+		ui.Textf(c, a.tr("Large table: %d rows × %d columns"), table.Rows, table.Columns).Bold()
+		ui.Text(c, a.largeTablePreview(table)).Font("Menlo").FontSize(11).TextColor(t.TextMuted).FillWidth().Clip()
+		if readOnly {
+			ui.Text(c, a.tr("This table is shown in a compact preview to keep scrolling responsive.")).FontSize(11).TextColor(t.TextMuted)
+		} else {
+			ui.Text(c, a.tr("This table uses a compact preview to keep editing responsive.")).FontSize(11).TextColor(t.TextMuted)
+		}
+		if ghostButton(c, a.tr("Open Source mode")).Clicked() {
+			a.changeMode("Source")
+		}
+	})
+}
+
+func (a *app) largeTablePreview(table *blocks.Table) string {
+	rows := make([]int, 0, 6)
+	for row := 0; row < table.Rows && len(rows) < 3; row++ {
+		rows = append(rows, row)
+	}
+	for row := max(3, table.Rows-3); row < table.Rows; row++ {
+		if row >= 0 {
+			rows = append(rows, row)
+		}
+	}
+	var b strings.Builder
+	for i, row := range rows {
+		if i == 3 && table.Rows > 6 {
+			b.WriteString("…\n")
+		}
+		for column := 0; column < table.Columns; column++ {
+			if column > 0 {
+				b.WriteString(" | ")
+			}
+			text := ""
+			if cell := table.At(row, column); cell != nil {
+				text = cell.Node.Plain()
+			} else if table.Preview != nil {
+				text = table.Preview[[2]int{row, column}]
+			}
+			runes := []rune(text)
+			if len(runes) > 96 {
+				text = string(runes[:96]) + "…"
+			}
+			b.WriteString(text)
+		}
+		b.WriteByte('\n')
+	}
+	return b.String()
 }
 
 func (a *app) blockColumns(c *ui.Context, n *blocks.Node, readOnly bool, depth int) {

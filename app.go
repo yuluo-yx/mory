@@ -72,6 +72,8 @@ type app struct {
 	words, characters                                                               int
 	headingSource                                                                   string
 	headings                                                                        []document.Heading
+	structuredHeadingVersion                                                        uint64
+	structuredHeadings                                                              []structuredHeading
 	slashPending                                                                    bool
 	slashOffset                                                                     int
 	plugins                                                                         []*plugins.Plugin
@@ -82,6 +84,43 @@ type app struct {
 	renameTitle, moveFolder, moveParent                                             string
 	target                                                                          *library.Note
 	insertQuery                                                                     string
+}
+
+type structuredHeading struct {
+	id    string
+	title string
+	level int
+}
+
+const (
+	lazyRichDocumentBytes = 256 << 10
+	largeDocumentBytes    = 512 << 10
+)
+
+func largeDocumentBlocks(n *library.Note) bool {
+	if n == nil || len(n.Source) <= largeDocumentBytes {
+		return false
+	}
+	// The library may normalize imported Markdown to a format that looks rich
+	// safe even when its content contains thousands of layout-heavy rows. The
+	// byte threshold is therefore the reliable guard for the first frame.
+	return true
+}
+
+func (a *app) ensureRichDocument() {
+	if a.current == nil {
+		return
+	}
+	if a.doc != nil && a.richSource == a.current.Source {
+		return
+	}
+	a.doc = richtext.NewDocument(a.richText(a.current.Source))
+	a.richPending = false
+	a.richSource = a.current.Source
+	a.richVersion = a.doc.Version()
+	if a.current.Format == "markdown" {
+		a.doc.SetSelection(0, 0)
+	}
 }
 
 func newApp(dir string) (*app, error) {
@@ -213,17 +252,30 @@ func (a *app) loadEditors() {
 	}
 	n := a.current
 	a.blockEditor = nil
-	if n.Format == "xml" || !document.RichSafe(n.Source) {
+	a.structuredHeadingVersion = 0
+	a.structuredHeadings = nil
+	largeDocument := largeDocumentBlocks(n)
+	if largeDocument || n.Format == "xml" || !document.RichSafe(n.Source) {
+		// Large documents use the block editor from the first frame. This keeps
+		// the normal Write experience while avoiding a second whole-document
+		// rich-text tree and allows large tables to use their compact renderer.
 		session, err := newBlockSession(n.Source, n.Format)
 		if !a.fail(err) {
 			a.blockEditor = session
 		}
 	}
-	a.doc = richtext.NewDocument(a.richText(n.Source))
 	a.richPending = false
 	a.codePending = false
-	a.richSource = n.Source
-	a.richVersion = a.doc.Version()
+	if a.blockEditor != nil && (largeDocument || len(n.Source) > lazyRichDocumentBytes) {
+		// Large structured documents are edited through block fields. Building a
+		// second rich-text tree here duplicates the whole document before the
+		// first frame and delays the window for no user-visible benefit.
+		a.doc = nil
+		a.richSource = ""
+		a.richVersion = 0
+	} else {
+		a.ensureRichDocument()
+	}
 	b := editor.NewBuffer(n.Source)
 	name := "note.md"
 	if n.Format == "xml" {
@@ -232,9 +284,6 @@ func (a *app) loadEditors() {
 	b.SetLanguage(editor.LanguageFor(name))
 	a.code = &editor.State{Buffer: b, SoftWrap: true}
 	a.codeVersion = b.Version()
-	if n.Format == "markdown" {
-		a.doc.SetSelection(0, 0)
-	}
 	a.preview.LoadImage = markdown.FileImages(a.assetRoot())
 	a.preview.OnLink = a.openLink
 	a.preview.Extensions = parser.Default | parser.ExtDollarMath
@@ -248,22 +297,22 @@ func (a *app) changeMode(mode string) {
 	a.capture()
 	a.flushSource()
 	if mode == "Write" || mode == "Read" {
-		if a.current.Format == "xml" || !document.RichSafe(a.current.Source) {
+		if largeDocumentBlocks(a.current) || a.current.Format == "xml" || !document.RichSafe(a.current.Source) {
 			if a.blockEditor == nil || a.blockEditor.doc.Source() != a.current.Source {
 				session, err := newBlockSession(a.current.Source, a.current.Format)
 				if a.fail(err) {
 					return
 				}
 				a.blockEditor = session
+				a.structuredHeadingVersion = 0
+				a.structuredHeadings = nil
 			}
 		} else {
 			a.blockEditor = nil
 		}
-		if a.richSource != a.current.Source {
-			a.doc.SetText(a.richText(a.current.Source))
-			a.richSource = a.current.Source
+		if a.blockEditor == nil {
+			a.ensureRichDocument()
 		}
-		a.richVersion = a.doc.Version()
 	} else if mode == "Source" || mode == "Split" {
 		if a.code.Buffer.String() != a.current.Source {
 			a.code.Buffer.Set(a.current.Source)

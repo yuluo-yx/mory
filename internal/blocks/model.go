@@ -23,10 +23,21 @@ type Node struct {
 	Attrs      map[string]string
 	Text       string
 	Children   []*Node
+	Compact    *CompactTable
 	raw        string
 	baseline   [32]byte
 	markdown   string
 	mdBaseline [32]byte
+}
+
+// CompactTable keeps the source and the small amount of geometry needed for a
+// large Markdown table preview without allocating a node tree for every cell.
+// The full table remains available in Source mode and can be parsed on demand
+// if a future editing path needs it.
+type CompactTable struct {
+	Rows, Columns int
+	Widths        []float64
+	Preview       map[[2]int]string
 }
 
 func New(kind string, children ...*Node) *Node {

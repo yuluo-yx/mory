@@ -54,6 +54,12 @@ func parseCommonMarkdown(source string) (*Node, error) {
 		case parser.FootnoteDefinition:
 			n := New("footnote", Text(strings.TrimSpace(raw)))
 			nodes = []*Node{n}
+		case parser.Table:
+			if n, ok := compactMarkdownTable(p, index); ok {
+				nodes = []*Node{n}
+			} else {
+				nodes = []*Node{markdownBlock(p, index)}
+			}
 		default:
 			nodes = []*Node{markdownBlock(p, index)}
 		}
@@ -80,6 +86,53 @@ func parseCommonMarkdown(source string) (*Node, error) {
 		root.Children = append(root.Children, gap)
 	}
 	return root, nil
+}
+
+const compactTableRows = 200
+
+// compactMarkdownTable avoids expanding thousands of ordinary Markdown table
+// cells into rich-text nodes when the UI will show a compact preview. The
+// original block spelling is still attached by parseCommonMarkdown, so saving
+// an untouched document remains byte-for-byte stable.
+func compactMarkdownTable(p *parser.Document, index int) (*Node, bool) {
+	block := p.Block(index)
+	if len(block.Align) == 0 {
+		return nil, false
+	}
+	rows := make([]int, 0, compactTableRows)
+	for row := range p.Children(index) {
+		rows = append(rows, row)
+	}
+	if len(rows) < compactTableRows {
+		return nil, false
+	}
+	info := &CompactTable{
+		Rows:    len(rows),
+		Columns: len(block.Align),
+		Widths:  make([]float64, len(block.Align)),
+		Preview: make(map[[2]int]string),
+	}
+	for i := range info.Widths {
+		info.Widths[i] = 160
+	}
+	for rowPosition, row := range rows {
+		if rowPosition >= 3 && rowPosition < len(rows)-3 {
+			continue
+		}
+		column := 0
+		for cell := range p.Children(row) {
+			if column >= info.Columns {
+				break
+			}
+			b := p.Block(cell)
+			text := strings.TrimSpace(p.Source()[b.Start:b.End])
+			info.Preview[[2]int{rowPosition, column}] = text
+			column++
+		}
+	}
+	n := New("table")
+	n.Compact = info
+	return n, true
 }
 
 func (n *Node) Markdown() string {
