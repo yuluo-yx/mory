@@ -32,7 +32,7 @@ func (a *app) actions() []shortcut {
 		{"Insert image or attachment", "", a.chooseAttachment},
 		{"Plugins", "", func() { a.pluginsOpen = true }},
 		{"New folder", "", func() { a.folderName, a.folderFrom = "", ""; a.folderOpen = true }},
-		{"New note", "Cmd+N", func() { a.createNote("", "Untitled") }},
+		{"New note", "Cmd+N", func() { a.createNote("", "") }},
 		{"Quick note", "Cmd+Alt+N", a.quickNote},
 		{"Import", "Cmd+O", a.chooseImport},
 		{"Open local file", "Cmd+Shift+O", func() { a.chooseLocal(false) }},

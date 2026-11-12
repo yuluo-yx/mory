@@ -489,7 +489,7 @@ func (a *app) blockNode(c *ui.Context, n *blocks.Node, readOnly bool, depth int)
 			case n.Kind == "sub-page-list":
 				for _, note := range a.lib.Notes {
 					if note.Parent == a.current.ID && !note.Deleted {
-						if ghostButton(c, note.Title).Clicked() {
+						if ghostButton(c, a.displayTitle(note.Title)).Clicked() {
 							a.openNote(note)
 						}
 					}

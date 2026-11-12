@@ -403,7 +403,8 @@ func (t *Theme) Rich(base *ui.Theme, font ui.Font) *richtext.Theme {
 		h := &r.Headings[i]
 		h.Size = t.Length(s, "font-size", font.Size, font.Size, h.Size*font.Size) / font.Size
 		h.Color = t.Color(s, "color", r.Text)
-		h.Top = t.Length(s, "margin-top", font.Size, font.Size, 8) / font.Size
+		// The native editor measures top spacing in heading ems, not body ems.
+		h.Top = t.Length(s, "margin-top", font.Size, font.Size, 8) / max(1, font.Size*h.Size)
 		h.Bottom = t.Length(s, "margin-bottom", font.Size, font.Size, 5) / font.Size
 		if weight, err := strconv.Atoi(t.Value(s, "font-weight")); err == nil {
 			h.Weight = weight
@@ -411,6 +412,7 @@ func (t *Theme) Rich(base *ui.Theme, font ui.Font) *richtext.Theme {
 	}
 	if base.Dark {
 		r.Text = base.Text
+		r.Marker = base.Text
 		r.Link = ui.Hex("#8db2ff")
 		r.QuoteText = base.TextMuted
 		r.Code = base.Text

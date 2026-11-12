@@ -37,6 +37,14 @@ func (a *app) tr(message string) string {
 
 func (a *app) trf(message string, values ...any) string { return fmt.Sprintf(a.tr(message), values...) }
 
+// Empty titles get a localized label only when displayed, never in saved content.
+func (a *app) displayTitle(title string) string {
+	if strings.TrimSpace(title) == "" {
+		return a.tr("Untitled")
+	}
+	return title
+}
+
 func (a *app) dateText(value time.Time, withTime bool) string {
 	layout := "Jan 2, 2006"
 	if a.lib.Settings.Language == "zh-CN" {

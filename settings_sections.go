@@ -129,4 +129,5 @@ func (a *app) editorSettings(c *ui.Context) {
 		})
 		ui.Checkbox(c, &a.outline, a.tr("Show outline"))
 	})
+	a.historySettings(c)
 }

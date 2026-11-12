@@ -168,13 +168,21 @@ func (a *app) capture() {
 }
 
 func (a *app) save() bool {
+	return a.saveWithHistory(false)
+}
+
+func (a *app) saveWithHistory(force bool) bool {
 	a.capture()
 	a.flushSource()
 	if a.current == nil || !a.dirty {
 		return true
 	}
 	a.current.Updated = time.Now()
-	if a.fail(a.lib.Save(a.current)) {
+	save := a.lib.Save
+	if force {
+		save = a.lib.SaveWithHistory
+	}
+	if a.fail(save(a.current)) {
 		if err := a.lib.Recover(a.current); err != nil {
 			a.problem += "; recovery: " + err.Error()
 		}
@@ -313,7 +321,7 @@ func (a *app) createChildNote(parent *library.Note) {
 	if !a.save() {
 		return
 	}
-	n, err := a.lib.Create("Untitled", "", "markdown")
+	n, err := a.lib.Create("", "", "markdown")
 	if a.fail(err) {
 		return
 	}

@@ -19,7 +19,20 @@ func sourceHash(b []byte) string { sum := sha256.Sum256(b); return hex.EncodeToS
 // beforeSave checkpoints the previous source and checks external-file ownership.
 // A recovery copy is durable before replacing an external document, since two
 // separate filesystem paths cannot be committed with a single rename.
-func (l *Library) beforeSave(n *Note, path string) error {
+func (l *Library) beforeSave(n *Note, path string, forceHistory bool, now time.Time) error {
+	// Check ownership before creating history, so rejected external writes leave
+	// neither duplicate snapshots nor a changed external document.
+	var current []byte
+	if n.External != "" {
+		var err error
+		current, err = os.ReadFile(n.External)
+		if err != nil {
+			return err
+		}
+		if sourceHash(current) != n.ExternalHash {
+			return ErrConflict
+		}
+	}
 	b, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
@@ -30,24 +43,13 @@ func (l *Library) beforeSave(n *Note, path string) error {
 			return err
 		}
 		if old.Source != n.Source {
-			dir := filepath.Join(l.Dir, "history", n.ID)
-			if err := os.MkdirAll(dir, 0o755); err != nil {
-				return err
-			}
-			if err := AtomicWrite(filepath.Join(dir, time.Now().UTC().Format("20060102T150405.000000000")+".json"), b); err != nil {
+			if err := l.checkpoint(n.ID, b, forceHistory, now); err != nil {
 				return err
 			}
 		}
 	}
 	if n.External == "" {
 		return nil
-	}
-	current, err := os.ReadFile(n.External)
-	if err != nil {
-		return err
-	}
-	if sourceHash(current) != n.ExternalHash {
-		return ErrConflict
 	}
 	if string(current) == n.Source {
 		return nil
@@ -153,6 +155,14 @@ type Revision struct {
 func (l *Library) History(id string) ([]Revision, error) {
 	if !validID(id) {
 		return nil, fmt.Errorf("invalid note ID")
+	}
+	unlock, err := l.lock()
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	if err := l.pruneHistory(id, time.Now()); err != nil {
+		return nil, err
 	}
 	dir := filepath.Join(l.Dir, "history", id)
 	entries, err := os.ReadDir(dir)

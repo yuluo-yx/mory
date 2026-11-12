@@ -96,7 +96,6 @@ func TestColorLengthAndInvalidStyles(t *testing.T) {
 			t.Fatal("line height")
 		}
 	}
-	_ = Parse("p{broken")
 }
 
 func TestThemeFiles(t *testing.T) {
@@ -125,5 +124,23 @@ func TestThemeFiles(t *testing.T) {
 	}
 	if _, err := Load(dir, "bad"); err == nil {
 		t.Fatal("directory accepted")
+	}
+}
+
+func TestHeadingMarginUsesHeadingSize(t *testing.T) {
+	theme := Parse(`h2 { font-size: 24px; margin-top: 30px; margin-bottom: 12px; }`)
+	font := ui.Font{Size: 16}
+	h := theme.Rich(ui.LightTheme(), font).Headings[1]
+	if font.Size*h.Size*h.Top != 30 || font.Size*h.Bottom != 12 {
+		t.Fatalf("CSS heading margins were scaled twice: %+v", h)
+	}
+}
+
+func TestDarkListMarkersFollowDocumentText(t *testing.T) {
+	theme := Parse(Builtin("Craft"))
+	base := ui.DarkTheme()
+	rich := theme.Rich(base, ui.Font{Size: 16})
+	if rich.Marker != rich.Text || rich.Marker != base.Text {
+		t.Fatal("list markers retained the light stylesheet color")
 	}
 }

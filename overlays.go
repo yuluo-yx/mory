@@ -81,7 +81,7 @@ func (a *app) overlays(c *ui.Context) {
 			// Note Name Input Card
 			ui.Column(c).Padding(12).Radius(8).Background(t.Surface).Border(1, t.Border.Alpha(0.6)).Gap(6).Children(func() {
 				ui.Text(c, a.tr("Note name")).FontSize(12).Bold().TextColor(t.TextMuted)
-				ui.TextInput(c, &a.renameTitle).Label(a.tr("Note name")).FillWidth().AutoFocus()
+				ui.TextInput(c, &a.renameTitle).Label(a.tr("Note name")).Placeholder(a.tr("Untitled")).FillWidth().AutoFocus()
 			})
 
 			a.documentControls(c)
@@ -148,7 +148,7 @@ func (a *app) overlays(c *ui.Context) {
 				if n.Deleted || n == a.target {
 					continue
 				}
-				label := n.Title + " · " + n.ID[:6]
+				label := a.displayTitle(n.Title) + " · " + n.ID[:6]
 				choices = append(choices, label)
 				ids[label] = n.ID
 				if n.ID == a.moveParent {
@@ -157,6 +157,10 @@ func (a *app) overlays(c *ui.Context) {
 			}
 			if ui.Select(c, &selected, choices).Label(a.tr("Parent document")).FillWidth().Changed() {
 				a.moveParent = ids[selected]
+			}
+			if ui.Button(c, a.tr("Cancel")).Clicked() {
+				a.moveOpen, a.batchMove = false, false
+				a.moveFolder, a.moveParent = "", ""
 			}
 			if ui.PrimaryButton(c, a.tr("Move")).Clicked() {
 				if a.batchMove {
@@ -178,15 +182,13 @@ func (a *app) overlays(c *ui.Context) {
 		}
 		ui.Column(c).Width(400).Gap(16).Children(func() {
 			ui.Text(c, a.tr("In the Trash")).FontSize(24)
-			ui.Text(c, a.target.Title)
+			ui.Text(c, a.displayTitle(a.target.Title))
 			ui.Text(c, a.tr("Restore this note, or permanently delete it. Permanent deletion cannot be undone."))
 			ui.Row(c).Gap(10).Children(func() {
-				if ui.PrimaryButton(c, a.tr("Restore note")).Clicked() {
-					a.fail(a.lib.TrashTree(a.target, false))
+				if ui.PrimaryButton(c, a.tr("Restore note")).Clicked() && !a.fail(a.lib.TrashTree(a.target, false)) {
 					a.deleteOpen = false
 				}
-				if ui.Button(c, a.tr("Delete permanently")).Clicked() {
-					a.fail(a.lib.Purge(a.target))
+				if ui.Button(c, a.tr("Delete permanently")).Clicked() && !a.fail(a.lib.Purge(a.target)) {
 					a.deleteOpen = false
 				}
 				if ui.Button(c, a.tr("Cancel")).Clicked() {

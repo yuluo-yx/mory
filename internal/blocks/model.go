@@ -448,13 +448,6 @@ func (d *Document) Move(id, parentID string, at int) error {
 func IsText(n *Node) bool {
 	return n.Kind == "p" || n.Kind == "li" || n.Kind == "checkbox" || n.Kind == "title" || len(n.Kind) == 2 && n.Kind[0] == 'h' && n.Kind[1] >= '1' && n.Kind[1] <= '9'
 }
-func IsInline(n *Node) bool {
-	switch n.Kind {
-	case "#text", "br", "b", "strong", "i", "em", "u", "del", "s", "span", "a", "code", "latex", "time", "cite", "button", "doc-link", "sup", "sub":
-		return true
-	}
-	return false
-}
 
 // IsBlock distinguishes nested blocks from opaque inline objects inside text.
 func IsBlock(n *Node) bool {

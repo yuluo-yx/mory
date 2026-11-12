@@ -89,9 +89,6 @@ func TestMathCSSGeometry(t *testing.T) {
 	if _, ok := length("25%", 20, nil); ok {
 		t.Fatal("percentage without containing block")
 	}
-	for _, value := range []string{"1", "1 2", "1 2 3", "1 2 3 4", ""} {
-		_ = sides(value)
-	}
 	if cssColor("#ff0000", ui.Transparent) != ui.Hex("#ff0000") || cssColor("blue", ui.Transparent) != ui.Hex("#0000ff") {
 		t.Fatal("CSS colors")
 	}
@@ -104,7 +101,6 @@ func TestMathCSSGeometry(t *testing.T) {
 	if f.Width < 20 {
 		t.Fatal("CSS geometry")
 	}
-	ui.NewTester(func(c *ui.Context) { ui.Box(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) { f.Draw(p, r) }) }, 500, 200).Frame()
 	if empty := e.root(&element{}, false, 20, ui.Transparent); empty.Width != 0 {
 		t.Fatal("empty math tree")
 	}

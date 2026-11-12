@@ -350,7 +350,7 @@ func (a *app) blockOverlays(c *ui.Context) {
 				ids := map[string]string{}
 				for _, note := range a.lib.Notes {
 					if !note.Deleted {
-						label := note.Title + " · " + note.ID[:6]
+						label := a.displayTitle(note.Title) + " · " + note.ID[:6]
 						labels = append(labels, label)
 						ids[label] = note.ID
 					}

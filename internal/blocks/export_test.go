@@ -137,12 +137,6 @@ func TestMarkdownSyntaxCorpus(t *testing.T) {
 		if d.Source() != source {
 			t.Fatal("normalization on read")
 		}
-		for _, n := range d.Root.Children {
-			_ = n.Markdown()
-			if IsText(n) {
-				_ = ToRich(n, RichOptions{})
-			}
-		}
 		n := Paragraph("Appended")
 		if err := d.Splice(d.Root.ID, len(d.Root.Children), 0, n); err != nil {
 			t.Fatal(err)

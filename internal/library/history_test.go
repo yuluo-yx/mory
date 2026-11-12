@@ -3,9 +3,12 @@ package library
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestExternalHistoryAndConflictRecovery(t *testing.T) {
@@ -210,5 +213,331 @@ func TestHistoryIOErrors(t *testing.T) {
 	}
 	if err := third.RenameFolder("", "New"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func historyFixture(t testing.TB, l *Library, n *Note, at time.Time, source string, restore bool) string {
+	t.Helper()
+	copy := *n
+	copy.Source, copy.Updated = source, at
+	b, err := json.Marshal(copy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(l.Dir, "history", n.ID)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	name := at.UTC().Format(historyTimeForm)
+	if restore {
+		name += "-restore"
+	}
+	path := filepath.Join(dir, name+".json")
+	if err := os.WriteFile(path, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestAutosaveCoalescingSurvivesReopen(t *testing.T) {
+	l, _ := Open(t.TempDir())
+	n, _ := l.Create("Draft", "original", "markdown")
+	now := time.Now().Add(-time.Hour)
+	for i := range 120 {
+		n.Source = fmt.Sprintf("edit %d", i)
+		if err := l.save(n, false, now.Add(time.Duration(i)*time.Second)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h, err := l.History(n.ID)
+	if err != nil || len(h) != 1 || h[0].Note.Source != "original" {
+		t.Fatalf("rapid saves did not retain the initial checkpoint: %+v, %v", h, err)
+	}
+	reopened, _ := Open(l.Dir)
+	n = reopened.Get(n.ID)
+	if n.Source != "edit 119" {
+		t.Fatal("autosave stopped writing current content")
+	}
+	n.Source = "after reopen"
+	if err := reopened.save(n, false, now.Add(4*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	h, _ = reopened.History(n.ID)
+	if len(h) != 1 {
+		t.Fatal("reopening reset the checkpoint interval")
+	}
+	n.Source = "next interval"
+	if err := reopened.save(n, false, now.Add(5*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := reopened.save(n, false, now.Add(10*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	h, _ = reopened.History(n.ID)
+	if len(h) != 2 || h[0].Note.Source != "after reopen" {
+		t.Fatal("interval boundary or unchanged-content suppression failed", h)
+	}
+	// A backwards clock must not produce a new snapshot on every keystroke.
+	n.Source = "clock moved backwards"
+	if err := reopened.save(n, false, now); err != nil {
+		t.Fatal(err)
+	}
+	h, _ = reopened.History(n.ID)
+	if len(h) != 2 {
+		t.Fatal("clock rollback created duplicate checkpoints")
+	}
+}
+
+func TestLegacyHistoryRetentionAndIsolation(t *testing.T) {
+	l, _ := Open(t.TempDir())
+	n, _ := l.Create("Draft", "current", "markdown")
+	other, _ := l.Create("Other", "independent", "markdown")
+	now := time.Now().UTC()
+	for i := range 424 {
+		historyFixture(t, l, n, now.Add(-time.Duration(i)*time.Second), fmt.Sprintf("legacy %d", i), false)
+	}
+	otherPath := historyFixture(t, l, other, now.Add(-90*24*time.Hour), "other old version", false)
+	historyFixture(t, l, n, now.Add(-90*24*time.Hour), "expired", false)
+	unknown := filepath.Join(l.Dir, "history", n.ID, "readme.txt")
+	mustWrite(t, unknown, []byte("Keep unrelated files"))
+	if err := l.Recover(n); err != nil {
+		t.Fatal(err)
+	}
+	h, err := l.History(n.ID)
+	if err != nil || len(h) != 2 || h[0].Note.Source != "legacy 0" || h[1].Note.Source != "legacy 300" {
+		t.Fatalf("legacy coalescing: %+v, %v", h, err)
+	}
+	for _, path := range []string{otherPath, unknown, l.recoveryPath(n), filepath.Join(l.Dir, "notes", n.ID+".json")} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatal("retention touched unrelated data", path, err)
+		}
+	}
+	if err := l.pruneHistory(n.ID, now.Add(120*24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	files, _ := l.historyFiles(n.ID)
+	if len(files) != 1 {
+		t.Fatal("expired documents must keep their latest checkpoint")
+	}
+}
+
+func TestHistoryCountAndStorageLimits(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		size int64
+		want int
+	}{
+		{"count", 0, 3},
+		{"bytes", 600 << 10, 1},
+		{"oversized latest", 2 << 20, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			l, _ := Open(t.TempDir())
+			n, _ := l.Create("Draft", "current", "markdown")
+			l.Settings.History = HistorySettings{MaxVersions: 3, MaxMiB: 1}
+			now := time.Now()
+			for i := range 6 {
+				path := historyFixture(t, l, n, now.Add(-time.Duration(i)*time.Hour), fmt.Sprint(i), false)
+				if tc.size > 0 {
+					// Sparse fixtures exercise byte accounting without allocating large documents.
+					if err := os.Truncate(path, tc.size); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			if err := l.pruneHistory(n.ID, now); err != nil {
+				t.Fatal(err)
+			}
+			files, _ := l.historyFiles(n.ID)
+			if len(files) != tc.want || files[0].name != now.UTC().Format(historyTimeForm)+".json" {
+				t.Fatalf("retention lost the latest checkpoint or exceeded the limit: %+v", files)
+			}
+		})
+	}
+}
+
+func TestHistoryDisabledAndRestoreCheckpoints(t *testing.T) {
+	l, _ := Open(t.TempDir())
+	n, _ := l.Create("Draft", "original", "markdown")
+	n.Source = "working copy"
+	if err := l.Save(n); err != nil {
+		t.Fatal(err)
+	}
+	l.Settings.History.Disabled = true
+	n.Source = "latest working copy"
+	if err := l.Save(n); err != nil {
+		t.Fatal(err)
+	}
+	h, _ := l.History(n.ID)
+	if len(h) != 1 || h[0].Note.Source != "original" {
+		t.Fatal("disabling history deleted or added ordinary snapshots")
+	}
+	n.Source = "original"
+	if err := l.SaveWithHistory(n); err != nil {
+		t.Fatal(err)
+	}
+	h, _ = l.History(n.ID)
+	if len(h) != 2 || h[0].Note.Source != "latest working copy" {
+		t.Fatal("restore did not preserve the previous working copy", h)
+	}
+	l.Settings.History.Disabled = false
+	n.Source = "latest working copy"
+	if err := l.SaveWithHistory(n); err != nil {
+		t.Fatal(err)
+	}
+	h, _ = l.History(n.ID)
+	if len(h) != 3 || h[0].Note.Source != "original" {
+		t.Fatal("retention coalesced explicit restore checkpoints", h)
+	}
+}
+
+func TestHistoryPolicyValidationAndPersistence(t *testing.T) {
+	l, _ := Open(t.TempDir())
+	if l.HistoryPolicy() != DefaultHistorySettings() {
+		t.Fatal("legacy settings did not use bounded defaults")
+	}
+	l.Settings.History = HistorySettings{IntervalMinutes: -1, RetentionDays: 366, MaxVersions: 1001, MaxMiB: 1025}
+	if l.HistoryPolicy() != DefaultHistorySettings() {
+		t.Fatal("invalid settings did not fall back to defaults")
+	}
+	policy := HistorySettings{Disabled: true, IntervalMinutes: 10, RetentionDays: 7, MaxVersions: 20, MaxMiB: 16}
+	l.Settings.History = policy
+	if err := l.SaveSettings(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := Open(l.Dir)
+	if err != nil || reopened.HistoryPolicy() != policy {
+		t.Fatal("history settings did not persist", err)
+	}
+	policy.Disabled = false
+	l.Settings.History = policy
+	if err := l.SaveSettings(); err != nil {
+		t.Fatal(err)
+	}
+	if err := reopened.ReloadSettings(); err != nil || reopened.HistoryPolicy() != policy {
+		t.Fatal("history settings did not reload", err)
+	}
+	// A custom interval affects actual saves, not just the settings display.
+	n, _ := l.Create("Draft", "original", "markdown")
+	now := time.Now().Add(-time.Hour)
+	for _, minutes := range []int{0, 5, 10} {
+		n.Source = fmt.Sprint(minutes)
+		if err := l.save(n, false, now.Add(time.Duration(minutes)*time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h, _ := l.History(n.ID)
+	if len(h) != 2 || h[0].Note.Source != "5" {
+		t.Fatal("custom interval was ignored", h)
+	}
+}
+
+func TestRestoreCheckpointSurvivesClockRollbackAndTightLimit(t *testing.T) {
+	l, _ := Open(t.TempDir())
+	n, _ := l.Create("Draft", "current", "markdown")
+	l.Settings.History.MaxVersions = 1
+	now := time.Now()
+	historyFixture(t, l, n, now.Add(time.Hour), "future timestamp", false)
+	n.Source = "restored"
+	if err := l.save(n, true, now); err != nil {
+		t.Fatal(err)
+	}
+	h, err := l.History(n.ID)
+	if err != nil || len(h) != 1 || h[0].Note.Source != "current" {
+		t.Fatal("clock rollback pruned the pre-restore working version", h, err)
+	}
+}
+
+func TestPurgeRemovesOnlyOwnedCopies(t *testing.T) {
+	l, _ := Open(t.TempDir())
+	n, _ := l.Create("Deleted", "original", "markdown")
+	other, _ := l.Create("Other", "keep", "markdown")
+	n.Source = "changed"
+	if err := l.Save(n); err != nil {
+		t.Fatal(err)
+	}
+	for _, note := range []*Note{n, other} {
+		if err := l.Recover(note); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustWrite(t, filepath.Join(l.Dir, "recovery", n.ID+".json"), []byte("legacy recovery"))
+	asset := filepath.Join(l.Dir, "assets", "shared.txt")
+	mustWrite(t, asset, []byte("shared asset"))
+	otherHistory := historyFixture(t, l, other, time.Now(), "other version", false)
+	if err := l.SetDeleted(n, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Purge(n); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(l.Dir, "history", n.ID)); !os.IsNotExist(err) {
+		t.Fatal("purge retained the history directory", err)
+	}
+	entries, _ := os.ReadDir(filepath.Join(l.Dir, "recovery"))
+	if len(entries) != 1 || !strings.HasPrefix(entries[0].Name(), other.ID) {
+		t.Fatal("purge retained owned recoveries or removed another note's recovery")
+	}
+	for _, path := range []string{asset, otherHistory} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatal("purge removed shared or unrelated data", err)
+		}
+	}
+	if err := l.Purge(&Note{ID: "../invalid", Deleted: true}); err == nil {
+		t.Fatal("invalid purge ID accepted")
+	}
+}
+
+func TestHistoryFailureLeavesCurrentDocumentIntact(t *testing.T) {
+	l, _ := Open(t.TempDir())
+	n, _ := l.Create("Draft", "original", "markdown")
+	// A file at the history-directory path makes checkpoint creation fail.
+	mustWrite(t, filepath.Join(l.Dir, "history", n.ID), []byte("blocked"))
+	n.Source = "unsaved edit"
+	if err := l.Save(n); err == nil {
+		t.Fatal("failed checkpoint was ignored")
+	}
+	reopened, _ := Open(l.Dir)
+	if reopened.Get(n.ID).Source != "original" {
+		t.Fatal("checkpoint failure overwrote the original")
+	}
+	if _, err := l.History(n.ID); err == nil {
+		t.Fatal("unreadable history was ignored")
+	}
+	// An external conflict must not generate history before ownership validation.
+	path := filepath.Join(t.TempDir(), "external.md")
+	mustWrite(t, path, []byte("external original"))
+	external, _ := l.OpenExternal(path)
+	mustWrite(t, path, []byte("changed elsewhere"))
+	external.Source = "local edit"
+	if err := l.Save(external); !errors.Is(err, ErrConflict) {
+		t.Fatal("external conflict was ignored", err)
+	}
+	h, err := l.History(external.ID)
+	if err != nil || len(h) != 0 {
+		t.Fatal("rejected external save created history", h, err)
+	}
+}
+
+func BenchmarkAutosaveWithBoundedHistory(b *testing.B) {
+	l, err := Open(b.TempDir())
+	if err != nil {
+		b.Fatal(err)
+	}
+	n, err := l.Create("Draft", "current", "markdown")
+	if err != nil {
+		b.Fatal(err)
+	}
+	now := time.Now()
+	for i := range 100 {
+		historyFixture(b, l, n, now.Add(-time.Duration(i)*5*time.Minute), fmt.Sprint(i), false)
+	}
+	i := 0
+	for b.Loop() {
+		i++
+		n.Source = fmt.Sprintf("Autosaved edit %d", i)
+		if err := l.save(n, false, now); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
