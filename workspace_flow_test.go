@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -82,6 +83,10 @@ func TestBatchFolderAndRecoveryUI(t *testing.T) {
 	click(t, tt, "Restore")
 	if a.current.Source != "one" {
 		t.Fatal("history restore")
+	}
+	restoredHistory, err := a.lib.History(one.ID)
+	if err != nil || len(restoredHistory) < 2 || restoredHistory[0].Note.Source != "changed" {
+		t.Fatal("restoring history lost the previous working version", err)
 	}
 	a.current.Source = "Recover me"
 	if err := a.lib.Recover(a.current); err != nil {
@@ -358,5 +363,329 @@ func TestSafeWindowRefreshKeepsNewLibraryEntries(t *testing.T) {
 	data, _ := json.Marshal(map[string]string{"invalid": "data"})
 	if err = os.WriteFile(filepath.Join(a.lib.Dir, "notes", id+".json"), data, 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestBatchSelectionToggleAndCancel(t *testing.T) {
+	for _, section := range []string{"All notes", "Trash"} {
+		for _, list := range []bool{false, true} {
+			a := testApp(t)
+			a.createNote("First content", "One")
+			one := a.current
+			a.createNote("Second content", "Two")
+			two := a.current
+			if section == "Trash" {
+				a.trash(one)
+				a.trash(two)
+			}
+			a.home(section)
+			a.lib.Settings.List = list
+			path := filepath.Join(a.lib.Dir, "notes", one.ID+".json")
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tt := ui.NewTester(a.view, 1440, 900)
+			click(t, tt, "Select notes")
+			click(t, tt, "Select all")
+			if !tt.HasText("Deselect all") || len(a.selectedNotes()) != 2 {
+				t.Fatal("select-all did not become deselect-all")
+			}
+			cancel, cancelOK := tt.AccessByRole(ui.RoleButton, "Cancel selection")
+			done, doneOK := tt.AccessByRole(ui.RoleButton, "Done")
+			if !cancelOK || !doneOK || cancel.Offscreen || done.Offscreen || cancel.Bounds.X >= done.Bounds.X {
+				t.Fatal("Cancel is not visible beside Done")
+			}
+			for _, width := range []int{1000, 1440} {
+				tt.SetSize(width, 900)
+				for _, label := range []string{"Cancel selection", "Done"} {
+					control, ok := tt.AccessByRole(ui.RoleButton, label)
+					if !ok || control.Offscreen || control.Bounds.W < 30 || control.Bounds.X+control.Bounds.W > float32(width) {
+						t.Fatalf("%s is clipped at window width %d: %+v", label, width, control)
+					}
+				}
+			}
+			click(t, tt, "Select One")
+			if !tt.HasText("Select all") || len(a.selectedNotes()) != 1 {
+				t.Fatal("partial selection did not restore the select-all action")
+			}
+			click(t, tt, "Select all")
+			click(t, tt, "Deselect all")
+			if !tt.HasText("Select all") || len(a.selectedNotes()) != 0 || !a.selecting {
+				t.Fatal("deselect-all failed or unexpectedly exited management")
+			}
+			action := "Duplicate selected"
+			if section == "Trash" {
+				action = "Restore selected"
+			}
+			button, ok := tt.AccessByRole(ui.RoleButton, action)
+			if !ok || !button.Disabled {
+				t.Fatal("empty selection still allows batch actions")
+			}
+			click(t, tt, "Select all")
+			if dir := os.Getenv("MORY_TEST_IMAGES"); dir != "" && section == "All notes" && list {
+				a.lib.Settings.Language = "zh-CN"
+				tt.Frame()
+				saveImage(t, tt, filepath.Join(dir, "batch-selection.png"))
+				a.lib.Settings.Language = "en"
+				tt.Frame()
+			}
+			click(t, tt, "Cancel selection")
+			if a.selecting || len(a.selected) != 0 || tt.HasText("Deselect all") {
+				t.Fatal("cancel did not discard the selection")
+			}
+			after, err := os.ReadFile(path)
+			if err != nil || !bytes.Equal(before, after) || len(a.lib.Notes) != 2 {
+				t.Fatal("cancel changed stored documents", err)
+			}
+			click(t, tt, "Select notes")
+			click(t, tt, "Select all")
+			click(t, tt, "Done")
+			if a.selecting || len(a.selected) != 0 {
+				t.Fatal("Done stopped exiting management")
+			}
+		}
+	}
+}
+
+func TestBatchSelectionFilterAndMoveCancellation(t *testing.T) {
+	a := testApp(t)
+	a.createNote("First", "One")
+	one := a.current
+	a.createNote("Second", "Two")
+	two := a.current
+	a.home("All notes")
+	tt := ui.NewTester(a.view, 1440, 900)
+	click(t, tt, "Select notes")
+	click(t, tt, "Select all")
+	a.query = "One"
+	tt.Frame()
+	click(t, tt, "Deselect all")
+	if a.selected[one.ID] || !a.selected[two.ID] || len(a.selectedNotes()) != 0 {
+		t.Fatal("deselect-all did not respect the current filtered list")
+	}
+	a.query = "no matches"
+	tt.Frame()
+	button, ok := tt.AccessByRole(ui.RoleButton, "Select all")
+	if !ok || !button.Disabled {
+		t.Fatal("empty list should disable select-all")
+	}
+	a.query = ""
+	tt.Frame()
+	click(t, tt, "Select all")
+	click(t, tt, "Move selected…")
+	click(t, tt, "Folder name")
+	tt.Type("Do not move here")
+	click(t, tt, "Cancel")
+	if a.moveOpen || a.batchMove || a.moveFolder != "" || one.Folder != "" || two.Folder != "" || len(a.selectedNotes()) != 2 {
+		t.Fatal("canceling a move changed documents or lost the selection")
+	}
+	click(t, tt, "Cancel selection")
+	if a.selecting || len(a.selected) != 0 {
+		t.Fatal("canceling management retained filtered or selected items")
+	}
+}
+
+func TestVisibleTrashNavigationAndRecovery(t *testing.T) {
+	a := testApp(t)
+	a.createNote("Keep this content", "Recoverable document")
+	note := a.current
+	tt := ui.NewTester(a.view, 1280, 820)
+	entry, ok := tt.AccessByRole(ui.RoleButton, "Open Trash")
+	if !ok || entry.Offscreen || entry.Bounds.W < 100 || entry.Bounds.H < 24 {
+		t.Fatalf("Trash entry is not a visible navigation control: %+v", entry)
+	}
+	if err := tt.RightClick("Open Recoverable document"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.ChooseMenuItem("Move to Trash"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	stored, err := library.Open(a.lib.Dir)
+	if err != nil || !stored.Get(note.ID).Deleted || stored.Get(note.ID).Source != "Keep this content" {
+		t.Fatal("Move to Trash did not preserve the library document", err)
+	}
+	if !tt.HasText("1 documents in Trash") {
+		t.Fatal("sidebar did not show the trash count")
+	}
+	tab, ok := tt.AccessByRole(ui.RoleButton, "Trash")
+	if !ok || tab.Offscreen || tab.Bounds.W < 40 || tab.Bounds.H < 24 {
+		t.Fatalf("home page Trash tab is hidden: %+v", tab)
+	}
+	click(t, tt, "Open Trash")
+	if a.section != "Trash" || !tt.HasText("Note Recoverable document") || !tt.HasText("Mory Trash") {
+		t.Fatal("visible Trash entry did not show the deleted document")
+	}
+	if dir := os.Getenv("MORY_TEST_IMAGES"); dir != "" {
+		a.lib.Settings.Language = "zh-CN"
+		tt.Frame()
+		saveImage(t, tt, filepath.Join(dir, "trash-navigation.png"))
+		a.lib.Settings.Language = "en"
+		tt.Frame()
+	}
+	click(t, tt, "Note Recoverable document")
+	click(t, tt, "Restore note")
+	if note.Deleted || !tt.HasText("Trash is empty") || tt.HasText("Create a blank note") {
+		t.Fatal("restoring did not leave a proper empty Trash view")
+	}
+	click(t, tt, "All notes")
+	if !tt.HasText("Note Recoverable document") {
+		t.Fatal("restored document is missing from the library")
+	}
+	// The home tab stays usable when the sidebar is hidden.
+	a.focus = true
+	tt.Frame()
+	click(t, tt, "Trash")
+	if a.section != "Trash" || !tt.HasText("Trash is empty") {
+		t.Fatal("home Trash tab did not work without the sidebar")
+	}
+	a.focus = false
+	a.trash(note)
+	tt.Frame()
+	click(t, tt, "Note Recoverable document")
+	click(t, tt, "Cancel")
+	if a.lib.Get(note.ID) == nil {
+		t.Fatal("canceling permanent deletion removed the document")
+	}
+	click(t, tt, "Note Recoverable document")
+	click(t, tt, "Delete permanently")
+	if a.lib.Get(note.ID) != nil || !tt.HasText("Trash is empty") {
+		t.Fatal("confirmed permanent deletion did not finish")
+	}
+}
+
+func TestTrashSearchEmptyState(t *testing.T) {
+	a := testApp(t)
+	a.createNote("Content", "Deleted document")
+	a.trash(a.current)
+	a.home("Trash")
+	a.query = "no matching title"
+	tt := ui.NewTester(a.view, 1280, 820)
+	if !tt.HasText("No matching documents in Trash.") || tt.HasText("Trash is empty") {
+		t.Fatal("filtered Trash incorrectly claims it contains no documents")
+	}
+}
+
+func TestExternalAttachmentsSurviveLibraryCopy(t *testing.T) {
+	a := testApp(t)
+	folder := t.TempDir()
+	path := filepath.Join(folder, "External.md")
+	writeTest(t, path, "External document")
+	a.openExternal(path)
+	a.insertAsset(pngBytes(t), "Picture.png")
+	image := firstBlock(a, "img")
+	if image == nil {
+		t.Fatal("external image insertion")
+	}
+	asset := image.Attr("href")
+	if _, err := os.Stat(filepath.Join(a.assetRoot(), asset)); err != nil {
+		t.Fatal("asset not stored beside external file", err)
+	}
+	a.current.Cover = asset
+	a.markDirty()
+	if !a.save() {
+		t.Fatal(a.problem)
+	}
+	original := a.current
+	copy, err := a.duplicateWithAssets(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if copy.External != "" {
+		t.Fatal("copy still edits the original")
+	}
+	a.openNote(copy)
+	page, err := renderExport(copy, a.assetRoot())
+	if err != nil || !strings.Contains(page, "data:image/png") {
+		t.Fatal("copied document has broken images", err)
+	}
+	if a.loadAssetBitmap(copy.Cover) == nil {
+		t.Fatal("copied cover is missing")
+	}
+	d, err := blocks.Parse(copy.Source, copy.Format)
+	if err != nil || !strings.Contains(d.Root.XML(), "assets/") {
+		t.Fatal("asset references not portable", err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal("original removed")
+	}
+	original.Source = "![Missing](missing.png)"
+	if _, err := a.duplicateWithAssets(original); err == nil {
+		t.Fatal("missing asset silently ignored")
+	}
+	original.Source = "Text"
+	original.Cover = "missing.png"
+	if _, err := a.duplicateWithAssets(original); err == nil {
+		t.Fatal("missing cover silently ignored")
+	}
+}
+
+func TestWelcomeGuidePreservesUserEdits(t *testing.T) {
+	a := testApp(t)
+	a.openWelcome()
+	first := a.current
+	if first == nil || first.Source != welcome {
+		t.Fatal("welcome guide not opened")
+	}
+	image, err := os.ReadFile(filepath.Join(a.lib.Dir, "assets", "mory-welcome.png"))
+	if err != nil || !bytes.Equal(image, iconPNG) {
+		t.Fatal("offline artwork missing", err)
+	}
+	a.openWelcome()
+	if a.current != first {
+		t.Fatal("unchanged guide duplicated")
+	}
+	first.Source = "My personal notes"
+	if err := a.lib.Save(first); err != nil {
+		t.Fatal(err)
+	}
+	a.loadEditors()
+	a.openWelcome()
+	if a.current == first || first.Source != "My personal notes" {
+		t.Fatal("edited guide overwritten")
+	}
+	guide := a.current
+	guide.Deleted = true
+	if err := a.lib.Save(guide); err != nil {
+		t.Fatal(err)
+	}
+	a.openWelcome()
+	if a.current == guide || !guide.Deleted {
+		t.Fatal("trashed guide restored unexpectedly")
+	}
+}
+
+func TestWelcomeSyntaxAndNativePreview(t *testing.T) {
+	a := testApp(t)
+	a.openWelcome()
+	s := a.blockEditor
+	if s == nil || s.doc.Source() != welcome {
+		t.Fatal("guide did not load losslessly")
+	}
+	kinds := map[string]bool{}
+	s.doc.Root.Walk(func(n *blocks.Node) { kinds[n.Kind] = true })
+	for _, kind := range []string{"h1", "h2", "h3", "h4", "h5", "h6", "h7", "h8", "h9", "p", "ul", "ol", "checkbox", "blockquote", "callout", "pre", "table", "latex", "img", "grid", "countdown", "details", "tabs", "tab-item"} {
+		if !kinds[kind] {
+			t.Errorf("guide has no %s example", kind)
+		}
+	}
+	tt := ui.NewTester(a.view, 1280, 820)
+	for i := range s.visibleBlocks() {
+		s.list.ScrollTo(i, ui.Start)
+		tt.Frame()
+	}
+	if a.problem != "" {
+		t.Fatal(a.problem)
+	}
+	for _, mode := range []string{"Source", "Split", "Read", "Write"} {
+		a.changeMode(mode)
+		tt.Frame()
+		if a.current.Source != welcome {
+			t.Fatal("mode switch rewrote the guide", mode)
+		}
+	}
+	if dir := os.Getenv("MORY_TEST_IMAGES"); dir != "" {
+		saveImage(t, tt, filepath.Join(dir, "welcome.png"))
 	}
 }

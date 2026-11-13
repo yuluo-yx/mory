@@ -47,6 +47,7 @@ type Note struct {
 }
 
 type Settings struct {
+	History         HistorySettings   `json:"history,omitzero"`
 	Language        string            `json:"language,omitempty"`
 	OutlineSide     string            `json:"outlineSide,omitempty"`
 	OutlineFontSize float32           `json:"outlineFontSize,omitempty"`
@@ -159,6 +160,16 @@ func (l *Library) Create(title, source, format string) (*Note, error) {
 // Save detects another writer before atomically replacing this note. UI changes
 // remain in memory on error, so failed saves never masquerade as success.
 func (l *Library) Save(n *Note) error {
+	return l.save(n, false, time.Now())
+}
+
+// SaveWithHistory preserves the current saved version even within the ordinary
+// checkpoint interval. Use it before replacing a document with an old revision.
+func (l *Library) SaveWithHistory(n *Note) error {
+	return l.save(n, true, time.Now())
+}
+
+func (l *Library) save(n *Note, forceHistory bool, now time.Time) error {
 	if !validID(n.ID) {
 		return errors.New("invalid note ID")
 	}
@@ -174,7 +185,7 @@ func (l *Library) Save(n *Note) error {
 	if err := checkVersion(path, l.versions[n.ID]); err != nil {
 		return err
 	}
-	if err := l.beforeSave(n, path); err != nil {
+	if err := l.beforeSave(n, path, forceHistory, now); err != nil {
 		return err
 	}
 	b, err := json.MarshalIndent(n, "", "  ")
@@ -249,7 +260,11 @@ func (l *Library) SaveSettings() error {
 }
 
 func (l *Library) Duplicate(n *Note) (*Note, error) {
-	copy, err := l.Create(n.Title+" copy", n.Source, n.Format)
+	title := n.Title
+	if strings.TrimSpace(title) != "" {
+		title += " copy"
+	}
+	copy, err := l.Create(title, n.Source, n.Format)
 	if err != nil {
 		return nil, err
 	}
@@ -272,6 +287,9 @@ func (l *Library) SetDeleted(n *Note, deleted bool) error {
 }
 
 func (l *Library) Purge(n *Note) error {
+	if !validID(n.ID) {
+		return errors.New("invalid note ID")
+	}
 	if !n.Deleted {
 		return errors.New("only trashed notes can be permanently deleted")
 	}
@@ -282,6 +300,9 @@ func (l *Library) Purge(n *Note) error {
 	defer unlock()
 	path := filepath.Join(l.Dir, "notes", n.ID+".json")
 	if err := checkVersion(path, l.versions[n.ID]); err != nil {
+		return err
+	}
+	if err := l.removeNoteCopies(n.ID); err != nil {
 		return err
 	}
 	if err := os.Remove(path); err != nil {

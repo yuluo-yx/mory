@@ -194,6 +194,23 @@ func TestOutlineMovesAndSettingsFit(t *testing.T) {
 	if again.X <= after.X {
 		t.Fatal("outline did not return to the right")
 	}
+	// Hiding either dock releases its space and the toolbar restores that dock.
+	a.current.Width = "Full"
+	for _, side := range []string{"Left", "Right"} {
+		click(t, tt, "Outline on "+side)
+		shown, _ := tt.Find("Document title")
+		source := a.current.Source
+		click(t, tt, "Hide outline")
+		tt.Frame()
+		hidden, _ := tt.Find("Document title")
+		if _, visible := tt.Find("ON THIS PAGE"); visible || a.outline || hidden.W <= shown.W {
+			t.Fatal("hiding the outline did not release the sidebar space")
+		}
+		click(t, tt, "Toggle outline")
+		if _, visible := tt.Find("ON THIS PAGE"); !visible || !a.outline || a.outlineSide() != side || a.current.Source != source {
+			t.Fatal("restoring the outline changed its position or document contents")
+		}
+	}
 	for _, size := range [][2]int{{1000, 620}, {1280, 820}, {1600, 1000}} {
 		tt.SetSize(size[0], size[1])
 		a.settingsOpen = true
@@ -431,5 +448,110 @@ func TestLocalizedChromeAndMessages(t *testing.T) {
 	}
 	if a.tr("An external plugin message") != "An external plugin message" {
 		t.Fatal("unknown content changed")
+	}
+}
+
+func TestHistorySettingsControlsAndRollback(t *testing.T) {
+	a := testApp(t)
+	a.createNote("Unsaved work", "History settings")
+	tt := ui.NewTester(func(c *ui.Context) { ui.Column(c).Fill().Children(func() { a.historySettings(c) }) }, 720, 640)
+	for _, control := range []struct{ label, value string }{
+		{"History snapshot interval", "10"},
+		{"History retention period", "7"},
+		{"History version limit", "20"},
+		{"History storage limit", "16"},
+	} {
+		click(t, tt, control.label)
+		click(t, tt, control.value)
+	}
+	want := library.HistorySettings{IntervalMinutes: 10, RetentionDays: 7, MaxVersions: 20, MaxMiB: 16}
+	if a.lib.HistoryPolicy() != want {
+		t.Fatal("history controls did not update the policy")
+	}
+	click(t, tt, "Keep version history")
+	want.Disabled = true
+	b, err := newApp(a.lib.Dir)
+	if err != nil || b.lib.HistoryPolicy() != want || a.current.Source != "Unsaved work" {
+		t.Fatal("preferences were lost or modified the document", err)
+	}
+	previousWindows := appWindows
+	appWindows = []*app{a, b}
+	t.Cleanup(func() { appWindows = previousWindows })
+	click(t, tt, "Reset history settings")
+	if b.lib.HistoryPolicy() != library.DefaultHistorySettings() {
+		t.Fatal("default history settings did not propagate to the other window")
+	}
+	if dir := os.Getenv("MORY_TEST_IMAGES"); dir != "" {
+		a.lib.Settings.Language = "zh-CN"
+		tt.Frame()
+		saveImage(t, tt, filepath.Join(dir, "history-settings.png"))
+	}
+	// A conflicting settings file must leave the previous policy active.
+	if err := os.WriteFile(filepath.Join(a.lib.Dir, "settings.json"), []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a.setHistorySettings(want)
+	if a.lib.HistoryPolicy() != library.DefaultHistorySettings() || a.problem == "" {
+		t.Fatal("failed settings write did not roll back")
+	}
+}
+
+func TestStylesheetEditorDraftAndUndo(t *testing.T) {
+	a := testApp(t)
+	a.createNote("# Original document\n\nKeep this text.", "Stylesheet editing")
+	original := a.current.Source
+	tt := ui.NewTester(a.view, 1280, 820)
+	click(t, tt, "Settings")
+	click(t, tt, "Themes")
+	click(t, tt, "Edit CSS")
+	initial := a.cssText
+	if a.cssEditor == nil || a.cssEditor.state.Buffer.Language().Name != "CSS" {
+		t.Fatal("stylesheet editor has no CSS highlighter")
+	}
+	const draft = "/* Syntax highlighting */\n:root { --accent: #007aff; }\n.page { color: var(--accent); font-size: 18px; }\nh1 { font-size: 2em; }\n"
+	click(t, tt, "Theme CSS")
+	tt.Key(ui.Cmd, ui.KeyA)
+	tt.Type(draft)
+	tt.Frame()
+	if a.cssText != draft {
+		t.Fatal("stylesheet validation draft did not follow editor input")
+	}
+	tt.Key(ui.Cmd, ui.KeyZ)
+	tt.Frame()
+	if a.cssText != initial || a.current.Source != original {
+		t.Fatal("stylesheet undo changed the document or failed to restore the CSS")
+	}
+	tt.Key(ui.Cmd|ui.Shift, ui.KeyZ)
+	tt.Frame()
+	if a.cssText != draft {
+		t.Fatal("stylesheet redo did not restore the draft")
+	}
+	if dir := os.Getenv("MORY_TEST_IMAGES"); dir != "" {
+		for _, appearance := range []string{"Light", "Dark"} {
+			a.lib.Settings.Appearance = appearance
+			tt.Frame()
+			saveImage(t, tt, filepath.Join(dir, "stylesheet-"+appearance+".png"))
+		}
+	}
+	a.cssName = "Syntax"
+	click(t, tt, "Apply stylesheet")
+	saved, err := os.ReadFile(filepath.Join(a.lib.Dir, "themes", "syntax.css"))
+	if err != nil || string(saved) != draft || a.lib.Settings.Theme != "Syntax" || a.cssEditor != nil {
+		t.Fatalf("applied stylesheet does not match the editor: %v", err)
+	}
+	click(t, tt, "Settings")
+	click(t, tt, "Duplicate theme")
+	if a.cssText != draft || a.cssEditor == nil {
+		t.Fatal("new stylesheet session did not load the current theme")
+	}
+	click(t, tt, "Theme CSS")
+	tt.Key(ui.Cmd, ui.KeyA)
+	tt.Type(".page { color: red; }")
+	click(t, tt, "Cancel")
+	if a.cssEditor != nil || a.current.Source != original {
+		t.Fatal("cancel retained the editor or changed the document")
+	}
+	if _, err := os.Stat(filepath.Join(a.lib.Dir, "themes", "syntax-copy.css")); !os.IsNotExist(err) {
+		t.Fatal("cancel saved the draft")
 	}
 }

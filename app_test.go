@@ -412,13 +412,6 @@ func TestFormattingAndFindControls(t *testing.T) {
 	if !strings.Contains(a.current.Source, "List item") {
 		t.Fatal("insert")
 	}
-	for _, theme := range []string{"Craft", "Feishu", "Notion", "Obsidian"} {
-		a.lib.Settings.Theme = theme
-		a.lib.Settings.Appearance = "Light"
-		tt.Frame()
-		a.lib.Settings.Appearance = "Dark"
-		tt.Frame()
-	}
 }
 
 func TestDocumentActions(t *testing.T) {
@@ -426,6 +419,7 @@ func TestDocumentActions(t *testing.T) {
 		t.Run(action, func(t *testing.T) {
 			a := testApp(t)
 			a.createNote("Content", "Actions")
+			note := a.current
 			a.target = a.current
 			a.renameTitle = "Actions"
 			a.renameOpen = true
@@ -439,28 +433,18 @@ func TestDocumentActions(t *testing.T) {
 			if a.problem != "" {
 				t.Fatal(a.problem)
 			}
+			changed := map[string]bool{
+				"Favorite":      note.Starred,
+				"Pin":           note.Pinned,
+				"Duplicate":     a.current != nil && a.current.ID != note.ID && a.current.Source == note.Source,
+				"Move to Trash": note.Deleted && a.current == nil,
+				"Move…":         note.Folder == "Work",
+			}
+			if !changed[action] {
+				t.Fatalf("%s did not change the document as requested", action)
+			}
 		})
 	}
-	a := testApp(t)
-	a.createNote("# Heading\n\nText", "Outline")
-	tt := ui.NewTester(a.view, 1280, 820)
-	click(t, tt, "Heading Heading")
-	a.changeMode("Read")
-	tt.Frame()
-	click(t, tt, "Heading Heading")
-	a.changeMode("Source")
-	tt.Frame()
-	click(t, tt, "Heading Heading")
-	a.exportMenuOpen()
-	tt.Frame()
-	tt.Key(0, ui.KeyEscape)
-	a.home("Recent")
-	tt.Frame()
-	a.query = "Heading"
-	tt.Frame()
-	a.folder = "No notes"
-	tt.Frame()
-	click(t, tt, "Create a blank note")
 }
 
 func TestUndoAcrossModesAndSlash(t *testing.T) {

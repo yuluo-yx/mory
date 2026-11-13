@@ -73,7 +73,7 @@ func (a *app) quickNote() {
 		return
 	}
 	next.quick, next.focus, next.outline = true, true, false
-	next.createNote("", "Quick note")
+	next.createNote("", "")
 	next.newWindow()
 	next.win.Focus()
 }
@@ -112,50 +112,80 @@ func (a *app) batch(action string) {
 	a.status = "Batch operation completed"
 }
 
+// Ending selection discards only UI state; batch actions run when explicitly chosen.
+func (a *app) endSelection() {
+	a.selecting = false
+	a.selected = map[string]bool{}
+	if a.batchMove {
+		a.batchMove, a.moveOpen = false, false
+		a.moveFolder, a.moveParent = "", ""
+	}
+}
+
 func (a *app) batchBar(c *ui.Context, notes []*library.Note) {
 	t := c.Theme()
 	if !a.selecting && (a.section != "Trash" || len(notes) == 0) {
-		// Invisible bridge for automation click
-		if b := ui.Button(c, "").Label(a.tr("Select notes")).Height(1).Width(1).Opacity(0).Background(ui.Transparent).Border(0, ui.Transparent).Padding(0); b.Clicked() {
-			a.selecting = true
-			a.selected = map[string]bool{}
-		}
 		return
 	}
 
-	ui.Row(c).Padding(6, 14).Radius(8).Background(t.Surface).Border(1, t.Border.Alpha(0.7)).Gap(10).AlignItems(ui.Center).Children(func() {
+	ui.Row(c).FillWidth().Wrap().Padding(6, 14).Radius(8).Background(t.Surface).Border(1, t.Border.Alpha(0.7)).Gap(10).AlignItems(ui.Center).Children(func() {
 		if a.selecting {
-			if ghostButton(c, a.tr("Select all")).Padding(4, 8).Radius(5).Clicked() {
-				for _, n := range notes {
-					a.selected[n.ID] = true
+			selectedCount := 0
+			for _, n := range notes {
+				if a.selected[n.ID] {
+					selectedCount++
 				}
 			}
-			ui.Textf(c, a.tr("%d selected"), len(a.selectedNotes())).FontSize(12).Bold().TextColor(t.Accent)
+			allSelected := len(notes) > 0 && selectedCount == len(notes)
+			selectLabel := "Select all"
+			if allSelected {
+				selectLabel = "Deselect all"
+			}
+			if ghostButton(c, a.tr(selectLabel)).Padding(4, 8).Radius(5).Disabled(len(notes) == 0).Clicked() {
+				for _, n := range notes {
+					if allSelected {
+						delete(a.selected, n.ID)
+					} else {
+						a.selected[n.ID] = true
+					}
+				}
+				selectedCount = len(notes)
+				if allSelected {
+					selectedCount = 0
+				}
+			}
+			ui.Textf(c, a.tr("%d selected"), selectedCount).FontSize(12).Bold().TextColor(t.Accent)
 			ui.Box(c).Height(14).Width(1).Background(t.Border)
 			if a.section == "Trash" {
-				if ghostButton(c, a.tr("Restore selected")).Padding(4, 8).Radius(5).Clicked() {
+				if ghostButton(c, a.tr("Restore selected")).Padding(4, 8).Radius(5).Disabled(selectedCount == 0).Clicked() {
 					a.batch("Restore")
 				}
 			} else {
-				if ghostButton(c, a.tr("Duplicate selected")).Padding(4, 8).Radius(5).Clicked() {
+				if ghostButton(c, a.tr("Duplicate selected")).Padding(4, 8).Radius(5).Disabled(selectedCount == 0).Clicked() {
 					a.batch("Duplicate")
 				}
-				if ghostButton(c, a.tr("Move selected…")).Padding(4, 8).Radius(5).Clicked() {
+				if ghostButton(c, a.tr("Move selected…")).Padding(4, 8).Radius(5).Disabled(selectedCount == 0).Clicked() {
 					a.batchMove = true
 					a.moveOpen = true
 					a.moveParent = ""
 					a.moveFolder = ""
 					a.target = nil
 				}
-				if ghostButton(c, a.tr("Trash selected")).Padding(4, 8).Radius(5).Clicked() {
+				if ghostButton(c, a.tr("Trash selected")).Padding(4, 8).Radius(5).Disabled(selectedCount == 0).Clicked() {
 					a.batch("Trash")
 				}
 			}
 			ui.Box(c).Grow(1)
-			if ghostButton(c, a.tr("Done")).Padding(4, 10).Radius(5).Background(t.Background).Clicked() {
-				a.selecting = false
-				a.selected = map[string]bool{}
-			}
+			ui.Row(c).Gap(6).Shrink(0).Children(func() {
+				cancel := ghostButton(c, "").Label(a.tr("Cancel selection")).Tooltip(a.tr("Clear selection and exit management")).Padding(4, 10).Radius(5)
+				cancel.Children(func() { ui.Text(c, a.tr("Cancel")).Label(a.tr("Cancel selection")).SingleLine() })
+				if cancel.Clicked() {
+					a.endSelection()
+				}
+				if ghostButton(c, a.tr("Done")).Padding(4, 10).Radius(5).Background(t.Background).Clicked() {
+					a.endSelection()
+				}
+			})
 		}
 		if a.section == "Trash" && len(notes) > 0 {
 			ui.Box(c).Grow(1)
@@ -219,6 +249,12 @@ func (a *app) libraryOverlays(c *ui.Context) {
 	ui.Modal(c, &a.historyOpen, func() {
 		ui.Column(c).Width(560).MaxHeight(600).Gap(12).Children(func() {
 			ui.Text(c, a.tr("Document history")).FontSize(24)
+			policy := a.lib.HistoryPolicy()
+			summary := a.trf("Every %d min · %d days · Up to %d versions / %d MiB per document. The latest version is always kept.", policy.IntervalMinutes, policy.RetentionDays, policy.MaxVersions, policy.MaxMiB)
+			if policy.Disabled {
+				summary = a.tr("Automatic history is off. Existing versions and checkpoints made before restoring are kept.")
+			}
+			ui.Text(c, summary).FontSize(12).TextColor(c.Theme().TextMuted).FillWidth()
 			ui.Scroll(c).MaxHeight(440).Gap(8).Children(func() {
 				if len(a.revisions) == 0 {
 					ui.Text(c, a.tr("No previous saved revisions yet."))
@@ -228,11 +264,16 @@ func (a *app) libraryOverlays(c *ui.Context) {
 						ui.Text(c, a.dateText(revision.Note.Updated, true)).Grow(1)
 						ui.Textf(c, a.tr("%d characters"), len([]rune(revision.Note.Source)))
 						if ui.Button(c, a.tr("Restore")).Clicked() && a.current != nil {
+							// Flush pending edits before taking the pre-restore checkpoint.
+							if !a.save() {
+								return
+							}
 							a.current.Source = revision.Note.Source
 							a.loadEditors()
 							a.markDirty()
-							a.save()
-							a.historyOpen = false
+							if a.saveWithHistory(true) {
+								a.historyOpen = false
+							}
 						}
 					})
 				}
@@ -247,9 +288,13 @@ func (a *app) libraryOverlays(c *ui.Context) {
 			ui.Text(c, a.tr("Recover unsaved documents")).FontSize(24)
 			for i, revision := range a.recoveries {
 				ui.Row(c.Key(revision.Name)).Gap(8).Children(func() {
-					ui.Text(c, revision.Note.Title).Grow(1)
+					ui.Text(c, a.displayTitle(revision.Note.Title)).Grow(1)
 					if ui.Button(c, a.tr("Recover as a copy")).Clicked() {
-						n, err := a.lib.Create(revision.Note.Title+" recovered", revision.Note.Source, revision.Note.Format)
+						title := revision.Note.Title
+						if strings.TrimSpace(title) != "" {
+							title += " recovered"
+						}
+						n, err := a.lib.Create(title, revision.Note.Source, revision.Note.Format)
 						if !a.fail(err) {
 							a.openNote(n)
 							a.fail(os.Remove(filepath.Join(a.lib.Dir, "recovery", revision.Name)))

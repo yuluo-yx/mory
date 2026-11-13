@@ -78,15 +78,15 @@ func (a *app) checkReminders(now time.Time) {
 				continue
 			}
 			a.notified[key] = true
-			a.status = r.Title + " · " + n.Title
+			a.status = r.Title + " · " + a.displayTitle(n.Title)
 			if a.win != nil {
-				notification := mygo.NewNotification(mygo.NotificationOptions{ID: key, Title: r.Title, Body: n.Title})
+				notification := mygo.NewNotification(mygo.NotificationOptions{ID: key, Title: r.Title, Body: a.displayTitle(n.Title)})
 				note := n
 				notification.OnClick(func() { a.win.Update(func() { a.openNote(note); a.win.Show(); a.win.Focus() }) })
 				go func() {
 					err := notification.Show()
 					if err != nil {
-						a.win.Update(func() { a.status = "Reminder: " + note.Title })
+						a.win.Update(func() { a.status = "Reminder: " + a.displayTitle(note.Title) })
 					}
 				}()
 			}

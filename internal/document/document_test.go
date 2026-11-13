@@ -18,6 +18,20 @@ func TestRichSafety(t *testing.T) {
 	}
 }
 
+func TestHeadingDisplayTextAndSourceOffsets(t *testing.T) {
+	source := "---\ntitle: Outline\n---\n\n## 1\\. **Physical** &amp; [software](https://example.com)\n\n### 1\\.1 `IDC` facilities {#idc}\n\n## C#\n\n```md\n# Hidden\n```\n"
+	want := []string{"1. Physical & software", "1.1 IDC facilities", "C#"}
+	heads := Headings(source)
+	if len(heads) != len(want) {
+		t.Fatalf("unexpected headings: %+v", heads)
+	}
+	for i, h := range heads {
+		if h.Text != want[i] || !strings.HasPrefix(source[h.Offset:], strings.Repeat("#", h.Level)+" ") {
+			t.Fatalf("heading text or source offset changed: %+v", h)
+		}
+	}
+}
+
 func TestXMLProjection(t *testing.T) {
 	source := `<title icon="x">A &amp; B</title><h1>Hello</h1><h9>Deep</h9><p><b>bold</b> <em>italic</em> <u>under</u> <del>gone</del> <a href="https://example.com">link</a> <code>code</code><br/>next <latex>x^2</latex></p><ul><li>one</li><li>two</li></ul><ol><li>first</li></ol><checkbox done="true">yes</checkbox><checkbox done="false">no</checkbox><blockquote><p>quote</p></blockquote><callout><p>remember</p></callout><pre lang="go"><code>fmt.Println("hi")</code></pre><hr/><img href="assets/a.png" caption="a"/><img src="b.png"/><img path="c.png"/><bookmark href="https://example.com" title="site"/><file path="f.txt" name="file"/><grid><column><p>left</p></column><column><p>right</p></column></grid><table><tr><th>A</th><th>B</th></tr><tr><td>cell</td></tr></table><sheet/><whiteboard/><unknown>kept</unknown>`
 	title, md, err := FromXML(source)
@@ -96,5 +110,19 @@ func BenchmarkMillionCharacters(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
 		Counts(source)
+	}
+}
+
+func TestDocusaurusOutlineAndRichSafety(t *testing.T) {
+	for _, source := range []string{":::tip\nBody\n:::\n", "# Heading {#anchor}", "import X from './x';", "export const x = 1;", "---\ntitle: Test\n---\nBody", "```js title=\"demo\"\nx\n```", "```js\n// highlight-next-line\nx\n```"} {
+		if RichSafe(source) {
+			t.Fatalf("extension would be flattened: %q", source)
+		}
+	}
+	for _, source := range []string{"---\ntitle: Test\n---\n# Heading {#anchor}\n", "---\r\ntitle: Test\r\n...\r\n# Heading {#anchor}\r\n", "---\ntitle: Unclosed", "# Heading {#anchor}"} {
+		h := Headings(source)
+		if len(h) > 0 && (h[0].Text != "Heading" || source[h[0].Offset] != '#') {
+			t.Fatal(h)
+		}
 	}
 }

@@ -77,8 +77,8 @@ func Headings(source string) []Heading {
 	for i := 1; i < d.Len(); i++ {
 		b := d.Block(i)
 		if b.Kind == parser.Heading {
-			text := strings.TrimSpace(d.Lines(i))
-			text = strings.TrimSpace(strings.Trim(text, "#"))
+			// Use rendered inline text so escapes, links and emphasis match the page.
+			text := strings.TrimSpace(parser.PlainText(d.Inlines(i)))
 			text = regexp.MustCompile(`\s+\{#[^{}\s]+\}\s*$`).ReplaceAllString(text, "")
 			result = append(result, Heading{Level: b.Level, Offset: base + b.Start, Text: text})
 		}
