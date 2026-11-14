@@ -22,50 +22,7 @@ The editable feature tour is available from **Help → Open welcome guide**. A n
 
 ## Get started
 
-1. Open Mory. The first launch creates a library at `~/Documents/Mory` unless `MORY_LIBRARY` is set.
-2. Open either welcome document from the home page and try the four editing modes.
-3. Create a note with **⌘N**. The title field uses an `Untitled` placeholder until a title is entered; the placeholder is not saved into the document.
-4. Use **Settings → Editor** to adjust text size, page placement, outline appearance, page width, and document history.
-
-The library sidebar and document outline have independent visibility controls. Focus mode hides both temporarily without changing those preferences. The outline can be placed on either side of the document or restored with **⌘⇧H**.
-
-Page width supports **Standard**, **Wide**, **Full**, and **Custom**. Custom widths range from 480 to 3840 logical pixels and can be adjusted with a slider or numeric control. The preference is saved per document and copied when duplicating it.
-
-### Markdown and code
-
-Mory preserves Markdown source while providing a native editing surface. To create a highlighted code block, type a fence such as ```` ```go ```` on its own paragraph and press **Enter**. The block editor provides a language field, syntax highlighting for supported languages, wrapping, line metadata, and **Copy code**. An empty language field is treated as plain text.
-
-### Images and attachments
-
-Paste or insert an image with **Insert → Image or attachment…**. Local images and attachments are copied into `assets/` with content-addressed names. Remote images can be referenced directly:
-
-```markdown
-![An online image](https://example.com/image.png)
-```
-
-Remote images are fetched only for display, with a 15-second timeout and a 32 MiB limit. They are not copied into the library or downloaded during import and export. The welcome image uses a GitHub Raw URL and has a local fallback for offline use.
-
-### Common shortcuts
-
-| Action | Shortcut |
-| --- | --- |
-| New note | **⌘N** |
-| Import documents | **⌘O** |
-| Open a local original | **⌘⇧O** |
-| Save | **⌘S** |
-| Find | **⌘F** |
-| Search the library | **⌘J** |
-| Settings | **⌘,** |
-| Insert block | **⌘P** |
-| Replace | **⌘⌥F** |
-
-Shortcuts can be changed under **Settings → Keyboard shortcuts**. The global quick-note shortcut is disabled until it is configured.
-
-**Settings → General → Default application** registers Mory for `.md`, `.markdown`, and `.mdx` files in Finder. This registration is part of the macOS application bundle, so changing it requires rebuilding the `.app`; running a standalone Go binary does not install the file associations.
-
-### Import, export, and the Trash
-
-**File → Import…** creates a copy of a document. **File → Open local file** edits the original in place with conflict detection. **Move to Trash** uses Mory's internal Trash on the home page; documents can be restored there. Permanent deletion and emptying the Trash require confirmation, while external originals and shared assets are kept.
+Open Mory to create a local library, then use the English or Chinese welcome guide as the starting point. The complete editor tour and syntax reference live in [`resources/welcome.md`](resources/welcome.md) and [`resources/welcome.zh-CN.md`](resources/welcome.zh-CN.md).
 
 ## Library and recovery
 
