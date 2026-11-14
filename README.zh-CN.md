@@ -67,17 +67,20 @@ export function transform({ title, markdown }) {
 
 ## 性能概览
 
-性能是 Mory 的核心优势之一。基准测试使用仓库中固定的 1 MiB Markdown fixture，对比写作请求路径和源码模式。遇到没有换行的超长单行文本时，Mory 会自动使用源码模式，避免富文本编辑器进行无界内存分配。
+Mory 让大文档输入保持轻量：**实测输入处理耗时中位数低于 0.05 ms**，优化后，**结构化文档的编辑加截图耗时降低约 59%**。测试在 Apple M4、24 GiB 内存的机器上运行，覆盖六类固定的 1 MiB Markdown 文档、写作与源码两种模式，共完成 36 次独立运行和 1,080 次编辑。
 
 <p align="center">
   <img src="benchmark/performance-overview.svg" alt="Mory Markdown 性能概览">
 </p>
 
-在同一台 Apple M4 上，本轮优化将 `structured-1m` 写作模式的输入处理耗时从 **58.76 ms 降到 0.044 ms**，`memory-heavy-1m` 从 **28.13 ms 降到 0.043 ms**，均为三次独立运行的中位数。整篇序列化移至保存等操作，包含序列化的保存耗时分别为 **88.56 ms** 和 **61.99 ms**。包含输入处理、渲染与 PNG 编码的截图测量分别从 **135.33 ms 降到 55.88 ms**、从 **95.04 ms 降到 53.53 ms**。这些指标不等同于按键到屏幕显示的延迟。
+| 写作场景 | 输入处理，优化前 → 后 | 输入＋渲染＋PNG 截图，优化前 → 后 | 截图测量耗时降幅 | 优化后保存耗时 |
+| --- | ---: | ---: | ---: | ---: |
+| 结构化文档，1 MiB | 58.76 → **0.044 ms** | 135.33 → **55.88 ms** | **59%** | 88.56 ms |
+| 混合格式文档，1 MiB | 28.13 → **0.043 ms** | 95.04 → **53.53 ms** | **44%** | 61.99 ms |
 
-另外提供 [Quiet.md v0.1.11](benchmark/quiet-md-performance-report.md) 和 [ArcMD v0.0.11](benchmark/arcmd-performance-report.md) 的进程级测量。它们与 Mory 的操作流程和观察窗口不同，不能据此确定综合性能排名。
+Mory 通过索引定位编辑目标，将整篇序列化移至自动保存、手动保存和需要源码的操作，减少逐字输入的开销；表中的保存耗时包含序列化。密集表格使用紧凑预览，超长单行文本使用源码模式，以控制内存分配。以上数据为三轮运行的中位数；截图测量包含 PNG 编码，两项指标均不等同于按键到屏幕显示的延迟。
 
-详见 [性能数据](benchmark/performance-report.md) 和 [原始测量结果](benchmark/performance-data.jsonl)。
+[性能对比说明](benchmark/performance-comparison.md) 汇总了 Mory 的实测优势，以及 **Mory 0.1.0**、**ArcMD v0.0.11**、**Quiet.md v0.1.11** 的现有测试范围。另外两款的本机进程测试尚未覆盖相同的编辑流程，因此目前可以确认 Mory 的优化收益，尚不能据此确定三款的综合排名。详见 [完整性能数据](benchmark/performance-report.md) 和 [原始测量结果](benchmark/performance-data.jsonl)。
 
 ## 从源码构建
 

@@ -67,17 +67,20 @@ A plugin receives `{ title, markdown }` and may return `{ markdown }`, `{ messag
 
 ## Performance snapshot
 
-Performance is a core Mory differentiator. The benchmark uses the checked-in 1 MiB Markdown fixtures on an Apple M4 and compares the Write request path with Source mode. Long unbroken lines are guarded to Source mode so they cannot trigger an unbounded rich-editor allocation.
+Mory keeps large-document typing lightweight: **median edit actions under 0.05 ms**, with **59% less edit-and-capture time** on the structured document after optimization. The benchmark covers six checked-in 1 MiB Markdown fixtures on an Apple M4 with 24 GiB RAM: 36 independent runs and 1,080 edits across Write and Source modes.
 
 <p align="center">
   <img src="benchmark/performance-overview.svg" alt="Mory Markdown performance overview">
 </p>
 
-See the [performance data](benchmark/performance-report.md) and [raw measurements](benchmark/performance-data.jsonl).
+| Write workload | Edit action, before → after | Edit + rendering + PNG capture, before → after | Capture cost reduction | Save after optimization |
+| --- | ---: | ---: | ---: | ---: |
+| Structured document, 1 MiB | 58.76 → **0.044 ms** | 135.33 → **55.88 ms** | **59%** | 88.56 ms |
+| Mixed-format document, 1 MiB | 28.13 → **0.043 ms** | 95.04 → **53.53 ms** | **44%** | 61.99 ms |
 
-On the same Apple M4, the latest optimization reduced Write edit actions from **58.76 to 0.044 ms** for `structured-1m` and **28.13 to 0.043 ms** for `memory-heavy-1m` (medians of three runs). Full-document serialization now runs at save boundaries instead of every keystroke; save actions, including serialization, take **88.56 ms** and **61.99 ms**, respectively. Edit plus rendering and PNG capture fell from **135.33 to 55.88 ms** and **95.04 to 53.53 ms**. These are measured action and capture costs, not keyboard-to-display latency.
+Mory achieves this by indexing editing targets and moving full-document serialization to autosave, save and source-consuming commands. Save timings include that work. Dense tables use a compact preview, and exceptionally long lines use Source mode to control allocation. Values are medians across three runs; capture includes PNG encoding, so neither metric is keyboard-to-display latency.
 
-Separate process measurements are available for [Quiet.md v0.1.11](benchmark/quiet-md-performance-report.md) and [ArcMD v0.0.11](benchmark/arcmd-performance-report.md). Their workflows and observation windows differ from Mory's, so they do not establish an overall performance ranking.
+The [performance comparison](benchmark/performance-comparison.md) explains Mory's measured strengths and the available evidence for **Mory 0.1.0**, **ArcMD v0.0.11** and **Quiet.md v0.1.11**. The other editors' local process probes do not include matching editing workflows, so these results establish Mory's improvement rather than an overall three-editor ranking. See the [full performance data](benchmark/performance-report.md) and [raw measurements](benchmark/performance-data.jsonl).
 
 ## Build from source
 
