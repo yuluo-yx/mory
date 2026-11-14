@@ -33,6 +33,15 @@ Mory 是一款原生 macOS 写作应用，支持 Markdown、MDX 和飞书/Lark D
 
 ## 快速开始
 
+根据 Mac 的芯片下载 **Mory 0.0.1 Alpha**：
+
+| Mac 类型 | 安装包 |
+| --- | --- |
+| Apple Silicon（M 系列） | [macOS arm64](https://github.com/yuluo-yx/mory/releases/download/v0.0.1-alpha.1/mory-0.0.1-alpha.1-macos-arm64.dmg) |
+| Intel（x86_64） | [macOS amd64](https://github.com/yuluo-yx/mory/releases/download/v0.0.1-alpha.1/mory-0.0.1-alpha.1-macos-amd64.dmg) |
+
+[发布说明](https://github.com/yuluo-yx/mory/releases/tag/v0.0.1-alpha.1) · [SHA-256 校验和](https://github.com/yuluo-yx/mory/releases/download/v0.0.1-alpha.1/SHA256SUMS)。打开 DMG，将 Mory 拖入“应用程序”。Alpha 安装包使用 ad-hoc 签名，尚未经过 Apple 公证；如果 macOS 拦截首次启动，可在 **系统设置 → 隐私与安全性** 中确认“仍要打开”。
+
 打开 Mory 创建本地文档库，然后从英文或中文欢迎指南开始。完整的编辑器介绍和语法参考见 [`resources/welcome.md`](resources/welcome.md) 与 [`resources/welcome.zh-CN.md`](resources/welcome.zh-CN.md)。
 
 ## 文档库与恢复
@@ -101,10 +110,11 @@ mise exec -- make check   # Tests, vet, native E2E, and combined coverage
 mise exec -- make race    # Race detector
 mise exec -- make bench   # Benchmarks
 mise exec -- make run     # Development app
-mise exec -- make build   # Universal macOS app, DMG, and checksum
+mise exec -- make build ARCH=arm64  # Apple Silicon app, DMG, and checksum
+mise exec -- make build ARCH=amd64  # Intel app, DMG, and checksum
 ```
 
-构建产物写入 `build/darwin-universal/`。本地安装包使用 ad-hoc 签名。原生 E2E 测试和真实窗口性能测试需要已登录的 macOS 桌面会话：
+构建产物分别写入 `build/darwin-arm64/` 和 `build/darwin-amd64/`；省略 `ARCH` 时使用当前 Go 架构。GitHub Actions 会在对应架构的 macOS runner 上构建和测试，再为版本标签发布两个 DMG 及校验和。本地安装包使用 ad-hoc 签名。原生 E2E 测试和真实窗口性能测试需要已登录的 macOS 桌面会话：
 
 ```sh
 mise exec -- python3 scripts/performance.py

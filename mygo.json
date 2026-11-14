@@ -1,7 +1,7 @@
 {
   "name": "Mory",
   "identifier": "io.github.yuluo-yx.mory",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "A thoughtful, local writing space for macOS.",
   "icon": "resources/icon.png",
   "license": "MIT",

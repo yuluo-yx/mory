@@ -1,4 +1,6 @@
 GO ?= go
+ARCH ?= $(shell $(GO) env GOARCH)
+VERSION := $(shell python3 -c 'import json; print(json.load(open("mygo.json"))["version"])')
 
 .PHONY: run test check race bench perf build
 
@@ -23,5 +25,5 @@ perf:
 	python3 scripts/performance.py
 
 build:
-	$(GO) tool mygo build -platform darwin/universal -skip-notarize
-	cd build/darwin-universal && shasum -a 256 mory-0.1.0.dmg > SHA256SUMS
+	$(GO) tool mygo build -platform darwin/$(ARCH) -skip-notarize
+	cd build/darwin-$(ARCH) && shasum -a 256 mory-$(VERSION)-$(ARCH).dmg > SHA256SUMS

@@ -33,6 +33,15 @@ The editable feature tour is available from **Help → Open welcome guide**. A n
 
 ## Get started
 
+Download **Mory 0.0.1 Alpha** for your Mac:
+
+| Mac | Installer |
+| --- | --- |
+| Apple Silicon (M-series) | [macOS arm64](https://github.com/yuluo-yx/mory/releases/download/v0.0.1-alpha.1/mory-0.0.1-alpha.1-macos-arm64.dmg) |
+| Intel (x86_64) | [macOS amd64](https://github.com/yuluo-yx/mory/releases/download/v0.0.1-alpha.1/mory-0.0.1-alpha.1-macos-amd64.dmg) |
+
+[Release notes](https://github.com/yuluo-yx/mory/releases/tag/v0.0.1-alpha.1) · [SHA-256 checksums](https://github.com/yuluo-yx/mory/releases/download/v0.0.1-alpha.1/SHA256SUMS). Open the DMG and drag Mory to Applications. Alpha packages are ad-hoc signed and not notarized by Apple; if macOS blocks the first launch, confirm **Open Anyway** in **System Settings → Privacy & Security**.
+
 Open Mory to create a local library, then use the English or Chinese welcome guide as the starting point. The complete editor tour and syntax reference live in [`resources/welcome.md`](resources/welcome.md) and [`resources/welcome.zh-CN.md`](resources/welcome.zh-CN.md).
 
 ## Library and recovery
@@ -101,10 +110,11 @@ mise exec -- make check   # Tests, vet, native E2E, and combined coverage
 mise exec -- make race    # Race detector
 mise exec -- make bench   # Benchmarks
 mise exec -- make run     # Development app
-mise exec -- make build   # Universal macOS app, DMG, and checksum
+mise exec -- make build ARCH=arm64  # Apple Silicon app, DMG, and checksum
+mise exec -- make build ARCH=amd64  # Intel app, DMG, and checksum
 ```
 
-The build output is written to `build/darwin-universal/`. Local packages are ad-hoc signed. Native E2E tests and real-window performance measurements require a logged-in macOS desktop session:
+Build output is written to `build/darwin-arm64/` or `build/darwin-amd64/`; omitting `ARCH` selects the current Go architecture. GitHub Actions builds and tests both architectures on matching macOS runners, then publishes tagged releases with both DMGs and checksums. Local packages are ad-hoc signed. Native E2E tests and real-window performance measurements require a logged-in macOS desktop session:
 
 ```sh
 mise exec -- python3 scripts/performance.py

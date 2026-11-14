@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -62,7 +63,11 @@ func (a *app) generalSettings(c *ui.Context) {
 			ui.Text(c, a.associationStatus).FontSize(12).TextColor(c.Theme().Accent)
 		}
 	})
-	ui.Text(c, a.tr("Mory 0.1.0 · Made for macOS")).FontSize(12).TextColor(c.Theme().TextMuted)
+	version := mygo.App.Version()
+	if version == "" {
+		version = "dev"
+	}
+	ui.Text(c, a.trf("Mory %s · Made for macOS", version)).FontSize(12).TextColor(c.Theme().TextMuted)
 }
 
 func (a *app) editorSettings(c *ui.Context) {
