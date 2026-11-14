@@ -36,10 +36,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if len(a.lib.Notes) == 0 {
-		if _, err = a.welcomeNote(); err != nil {
-			log.Fatal(err)
-		}
+	if err = a.ensureWelcomeNotes(); err != nil {
+		log.Fatal(err)
 	}
 	mygo.App.OnOpenFile(func(path string) {
 		a.openExternal(path)

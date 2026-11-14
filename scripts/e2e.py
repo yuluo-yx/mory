@@ -151,6 +151,7 @@ def exercise(binary, root):
         act("应用语言")
         act("English")
         act("Keyboard shortcuts")
+        act("Enable global quick note")
         act("Global quick note shortcut", "setValue", text="Ctrl+Alt+Shift+Space")
         act("Shortcut New note", "setValue", text="Cmd+Alt+J")
         act("Save shortcuts")

@@ -230,6 +230,16 @@ func TestShortcutDraftValidationAndPersistence(t *testing.T) {
 	tt := ui.NewTester(a.view, 1280, 820)
 	a.helpOpen = true
 	tt.Frame()
+	if _, ok := tt.Access("Enable global quick note"); !ok {
+		t.Fatal("global quick note does not expose an explicit enable toggle")
+	}
+	if field, ok := tt.Access("Global quick note shortcut"); !ok || !field.Disabled {
+		t.Fatalf("global quick note field should be clearly disabled until enabled: %+v", field)
+	}
+	click(t, tt, "Enable global quick note")
+	if a.quickDraft != "Ctrl+Alt+Space" {
+		t.Fatalf("enabling global quick note did not provide a starter shortcut: %q", a.quickDraft)
+	}
 	click(t, tt, "Shortcut New note")
 	tt.Key(ui.Cmd, ui.KeyA)
 	tt.Type("Opt+Shift+J")

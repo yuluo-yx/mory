@@ -155,7 +155,19 @@ func (a *app) shortcutSettings(c *ui.Context) {
 		ui.Column(c).Padding(14).Radius(8).Background(c.Theme().Surface).Gap(8).Children(func() {
 			ui.Text(c, a.tr("Global quick note")).Bold()
 			ui.Text(c, a.tr("Works outside Mory. Disabled by default to avoid launcher conflicts.")).FontSize(12)
-			ui.TextInput(c, &a.quickDraft).Label(a.tr("Global quick note shortcut")).Placeholder(a.tr("Disabled (for example: Ctrl+Alt+Space)")).FillWidth()
+			ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
+				enabled := strings.TrimSpace(a.quickDraft) != ""
+				if ui.Checkbox(c, &enabled, a.tr("Enable global quick note")).Changed() {
+					if enabled {
+						a.quickDraft = "Ctrl+Alt+Space"
+					} else {
+						a.quickDraft = ""
+					}
+				}
+				input := ui.TextInput(c, &a.quickDraft).Label(a.tr("Global quick note shortcut"))
+				input.Placeholder(a.tr("Enter a shortcut, for example: Ctrl+Alt+Space"))
+				input.Disabled(!enabled).Grow(1)
+			})
 		})
 		ui.Scroll(c).Grow(1).MinHeight(0).FillWidth().Gap(6).Children(func() {
 			for _, action := range a.actions() {

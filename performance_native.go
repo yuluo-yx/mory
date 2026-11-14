@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
+	"github.com/yuluo-yx/mory/internal/blocks"
 )
 
 // This local measurement adapter is absent from release and E2E builds. It
@@ -120,6 +121,7 @@ func init() {
 				elapsedMS := float64(time.Since(begin)) / float64(time.Millisecond)
 				result := performanceResult(actionMS, elapsedMS, problem)
 				result["window_width"], result["window_height"] = width, height
+				result["effective_mode"] = a.mode
 				if err := encoder.Encode(result); err != nil {
 					return
 				}
@@ -157,7 +159,22 @@ func performanceInsert(a *app, text, position string) {
 		}
 		a.code.Select(pos, pos)
 		a.code.Insert(text)
-	} else if a.doc != nil {
+	} else {
+		if a.doc == nil && a.blockEditor != nil {
+			a.blockEditor.doc.Root.Walk(func(n *blocks.Node) {
+				if a.doc != nil || n.Kind == "title" || !blocks.IsText(n) {
+					return
+				}
+				a.blockEditor.active = n.ID
+				a.blockField(n, a.documentColor)
+			})
+		}
+		if a.doc == nil {
+			if a.blockEditor != nil {
+				a.insertNodes(blocks.Paragraph(text))
+			}
+			return
+		}
 		pos := 0
 		if position == "end" {
 			pos = a.doc.Text().Len()

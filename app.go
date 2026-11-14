@@ -98,7 +98,28 @@ type structuredHeading struct {
 const (
 	lazyRichDocumentBytes = 256 << 10
 	largeDocumentBytes    = 512 << 10
+	maxWriteLineBytes     = 256 << 10
 )
+
+func sourceOnlyDocument(n *library.Note) bool {
+	if n == nil || n.Format != "markdown" {
+		return false
+	}
+	longest := 0
+	for start := 0; start < len(n.Source); {
+		end := strings.IndexByte(n.Source[start:], '\n')
+		if end < 0 {
+			end = len(n.Source) - start
+		} else {
+			end++
+		}
+		if end > longest {
+			longest = end
+		}
+		start += end
+	}
+	return longest > maxWriteLineBytes
+}
 
 func largeDocumentBlocks(n *library.Note) bool {
 	if n == nil || len(n.Source) <= largeDocumentBytes {
@@ -256,6 +277,10 @@ func (a *app) openNote(n *library.Note) {
 	a.readMetadata()
 	n.Opened = time.Now()
 	a.mode = "Write"
+	if sourceOnlyDocument(n) {
+		a.mode = "Source"
+		a.status = a.tr("This document opens in Source mode because it contains a very long line.")
+	}
 	a.loadEditors()
 	a.fail(a.lib.Save(n))
 	a.previewSource = "\x00"
@@ -272,7 +297,7 @@ func (a *app) loadEditors() {
 	a.structuredHeadingVersion = 0
 	a.structuredHeadings = nil
 	largeDocument := largeDocumentBlocks(n)
-	if largeDocument || n.Format == "xml" || !document.RichSafe(n.Source) {
+	if !sourceOnlyDocument(n) && (largeDocument || n.Format == "xml" || !document.RichSafe(n.Source)) {
 		// Large documents use the block editor from the first frame. This keeps
 		// the normal Write experience while avoiding a second whole-document
 		// rich-text tree and allows large tables to use their compact renderer.
@@ -283,7 +308,11 @@ func (a *app) loadEditors() {
 	}
 	a.richPending = false
 	a.codePending = false
-	if a.blockEditor != nil && (largeDocument || len(n.Source) > lazyRichDocumentBytes) {
+	if sourceOnlyDocument(n) {
+		a.doc = nil
+		a.richSource = ""
+		a.richVersion = 0
+	} else if a.blockEditor != nil && (largeDocument || len(n.Source) > lazyRichDocumentBytes) {
 		// Large structured documents are edited through block fields. Building a
 		// second rich-text tree here duplicates the whole document before the
 		// first frame and delays the window for no user-visible benefit.
@@ -301,7 +330,7 @@ func (a *app) loadEditors() {
 	b.SetLanguage(editor.LanguageFor(name))
 	a.code = &editor.State{Buffer: b, SoftWrap: true}
 	a.codeVersion = b.Version()
-	a.preview.LoadImage = markdown.FileImages(a.assetRoot())
+	a.preview.LoadImage = a.loadPreviewImage
 	a.preview.OnLink = a.openLink
 	a.preview.Extensions = parser.Default | parser.ExtDollarMath
 
@@ -313,6 +342,11 @@ func (a *app) changeMode(mode string) {
 	}
 	a.capture()
 	a.flushSource()
+	if sourceOnlyDocument(a.current) && mode != "Source" {
+		a.mode = "Source"
+		a.status = a.tr("This document stays in Source mode because it contains a very long line.")
+		return
+	}
 	if mode == "Write" || mode == "Read" {
 		if largeDocumentBlocks(a.current) || a.current.Format == "xml" || !document.RichSafe(a.current.Source) {
 			if a.blockEditor == nil || a.blockEditor.doc.Source() != a.current.Source {

@@ -226,12 +226,12 @@ Write `## A stable heading {#stable-heading}` to choose its anchor. Link to it w
 
 ## Images, attachments, and document details
 
-![Mory artwork](assets/mory-welcome.png)
+![Mory artwork](https://raw.githubusercontent.com/yuluo-yx/mory/main/resources/icon.png)
 
-The image above is bundled with this guide and works offline. Insert your own image or file with **Insert → Image or attachment…**. Select an image for caption, dimensions, alignment, and cropping. File attachments can use macOS Quick Look previews.
+The image above is hosted in Mory's GitHub repository and loads when you are online. Insert your own image or file with **Insert → Image or attachment…**. Select an image for caption, dimensions, alignment, and cropping. File attachments can use macOS Quick Look previews.
 
 ```markdown
-![A useful caption](assets/mory-welcome.png)
+![A useful caption](https://raw.githubusercontent.com/yuluo-yx/mory/main/resources/icon.png)
 ```
 
 Use **Add icon**, **Add cover**, or **Document actions** to customize the document. Cover placement and body placement are separate from paragraph text alignment. Import copies local assets; opening a local file edits the original file in place.

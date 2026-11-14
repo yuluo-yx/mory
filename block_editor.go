@@ -56,6 +56,7 @@ type blockSession struct {
 	formulaID, formulaText string
 	version                uint64
 	images                 map[string]*ui.Bitmap
+	imagePending           map[string]bool
 	imageErrors            map[string]bool
 	lastTextID             string
 	lastText               time.Time
@@ -84,7 +85,7 @@ func newBlockSession(source, format string) (*blockSession, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &blockSession{doc: doc, fields: map[string]*blockField{}, version: doc.Version, selection: map[string]bool{}, images: map[string]*ui.Bitmap{}, imageErrors: map[string]bool{}, tables: map[string]tableCache{}, tableMembership: map[string]bool{}}, nil
+	return &blockSession{doc: doc, fields: map[string]*blockField{}, version: doc.Version, selection: map[string]bool{}, images: map[string]*ui.Bitmap{}, imagePending: map[string]bool{}, imageErrors: map[string]bool{}, tables: map[string]tableCache{}, tableMembership: map[string]bool{}}, nil
 }
 
 // ensureTableMembership builds a revision-scoped lookup for text blocks that
@@ -385,6 +386,46 @@ func (a *app) blockImage(path string) *ui.Bitmap {
 	if s.imageErrors[path] {
 		return nil
 	}
+	if isRemoteImageURL(path) {
+		if a.win == nil {
+			return nil
+		}
+		if s.imagePending[path] {
+			return nil
+		}
+		s.imagePending[path] = true
+		go func(session *blockSession, raw string) {
+			data, contentType, err := fetchRemoteImage(raw)
+			if err != nil && raw == welcomeImageURL {
+				data, err = os.ReadFile(filepath.Join(a.assetRoot(), "assets", "mory-welcome.png"))
+				contentType = "image/png"
+			}
+			var bitmap *ui.Bitmap
+			if err == nil {
+				var source ui.ImageSource
+				source, err = decodeImage(data, raw, contentType)
+				if err == nil {
+					bitmap, _ = source.(*ui.Bitmap)
+					if bitmap == nil {
+						err = fmt.Errorf("remote image is not a bitmap")
+					}
+				}
+			}
+			a.win.Update(func() {
+				if a.blockEditor != session {
+					return
+				}
+				delete(session.imagePending, raw)
+				if err != nil {
+					session.imageErrors[raw] = true
+				} else {
+					session.images[raw] = bitmap
+				}
+				a.win.Invalidate()
+			})
+		}(s, path)
+		return nil
+	}
 	root, err := os.OpenRoot(a.assetRoot())
 	if err != nil {
 		return nil
@@ -464,28 +505,16 @@ func (a *app) blockView(c *ui.Context, readOnly bool) {
 	} else {
 		list.Margin(0, 0, 0, -headingGutterWidth).Padding(4, 0, 48, headingGutterWidth)
 	}
-	if !readOnly && !s.foldPresentation {
+	if !readOnly && !s.foldPresentation && s.chosen.Len() > 1 {
 		ui.Row(c).Gap(8).Padding(6).Children(func() {
-			if s.chosen.Len() > 1 {
-				if ghostButton(c, a.tr("Copy blocks")).Clicked() {
-					a.copyBlocks(c, false)
-				}
-				if ghostButton(c, a.tr("Cut blocks")).Clicked() {
-					a.copyBlocks(c, true)
-				}
-				if ghostButton(c, a.tr("Delete selected blocks")).Clicked() {
-					a.deleteBlocks()
-				}
+			if ghostButton(c, a.tr("Copy blocks")).Clicked() {
+				a.copyBlocks(c, false)
 			}
-			if ghostButton(c, a.tr("+ Add block")).Clicked() {
-				a.insertOpen = true
-				a.insertQuery = ""
+			if ghostButton(c, a.tr("Cut blocks")).Clicked() {
+				a.copyBlocks(c, true)
 			}
-			if ghostButton(c, a.tr("Undo")).KeepFocus().Clicked() {
-				a.blockUndo(false)
-			}
-			if ghostButton(c, a.tr("Redo")).KeepFocus().Clicked() {
-				a.blockUndo(true)
+			if ghostButton(c, a.tr("Delete selected blocks")).Clicked() {
+				a.deleteBlocks()
 			}
 		})
 	}

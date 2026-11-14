@@ -80,7 +80,9 @@
   "Format": "格式",
   "Give your idea a shape": "为想法添加内容",
   "Global quick note": "全局快速笔记",
+  "Enable global quick note": "启用全局快速笔记",
   "Global quick note shortcut": "全局快速笔记快捷键",
+  "Enter a shortcut, for example: Ctrl+Alt+Space": "输入快捷键，例如：Ctrl+Alt+Space",
   "Grid view": "网格视图",
   "Help": "帮助",
   "Highlight": "高亮",
@@ -491,5 +493,7 @@
   "Details": "详细内容",
   "Toggle details ": "展开或收起 ",
   "Tab ": "选项卡 ",
-  "Open welcome guide": "打开欢迎指南"
+  "Open welcome guide": "打开欢迎指南",
+  "This document opens in Source mode because it contains a very long line.": "此文稿包含超长行，已使用源码模式打开。",
+  "This document stays in Source mode because it contains a very long line.": "此文稿包含超长行，将保持在源码模式。"
 }

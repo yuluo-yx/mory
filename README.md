@@ -1,87 +1,140 @@
-<p align="center"><img src="resources/icon.png" width="96" alt="Mory icon"></p>
+<p align="center">
+  <img src="resources/icon.png" width="96" alt="Mory icon">
+</p>
 
-# Mory
+<h1 align="center">Mory</h1>
 
-A local writing app for macOS 13+, built with Go and MyGo native UI. No account or background server is required.
+<p align="center">A calm, local writing space for macOS.</p>
 
-## Features
+Mory is a native macOS writing app for Markdown, MDX, and Feishu/Lark DocxXML documents. Your library stays on this Mac: no account or background server is required.
 
-- Write, source, split and read modes for Markdown and Feishu/Lark DocxXML.
-- Rich text, nested documents, tables, LaTeX, images, attachments, outlines and folding.
-- Folders, search, favorites, batch operations, multiple windows and quick notes.
-- Five document themes, editable CSS, light/dark appearance and English/Chinese UI.
-- Import files or folders; export Markdown, DocxXML, self-contained HTML and PDF.
-- Static Docusaurus/MDX support: front matter, admonitions, heading IDs, code metadata, details and tabs. JavaScript and React components are preserved as source, not executed.
+## Highlights
 
-Use **Help → Open welcome guide** for the editable [syntax and feature guide](resources/welcome.md).
+- Four editing modes: **Write**, **Source**, **Split**, and **Read**.
+- Native editing for headings, lists, tasks, tables, LaTeX, code blocks, callouts, tabs, columns, images, attachments, and document links.
+- Static Docusaurus and MDX support, including front matter, admonitions, heading IDs, code metadata, details, and tabs. React components, JavaScript expressions, and site-specific build plugins remain source text and are not executed.
+- Local organization with folders, nested documents, favorites, pins, search, manual ordering, batch actions, multiple windows, and quick notes.
+- Five document themes, editable CSS, light and dark appearance, and English and Simplified Chinese UI.
+- Import files or folders and export Markdown, DocxXML, self-contained HTML, or PDF.
+- Local and remote images. Relative local assets are stored beside their document; `http(s)` image URLs are rendered when online and remain URLs in the document source.
 
-## Everyday use
+The editable feature tour is available from **Help → Open welcome guide**. A new library starts with both English and Chinese welcome documents. The complete source is also available as [the English guide](resources/welcome.md) and [the Chinese guide](resources/welcome.zh-CN.md).
 
-New documents have an empty title with an **Untitled** placeholder. The sidebar shows a fallback name without storing it as document content.
+## Get started
 
-The library sidebar and document outline collapse independently. Focus mode temporarily hides both without changing their individual visibility preferences. The outline can be placed on either side and hidden from its header. Restore it from the toolbar or **Cmd+Shift+H**. **Settings → Editor** controls text size, page placement, outline appearance and history retention.
+1. Open Mory. The first launch creates a library at `~/Documents/Mory` unless `MORY_LIBRARY` is set.
+2. Open either welcome document from the home page and try the four editing modes.
+3. Create a note with **⌘N**. The title field uses an `Untitled` placeholder until a title is entered; the placeholder is not saved into the document.
+4. Use **Settings → Editor** to adjust text size, page placement, outline appearance, page width, and document history.
 
-In **Manage**, **Select all** switches to **Deselect all** for the current filtered list. **Cancel** clears selections and exits; it does not undo batch actions already performed. Canceling the move dialog keeps the selected documents.
+The library sidebar and document outline have independent visibility controls. Focus mode hides both temporarily without changing those preferences. The outline can be placed on either side of the document or restored with **⌘⇧H**.
 
-Page width offers **Standard**, **Wide**, **Full**, and **Custom** in document details and **Settings → Editor**. Custom widths range from 480 to 3840 logical pixels, with a draggable slider and numeric control. The preference is saved per document and copied when duplicating it; smaller windows automatically constrain the page to the available space. Existing documents keep their previous width. Split mode continues to fill its available space.
+Page width supports **Standard**, **Wide**, **Full**, and **Custom**. Custom widths range from 480 to 3840 logical pixels and can be adjusted with a slider or numeric control. The preference is saved per document and copied when duplicating it.
 
-Type a code fence such as \`\`\`go on its own paragraph and press **Enter** to create a code block with its language preserved. The toolbar and **Insert → Code block** use the same code editor. Each block provides a language field, syntax highlighting for supported languages, wrapping, and **Copy code**. An empty language field means plain text. Existing fenced Markdown opens in this editor without rewriting its source just by viewing it.
+### Markdown and code
 
-**Move to Trash** uses Mory's internal Trash, available on the home page beside **My documents / Favorites**. Documents can be restored there. Permanent deletion and emptying Trash require confirmation; external originals and shared assets are kept.
+Mory preserves Markdown source while providing a native editing surface. To create a highlighted code block, type a fence such as ```` ```go ```` on its own paragraph and press **Enter**. The block editor provides a language field, syntax highlighting for supported languages, wrapping, line metadata, and **Copy code**. An empty language field is treated as plain text.
 
-Common shortcuts are **Cmd+N** (new), **Cmd+O** (import), **Cmd+Shift+O** (open original), **Cmd+S** (save), **Cmd+F** (find), **Cmd+J** (search), and **Cmd+,** (settings). Customize them under **Keyboard shortcuts**. The global quick-note shortcut is off until configured.
+### Images and attachments
 
-**Settings → General → Default application** associates `.md`, `.markdown`, and `.mdx` with the running Mory app bundle. The macOS bundle imports explicit Markdown and MDX type declarations so this also works when no other editor has registered those formats. The MDX identifier is a Mory-provided fallback for the external format. Changes to these declarations require rebuilding the `.app`; running a standalone Go binary does not install them.
+Paste or insert an image with **Insert → Image or attachment…**. Local images and attachments are copied into `assets/` with content-addressed names. Remote images can be referenced directly:
 
-## Files and recovery
+```markdown
+![An online image](https://example.com/image.png)
+```
 
-The default library is `~/Documents/Mory`; set `MORY_LIBRARY` to use another directory.
+Remote images are fetched only for display, with a 15-second timeout and a 32 MiB limit. They are not copied into the library or downloaded during import and export. The welcome image uses a GitHub Raw URL and has a local fallback for offline use.
+
+### Common shortcuts
+
+| Action | Shortcut |
+| --- | --- |
+| New note | **⌘N** |
+| Import documents | **⌘O** |
+| Open a local original | **⌘⇧O** |
+| Save | **⌘S** |
+| Find | **⌘F** |
+| Search the library | **⌘J** |
+| Settings | **⌘,** |
+| Insert block | **⌘P** |
+| Replace | **⌘⌥F** |
+
+Shortcuts can be changed under **Settings → Keyboard shortcuts**. The global quick-note shortcut is disabled until it is configured.
+
+**Settings → General → Default application** registers Mory for `.md`, `.markdown`, and `.mdx` files in Finder. This registration is part of the macOS application bundle, so changing it requires rebuilding the `.app`; running a standalone Go binary does not install the file associations.
+
+### Import, export, and the Trash
+
+**File → Import…** creates a copy of a document. **File → Open local file** edits the original in place with conflict detection. **Move to Trash** uses Mory's internal Trash on the home page; documents can be restored there. Permanent deletion and emptying the Trash require confirmation, while external originals and shared assets are kept.
+
+## Library and recovery
+
+The default library is `~/Documents/Mory`. Set `MORY_LIBRARY` to use another directory.
 
 | Path | Contents |
 | --- | --- |
-| `notes/` | Document source and metadata, one JSON file per document |
+| `notes/` | One JSON record per Mory document, including its source and metadata |
 | `assets/` | Local images and attachments |
-| `history/` | Previous saved versions |
-| `recovery/` | Recoverable unsaved content |
-| `themes/`, `plugins/` | Custom CSS and local JavaScript transforms |
-| `settings.json` | Preferences and shortcuts |
+| `history/` | Saved document revisions |
+| `recovery/` | Recoverable content from failed or interrupted saves |
+| `themes/` | Custom document themes and CSS |
+| `plugins/` | Local JavaScript transforms |
+| `settings.json` | Preferences and keyboard shortcuts |
 
-**Import** creates a copy. **Open local file** edits the original with conflict detection. Unchanged documents retain their original source bytes. Local assets are copied on import and included in exports; remote images are not downloaded.
+Local asset files use the SHA-256 digest of their content as the filename prefix, so the document stores a stable relative reference such as `assets/6cbb4a435a30b8abe4bb23b1.png`. A single inserted or imported asset may be up to 32 MiB.
 
-Autosave writes changed content about every 750 ms using atomic file replacement. Failed saves preserve the edit buffer and write a recovery copy when possible. Recovery is offered on the next launch.
+Autosave starts after editing begins and writes changed content about every 750 ms using atomic replacement. If saving fails, Mory keeps the edit buffer and writes recovery content when possible; recovery is offered on the next launch.
 
-**Settings → Editor → Document history** controls snapshots separately from autosave. Defaults: **5 minutes**, **30 days**, **100 versions**, **64 MiB per document**. Old versions are coalesced and pruned when changed content is saved or history is opened. At least the latest version is retained, even if oversized or expired. Disabling history stops ordinary snapshots and pruning without deleting existing copies. Restoring a version first checkpoints the current content. Permanently deleting a document also removes its history and recovery files.
+**Settings → Editor → Document history** controls revisions independently from autosave. The defaults are a 5-minute checkpoint interval, 30-day retention, 100 versions, and 64 MiB per document. Older versions are coalesced and pruned when changed content is saved or history is opened. Disabling history stops new snapshots and pruning without deleting existing copies. Restoring a revision first checkpoints the current document.
 
-Existing libraries need no manual migration. Back up the library for rollback: replacing the app cannot recover versions already pruned by retention rules.
+Importing a document copies local assets into the destination library and rewrites their relative paths. Markdown and DocxXML exports copy local assets into an `assets/` directory. HTML and PDF exports embed local images. Remote URLs remain remote and are not fetched for export.
+
+Existing libraries require no migration. Back up the library before maintenance or manual cleanup; replacing the application cannot recover revisions that have already been pruned.
 
 ## Plugins
 
-Place an ES module in the library's `plugins/` directory, then reload plugins:
+Mory includes plugins for cleaning whitespace, reading statistics, and inserting a table of contents. To add a local plugin, place an ES module ending in `.js` in the library's `plugins/` directory and choose **Reload plugins** in Mory:
 
 ```js
-export function transform({ markdown }) {
-  return { markdown: markdown.replace(/TODO:/g, "- [ ]") };
+export function transform({ title, markdown }) {
+  return {
+    markdown: markdown.replace(/TODO:/g, "- [ ]"),
+    message: `Updated ${title}`,
+  };
 }
 ```
 
-Transforms receive `{ title, markdown }` and return `{ markdown }`, `{ message }`, or both. They run in an isolated moejs runtime with a 32 MiB allocation limit and a 750 ms deadline. File, network and Node.js APIs are unavailable. Built-ins clean whitespace, count text and insert a table of contents.
+A plugin receives `{ title, markdown }` and may return `{ markdown }`, `{ message }`, or both. Plugins run locally in an isolated `moejs` runtime. Each source file is limited to 1 MiB, each run has a 750 ms deadline and 32 MiB memory limit, and file, network, environment, and Node.js APIs are unavailable.
 
-## Development
+## Performance snapshot
 
-Go is pinned in `mise.toml`; dependency versions are locked in `go.mod` and `go.sum`.
+Performance is a core Mory differentiator. The benchmark uses the checked-in 1 MiB Markdown fixtures on an Apple M4 and compares the Write request path with Source mode. Long unbroken lines are guarded to Source mode so they cannot trigger an unbounded rich-editor allocation.
+
+<p align="center">
+  <img src="benchmark/performance-overview.svg" alt="Mory Markdown performance overview">
+</p>
+
+See the [performance data](benchmark/performance-report.md) and [raw measurements](benchmark/performance-data.jsonl).
+
+## Build from source
+
+Mory requires macOS 13 or later. Go is pinned in [`mise.toml`](mise.toml), and dependency versions are locked in [`go.mod`](go.mod) and [`go.sum`](go.sum). Install `mise`, then run:
 
 ```sh
-mise exec -- make run     # Development app
-mise exec -- make check   # Tests, vet, native E2E and >=90% combined coverage
+mise exec -- make test    # Unit and package tests
+mise exec -- make check   # Tests, vet, native E2E, and combined coverage
 mise exec -- make race    # Race detector
-mise exec -- make bench   # Microbenchmarks
-mise exec -- make build   # Universal macOS app, DMG and checksums
+mise exec -- make bench   # Benchmarks
+mise exec -- make run     # Development app
+mise exec -- make build   # Universal macOS app, DMG, and checksum
 ```
 
-Native E2E requires a logged-in macOS desktop and uses isolated libraries. Build outputs are under `build/darwin-universal/`. Local packages are ad-hoc signed; Developer ID distribution and notarization require signing credentials.
+The build output is written to `build/darwin-universal/`. Local packages are ad-hoc signed. Native E2E tests and real-window performance measurements require a logged-in macOS desktop session:
 
-For real-window measurements, run `mise exec -- python3 scripts/performance.py`; its fixtures and temporary libraries are removed afterward. Dense documents and very long unbroken lines can make rich editing slow; source mode is preferable for large files. The 32 MiB input limit is not a guarantee of smooth editing at that size.
+```sh
+mise exec -- python3 scripts/performance.py
+```
 
 ## License
 
-[MIT](LICENSE). Dependency and artwork notices are in [THIRD_PARTY.md](THIRD_PARTY.md) and included in the app bundle.
+Mory is released under the [MIT License](LICENSE). Dependency and artwork notices are listed in [`THIRD_PARTY.md`](THIRD_PARTY.md) and included in the application bundle.

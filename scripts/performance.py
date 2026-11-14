@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-"""Measure a real macOS window with isolated generated documents and libraries.
+"""Measure a real macOS window with isolated documents and libraries.
 
 Run through mise so the Go toolchain matches the project. All binaries, fixture
 files, histories and sockets are removed on exit. JSON output can be redirected
 to a task-local file; README contains the checked-in measurements and methodology.
 """
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
 import platform
+import re
 import socket
 import statistics
 import subprocess
@@ -47,11 +49,12 @@ def fixture(kind, size):
 
 
 class NativeRun:
-    def __init__(self, binary, root, width, height):
+    def __init__(self, binary, root, width, height, timeout):
         self.root = root
         self.sock_path = root / "p.sock"
         self.samples = []
         self.stop = threading.Event()
+        self.timeout = timeout
         self.errors = (root / "stderr.log").open("wb")
         begin = time.perf_counter()
         self.process = subprocess.Popen([str(binary)], stdout=subprocess.DEVNULL, stderr=self.errors,
@@ -61,7 +64,7 @@ class NativeRun:
         self.monitor = threading.Thread(target=self.sample_rss, daemon=True)
         self.monitor.start()
         self.channel = socket.socket(socket.AF_UNIX)
-        self.channel.settimeout(60)
+        self.channel.settimeout(timeout)
         while not self.sock_path.exists():
             if self.process.poll() is not None or time.perf_counter() - begin > 30:
                 self.close()
@@ -89,7 +92,7 @@ class NativeRun:
         try:
             line = self.stream.readline()
         except TimeoutError as error:
-            raise RuntimeError(f"{action} did not complete within 60 seconds") from error
+            raise RuntimeError(f"{action} did not complete within {self.timeout:g} seconds") from error
         if not line:
             raise RuntimeError("Native benchmark exited during " + action)
         result = json.loads(line)
@@ -126,8 +129,14 @@ class NativeRun:
         self.stop.set()
         self.monitor.join(timeout=2)
         if hasattr(self, "stream"):
-            self.stream.close()
-        self.channel.close()
+            try:
+                self.stream.close()
+            except OSError:
+                pass
+        try:
+            self.channel.close()
+        except OSError:
+            pass
         self.errors.close()
 
 
@@ -137,13 +146,19 @@ def main():
     parser.add_argument("--edits", type=int, default=30)
     parser.add_argument("--sizes", default="102400,1048576,10485760")
     parser.add_argument("--kinds", default="prose,structured,long-line")
+    parser.add_argument("--fixture-dir", type=Path,
+                        help="measure the checked-in Markdown fixtures in this directory")
+    parser.add_argument("--fixtures", default="",
+                        help="comma-separated fixture stems to select with --fixture-dir")
     parser.add_argument("--modes", default="Write,Source")
     parser.add_argument("--width", type=int, default=2560)
     parser.add_argument("--height", type=int, default=1312)
+    parser.add_argument("--timeout", type=float, default=60,
+                        help="per-action native benchmark timeout in seconds")
     args = parser.parse_args()
-    if args.runs < 1 or args.edits < 1 or args.width < 1 or args.height < 1:
-        parser.error("runs, edits and window dimensions must be positive")
-    if not set(args.kinds.split(",")) <= {"prose", "structured", "table-heavy", "memory-heavy", "long-line"}:
+    if args.runs < 1 or args.edits < 1 or args.width < 1 or args.height < 1 or args.timeout <= 0:
+        parser.error("runs, edits, dimensions and timeout must be positive")
+    if args.fixture_dir is None and not set(args.kinds.split(",")) <= {"prose", "structured", "table-heavy", "memory-heavy", "long-line"}:
         parser.error("kinds must be prose, structured, table-heavy, memory-heavy or long-line")
     if not set(args.modes.split(",")) <= {"Write", "Source"}:
         parser.error("editing measurements support Write and Source modes")
@@ -156,36 +171,55 @@ def main():
     repo = Path(__file__).resolve().parent.parent
     output = repo / ".test-output"
     output.mkdir(exist_ok=True)
+    fixture_cases = []
+    if args.fixture_dir is not None:
+        fixture_dir = args.fixture_dir
+        if not fixture_dir.is_absolute():
+            fixture_dir = repo / fixture_dir
+        fixture_paths = sorted(fixture_dir.glob("*.md"))
+        selected = {value for value in args.fixtures.split(",") if value}
+        if selected:
+            fixture_paths = [path for path in fixture_paths if path.stem in selected]
+        if not fixture_paths:
+            parser.error(f"fixture directory has no Markdown files: {fixture_dir}")
+        for path in fixture_paths:
+            fixture_cases.append((path.stem, str(path.relative_to(repo)), path.read_bytes()))
+    else:
+        fixture_cases = [(kind, "", None) for kind in args.kinds.split(",")]
     metadata = dict(date=time.strftime("%Y-%m-%d"), os=platform.platform(),
                     cpu=subprocess.check_output(["sysctl", "-n", "machdep.cpu.brand_string"], text=True).strip(),
                     ram_bytes=int(subprocess.check_output(["sysctl", "-n", "hw.memsize"], text=True)),
                     go=subprocess.check_output(["go", "version"], text=True).strip(),
                     commit=subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip(),
                     tracked_worktree_dirty=bool(subprocess.check_output(["git", "diff", "HEAD", "--name-only"], cwd=repo, text=True).strip()),
-                    requested_window=f"{args.width}x{args.height}", sample_interval_ms=50)
+                    requested_window=f"{args.width}x{args.height}", sample_interval_ms=50,
+                    fixture_dir=str(args.fixture_dir) if args.fixture_dir else None,
+                    action_timeout_seconds=args.timeout)
     print(json.dumps(dict(environment=metadata)), flush=True)
     with tempfile.TemporaryDirectory(prefix="perf-", dir=output) as temp:
         work = Path(temp)
         binary = work / "mory-perf"
         subprocess.run(["go", "build", "-trimpath", "-tags=performance,mygo_noinspector",
                         "-ldflags=-s -w", "-o", str(binary), "."], cwd=repo, check=True)
-        for kind in args.kinds.split(","):
-            for size in sizes:
+        for kind, fixture_path, fixture_data in fixture_cases:
+            case_sizes = [len(fixture_data)] if fixture_data is not None else sizes
+            for size in case_sizes:
                 # Dense tables and unbroken lines are stress fixtures; cap their
                 # default sizes rather than silently representing them as prose.
-                if kind != "prose" and size > 1048576:
+                if fixture_data is None and kind != "prose" and size > 1048576:
                     continue
                 for mode in args.modes.split(","):
                     results, failures = [], []
                     for repeat in range(args.runs):
-                        case = work / f"{kind}-{size}-{mode}-{repeat}"
+                        safe_kind = re.sub(r"[^A-Za-z0-9_.-]+", "_", kind)
+                        case = work / f"{safe_kind}-{size}-{mode}-{repeat}"
                         case.mkdir()
                         path = case / "document.md"
-                        data = fixture(kind, size)
+                        data = fixture_data if fixture_data is not None else fixture(kind, size)
                         path.write_bytes(data)
                         native = None
                         try:
-                            native = NativeRun(binary, case, args.width, args.height)
+                            native = NativeRun(binary, case, args.width, args.height, args.timeout)
                             idle = native.settled_rss()
                             idle_cpu = native.idle_cpu_percent
                             opened = native.call("open", Path=str(path), Mode=mode)
@@ -193,9 +227,10 @@ def main():
                             edits = []
                             for i in range(args.edits):
                                 edits.append(native.call("edit", Position="start", Text="x"))
+                            before_save = path.read_bytes()
                             saved = native.call("save")
-                            if b"x" * args.edits not in path.read_bytes():
-                                raise AssertionError("Edits did not reach original file")
+                            if path.read_bytes() == before_save:
+                                raise AssertionError("Edits did not change the original file")
                             undo = native.call("undo")
                             scrolling = [native.call("scroll") for _ in range(10)] if mode == "Source" else []
                             after_edit = native.settled_rss()
@@ -211,7 +246,8 @@ def main():
                             if native:
                                 native.close()
                         print(f"Measured {kind} {len(data)} bytes {mode} run {repeat+1}/{args.runs}", file=sys.stderr, flush=True)
-                    print(json.dumps(dict(kind=kind, bytes=len(data), lines=data.count(b"\n")+1,
+                    print(json.dumps(dict(kind=kind, fixture=fixture_path, bytes=len(data),
+                        sha256=hashlib.sha256(data).hexdigest(), lines=data.count(b"\n")+1,
                         mode=mode, runs=results, failures=failures)), flush=True)
 
 
