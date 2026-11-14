@@ -16,7 +16,7 @@ type Table struct {
 	Rows, Columns int
 	Widths        []float64
 	Cells         []Cell
-	Preview       map[[2]int]string
+	Compact       *CompactTable
 }
 
 func ReadTable(node *Node) *Table {
@@ -25,7 +25,7 @@ func ReadTable(node *Node) *Table {
 			Rows:    node.Compact.Rows,
 			Columns: node.Compact.Columns,
 			Widths:  slices.Clone(node.Compact.Widths),
-			Preview: node.Compact.Preview,
+			Compact: node.Compact,
 		}
 	}
 	t := &Table{}

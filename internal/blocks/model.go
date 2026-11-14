@@ -31,14 +31,14 @@ type Node struct {
 	mdBaseline [32]byte
 }
 
-// CompactTable keeps the source and the small amount of geometry needed for a
-// large Markdown table preview without allocating a node tree for every cell.
-// The full table remains available in Source mode and can be parsed on demand
-// if a future editing path needs it.
+// CompactTable indexes every cell as an immutable slice of the Markdown source.
+// Readers can render arbitrary rows without expanding a rich node tree. Clones
+// share this read-only data; editing remains an explicit Source-mode operation.
 type CompactTable struct {
 	Rows, Columns int
 	Widths        []float64
-	Preview       map[[2]int]string
+	Align         []string
+	Cells         []string
 }
 
 func New(kind string, children ...*Node) *Node {

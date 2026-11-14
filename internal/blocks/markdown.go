@@ -91,7 +91,7 @@ func parseCommonMarkdown(source string) (*Node, error) {
 const compactTableRows = 200
 
 // compactMarkdownTable avoids expanding thousands of ordinary Markdown table
-// cells into rich-text nodes when the UI will show a compact preview. The
+// cells into rich-text nodes when the UI will render only visible rows. The
 // original block spelling is still attached by parseCommonMarkdown, so saving
 // an untouched document remains byte-for-byte stable.
 func compactMarkdownTable(p *parser.Document, index int) (*Node, bool) {
@@ -110,15 +110,19 @@ func compactMarkdownTable(p *parser.Document, index int) (*Node, bool) {
 		Rows:    len(rows),
 		Columns: len(block.Align),
 		Widths:  make([]float64, len(block.Align)),
-		Preview: make(map[[2]int]string),
+		Align:   make([]string, len(block.Align)),
+		Cells:   make([]string, len(rows)*len(block.Align)),
 	}
 	for i := range info.Widths {
 		info.Widths[i] = 160
+		switch block.Align[i] {
+		case parser.AlignCenter:
+			info.Align[i] = "center"
+		case parser.AlignRight:
+			info.Align[i] = "right"
+		}
 	}
 	for rowPosition, row := range rows {
-		if rowPosition >= 3 && rowPosition < len(rows)-3 {
-			continue
-		}
 		column := 0
 		for cell := range p.Children(row) {
 			if column >= info.Columns {
@@ -126,7 +130,7 @@ func compactMarkdownTable(p *parser.Document, index int) (*Node, bool) {
 			}
 			b := p.Block(cell)
 			text := strings.TrimSpace(p.Source()[b.Start:b.End])
-			info.Preview[[2]int{rowPosition, column}] = text
+			info.Cells[rowPosition*info.Columns+column] = text
 			column++
 		}
 	}

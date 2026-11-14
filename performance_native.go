@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/ui"
 	"github.com/yuluo-yx/mory/internal/blocks"
 )
 
@@ -67,6 +68,8 @@ func init() {
 				var actionMS float64
 				var width, height int
 				var problem string
+				var tableState *ui.ListState
+				var tableRow, tableRows int
 				done := make(chan struct{})
 				a.win.Update(func() {
 					defer close(done)
@@ -102,6 +105,11 @@ func init() {
 						if a.mode == "Source" {
 							a.code.SetScrollY(a.code.ScrollY() + 400)
 						}
+					case "table-scroll":
+						tableState, tableRow, tableRows = performanceTableScroll(a, req.Position)
+						if tableState == nil {
+							problem = "no virtualized table is available"
+						}
 					case "capture", "stats":
 					default:
 						problem = fmt.Sprintf("unknown action: %s", req.Action)
@@ -120,6 +128,16 @@ func init() {
 				}
 				elapsedMS := float64(time.Since(begin)) / float64(time.Millisecond)
 				result := performanceResult(actionMS, elapsedMS, problem)
+				if tableState != nil {
+					inspected := make(chan struct{})
+					a.win.Update(func() {
+						first, last := tableState.Visible()
+						result["table_first_visible_row"], result["table_last_visible_row"] = first, last
+						close(inspected)
+					})
+					<-inspected
+					result["table_target_row"], result["table_rows"] = tableRow, tableRows
+				}
 				result["window_width"], result["window_height"] = width, height
 				result["effective_mode"] = a.mode
 				if err := encoder.Encode(result); err != nil {
@@ -128,6 +146,34 @@ func init() {
 			}
 		}()
 	}
+}
+
+// Drive the actual nested list, including jumps beyond rows measured so far.
+func performanceTableScroll(a *app, position string) (*ui.ListState, int, int) {
+	if a.blockEditor == nil {
+		return nil, 0, 0
+	}
+	for index, node := range a.blockEditor.visibleBlocks() {
+		if node.Kind != "table" {
+			continue
+		}
+		table, simple := a.tableLayout(node)
+		if !simple || table.Rows < 200 {
+			continue
+		}
+		a.blockEditor.list.ScrollTo(index, ui.Start)
+		row := 1
+		switch position {
+		case "middle":
+			row = table.Rows / 2
+		case "end":
+			row = table.Rows - 1
+		}
+		state := a.blockEditor.tables[node.ID].rows
+		state.ScrollTo(row, ui.Start)
+		return state, row, table.Rows
+	}
+	return nil, 0, 0
 }
 
 type performanceWindowStore struct{ states map[string]mygo.WindowState }

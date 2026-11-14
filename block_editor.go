@@ -74,9 +74,11 @@ type blockSession struct {
 const maxCachedBlockFields = 256
 
 type tableCache struct {
-	node   *blocks.Node
-	table  *blocks.Table
-	simple bool
+	node    *blocks.Node
+	table   *blocks.Table
+	simple  bool
+	rows    *ui.ListState
+	preview *markdown.Options
 }
 
 func newBlockSession(source, format string, sourceRevision uint64) (*blockSession, error) {

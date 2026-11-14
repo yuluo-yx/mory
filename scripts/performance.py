@@ -65,12 +65,17 @@ class NativeRun:
         self.monitor.start()
         self.channel = socket.socket(socket.AF_UNIX)
         self.channel.settimeout(timeout)
-        while not self.sock_path.exists():
+        while True:
             if self.process.poll() is not None or time.perf_counter() - begin > 30:
                 self.close()
                 raise RuntimeError("Native benchmark did not start")
-            time.sleep(.01)
-        self.channel.connect(str(self.sock_path))
+            try:
+                self.channel.connect(str(self.sock_path))
+                break
+            except (FileNotFoundError, ConnectionRefusedError):
+                # A Unix socket path exists after bind, before listen accepts
+                # connections. Wait for actual readiness, not just the file.
+                time.sleep(.01)
         self.stream = self.channel.makefile("rwb")
         try:
             self.call("capture")

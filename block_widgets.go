@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/markdown"
 	"github.com/yuluo-yx/mory/internal/blocks"
 	"github.com/yuluo-yx/mory/internal/mathrender"
 )
@@ -32,15 +33,15 @@ func (a *app) blockTable(c *ui.Context, n *blocks.Node, readOnly bool, depth int
 	s := a.blockEditor
 	t := c.Theme()
 	table, simple := a.tableLayout(n)
+	if simple && table.Rows >= 200 {
+		a.largeTableView(c, n, table, depth)
+		return
+	}
 	selection := blocks.Rect{Top: 0, Left: 0, Bottom: 0, Right: 0}
 	if s.tableID == n.ID {
 		selection = s.cells
 	}
 	selection = table.Expand(selection)
-	if simple && table.Rows >= 200 {
-		a.largeTableFallback(c, n, table, readOnly)
-		return
-	}
 	if !readOnly {
 		ui.Row(c).Wrap().Gap(5).Padding(4, 0).Children(func() {
 			for _, action := range []struct {
@@ -165,7 +166,7 @@ func (a *app) tableLayout(n *blocks.Node) (*blocks.Table, bool) {
 	}
 	table := blocks.ReadTable(n)
 	if n.Compact != nil {
-		s.tables[n.ID] = tableCache{node: n, table: table, simple: true}
+		s.tables[n.ID] = tableCache{node: n, table: table, simple: true, rows: &ui.ListState{}, preview: &markdown.Options{}}
 		return table, true
 	}
 	simple := len(table.Cells) == table.Rows*table.Columns
@@ -177,60 +178,74 @@ func (a *app) tableLayout(n *blocks.Node) (*blocks.Table, bool) {
 			}
 		}
 	}
-	s.tables[n.ID] = tableCache{node: n, table: table, simple: simple}
+	cache := tableCache{node: n, table: table, simple: simple}
+	if simple && table.Rows >= 200 {
+		cache.rows, cache.preview = &ui.ListState{}, &markdown.Options{}
+	}
+	s.tables[n.ID] = cache
 	return table, simple
 }
 
-func (a *app) largeTableFallback(c *ui.Context, n *blocks.Node, table *blocks.Table, readOnly bool) {
+// A bounded viewport lets the list measure only nearby rows, including wrapped
+// cells. The source-backed cell index avoids retaining offscreen rich editors.
+func (a *app) largeTableView(c *ui.Context, n *blocks.Node, table *blocks.Table, depth int) {
 	t := c.Theme()
-	ui.Column(c).FillWidth().Padding(16).Gap(8).Background(t.Surface).Border(1, t.Border).Radius(8).Children(func() {
-		ui.Textf(c, a.tr("Large table: %d rows × %d columns"), table.Rows, table.Columns).Bold()
-		ui.Text(c, a.largeTablePreview(table)).Font("Menlo").FontSize(11).TextColor(t.TextMuted).FillWidth().Clip()
-		if readOnly {
-			ui.Text(c, a.tr("This table is shown in a compact preview to keep scrolling responsive.")).FontSize(11).TextColor(t.TextMuted)
-		} else {
-			ui.Text(c, a.tr("This table uses a compact preview to keep editing responsive.")).FontSize(11).TextColor(t.TextMuted)
-		}
-		if ghostButton(c, a.tr("Open Source mode")).Clicked() {
-			a.changeMode("Source")
-		}
+	state := a.blockEditor.tables[n.ID].rows
+	state.Header = func(row int) bool {
+		return row == 0 && (table.Compact != nil || table.Cells[0].Node.Kind == "th")
+	}
+	total := float32(0)
+	for _, width := range table.Widths {
+		total += float32(width)
+	}
+	font := a.writingFont(".page")
+	// Options owns an image cache and must not be copied between views/frames.
+	options := a.blockEditor.tables[n.ID].preview
+	options.OnLink, options.LoadImage = a.openLink, a.loadPreviewImage
+	options.Extensions = a.preview.Extensions
+	options.Math, options.InlineMath = a.preview.Math, a.preview.InlineMath
+	options.Theme = &markdown.Theme{Font: font.Family, FontSize: font.Size}
+	ui.Column(c).FillWidth().Gap(6).Children(func() {
+		ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
+			ui.Textf(c, a.tr("Large table: %d rows × %d columns"), table.Rows, table.Columns).FontSize(12).TextColor(t.TextMuted).Grow(1)
+			if ghostButton(c, a.tr("Open Source mode")).FontSize(11).Clicked() {
+				a.changeMode("Source")
+			}
+		})
+		scroll := ui.ScrollHorizontal(c).FillWidth().Height(400).Border(1, t.Border)
+		// Small column counts fill the page; wider tables retain horizontal scroll.
+		width := max(total, scroll.LayoutBounds().W-2)
+		scroll.Children(func() {
+			ui.List(c.Key(n.ID), state, table.Rows, func(row int) {
+				background := t.Background
+				if state.Header(row) {
+					background = a.docTheme.Color("th", "background-color", t.Surface)
+				}
+				ui.Row(c).Width(width).AlignItems(ui.Stretch).Background(background).Children(func() {
+					for column, columnWidth := range table.Widths {
+						cell := ui.Column(c.Key(column)).Width(float32(columnWidth)*width/total).Shrink(0).MinWidth(0).Padding(8).BorderWidth(0, 1, 1, 0).BorderColor(a.docTheme.Color("table", "border-color", t.Border))
+						cell.Children(func() {
+							if table.Compact != nil {
+								alignment := ui.Start
+								switch table.Compact.Align[column] {
+								case "center":
+									alignment = ui.Center
+								case "right":
+									alignment = ui.End
+								}
+								markdown.View(c, table.Compact.Cells[row*table.Columns+column], options).FillWidth().TextAlign(alignment)
+							} else {
+								// Simple expanded tables are row-major and have no spans.
+								for _, child := range blocks.Visible(table.Cells[row*table.Columns+column].Node.Children) {
+									a.blockNode(c, child, true, depth+1)
+								}
+							}
+						})
+					}
+				})
+			}).Width(width).Height(400).Label(a.tr("Table rows"))
+		})
 	})
-}
-
-func (a *app) largeTablePreview(table *blocks.Table) string {
-	rows := make([]int, 0, 6)
-	for row := 0; row < table.Rows && len(rows) < 3; row++ {
-		rows = append(rows, row)
-	}
-	for row := max(3, table.Rows-3); row < table.Rows; row++ {
-		if row >= 0 {
-			rows = append(rows, row)
-		}
-	}
-	var b strings.Builder
-	for i, row := range rows {
-		if i == 3 && table.Rows > 6 {
-			b.WriteString("…\n")
-		}
-		for column := 0; column < table.Columns; column++ {
-			if column > 0 {
-				b.WriteString(" | ")
-			}
-			text := ""
-			if cell := table.At(row, column); cell != nil {
-				text = cell.Node.Plain()
-			} else if table.Preview != nil {
-				text = table.Preview[[2]int{row, column}]
-			}
-			runes := []rune(text)
-			if len(runes) > 96 {
-				text = string(runes[:96]) + "…"
-			}
-			b.WriteString(text)
-		}
-		b.WriteByte('\n')
-	}
-	return b.String()
 }
 
 func (a *app) blockColumns(c *ui.Context, n *blocks.Node, readOnly bool, depth int) {

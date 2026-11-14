@@ -111,6 +111,8 @@ def main():
         figure.savefig(args.preview, dpi=120)
     plt.close(figure)
     lines = ["# Mory performance data", "",
+             "These measurements predate the full-table reader. Current large-table navigation is measured "
+             "separately in the [large-table reading benchmark](large-table-performance-report.md).", "",
              f"Mory **{version}**, {after_env['cpu']}, {after_env['ram_bytes'] / 2**30:g} GiB, "
              f"{after_env['os']}; requested window {after_env['requested_window']}. "
              "Six checked-in 1 MiB fixtures, Write and Source modes, three fresh processes per case, "

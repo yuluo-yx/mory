@@ -78,7 +78,9 @@ Mory keeps large-document typing lightweight: **median edit actions under 0.05 m
 | Structured document, 1 MiB | 58.76 → **0.044 ms** | 135.33 → **55.88 ms** | **59%** | 88.56 ms |
 | Mixed-format document, 1 MiB | 28.13 → **0.043 ms** | 95.04 → **53.53 ms** | **44%** | 61.99 ms |
 
-Mory achieves this by indexing editing targets and moving full-document serialization to autosave, save and source-consuming commands. Save timings include that work. Dense tables use a compact preview, and exceptionally long lines use Source mode to control allocation. Values are medians across three runs; capture includes PNG encoding, so neither metric is keyboard-to-display latency.
+Mory achieves this by indexing editing targets and moving full-document serialization to autosave, save and source-consuming commands. Save timings include that work. Large tables now display every row in a virtualized viewport with a pinned header, horizontal scrolling and wrapped cell contents; editing them still uses Source mode. Exceptionally long lines retain the existing Source fallback. Values above are medians across three runs; capture includes PNG encoding, so neither metric is keyboard-to-display latency.
+
+The chart and editing measurements predate the full-table reader. See the [large-table reading benchmark](benchmark/large-table-performance-report.md) for measurements of the new complete-row navigation workflow.
 
 The [performance comparison](benchmark/performance-comparison.md) explains Mory's measured strengths and the available evidence for **Mory 0.1.0**, **ArcMD v0.0.11** and **Quiet.md v0.1.11**. The other editors' local process probes do not include matching editing workflows, so these results establish Mory's improvement rather than an overall three-editor ranking. See the [full performance data](benchmark/performance-report.md) and [raw measurements](benchmark/performance-data.jsonl).
 

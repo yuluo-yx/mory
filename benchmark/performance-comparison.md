@@ -19,7 +19,7 @@ Mory's demonstrated strengths are:
 
 - **Less work on each keystroke.** Indexed block lookup avoids searching unrelated subtrees. Large documents serialize at autosave, save and source-consuming commands; the measured save includes this work.
 - **Lower editing-and-capture cost.** The improvement remains visible when rendering and PNG encoding are included, beyond the reduction in the input handler alone. Capture is not keyboard-to-display latency.
-- **Explicit handling of stress documents.** The `table-heavy-1m` and `target-shape-12x1m` Write requests completed with median sampled peak RSS of **237.77 MiB** and **243.25 MiB**. They use compact table previews; the full table is available in Source mode. Exceptionally long single lines also use Source mode. These results do not represent full rich-text rendering of all table cells.
+- **Explicit handling of stress documents.** The earlier `table-heavy-1m` and `target-shape-12x1m` Write requests completed with median sampled peak RSS of **237.77 MiB** and **243.25 MiB** using head/tail-only previews. The current reader exposes every row through a virtualized viewport; see the separate [large-table reading results](large-table-performance-report.md). The earlier numbers are not measurements of that new workflow. Exceptionally long single lines retain their Source-mode fallback.
 
 The complete matrix contains six fixtures, two requested modes, three runs per case and 1,080 edits, with no recorded failures. Memory did not improve in every case: structured Write loaded RSS increased from **411.67 to 422.44 MiB**, while mixed-format Write peak RSS increased from **419.08 to 427.72 MiB**. The main measured gain is reduced editing cost.
 

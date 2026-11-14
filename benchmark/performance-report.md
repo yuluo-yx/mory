@@ -1,5 +1,7 @@
 # Mory performance data
 
+These measurements predate the full-table reader. Current large-table navigation is measured separately in the [large-table reading benchmark](large-table-performance-report.md).
+
 Mory **0.1.0**, Apple M4, 24 GiB, macOS-27.0.1-arm64-arm-64bit-Mach-O; requested window 2560x1312. Six checked-in 1 MiB fixtures, Write and Source modes, three fresh processes per case, 30 edits per process. Values below are medians across runs; edit values use each run's median. RSS is sampled every 50 ms. Long-line Write requests use the existing Source fallback; large tables retain the existing compact preview. These results do not measure full rich rendering of every table cell.
 
 The baseline build is identified by commit `627ba04460de` and the worktree diff and binary hashes in its raw records. The optimized build adds indexed block lookup, compact typing undo records and deferred serialization for large block documents. Edit actions update the editor model; full source serialization now occurs at autosave, save and source-consuming commands. The edit speedup therefore includes work moved out of the input handler. Save timings include pending serialization; capture timings include rendering and PNG encoding. Neither is keyboard-to-display latency.
