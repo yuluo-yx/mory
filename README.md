@@ -6,6 +6,8 @@
 
 <p align="center">A calm, local writing space for macOS.</p>
 
+<p align="center"><a href="README.zh-CN.md">简体中文</a></p>
+
 Mory is a native macOS writing app for Markdown, MDX, and Feishu/Lark DocxXML documents. Your library stays on this Mac: no account or background server is required.
 
 ## Highlights
