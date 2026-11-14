@@ -10,6 +10,15 @@
 
 Mory is a native macOS writing app for Markdown, MDX, and Feishu/Lark DocxXML documents. Your library stays on this Mac: no account or background server is required.
 
+![Mory showing a document with tasks, highlighted Go code, a callout, a table, and an outline](resources/screenshots/mory-overview.png)
+
+<details>
+<summary>Watch Mory switch between Write, Source, Split, and Read</summary>
+
+![Mory's four document modes in the native macOS app](resources/screenshots/mory-modes.gif)
+
+</details>
+
 ## Highlights
 
 - Four editing modes: **Write**, **Source**, **Split**, and **Read**.
@@ -67,22 +76,20 @@ A plugin receives `{ title, markdown }` and may return `{ markdown }`, `{ messag
 
 ## Performance snapshot
 
-Mory keeps large-document typing lightweight: **median edit actions under 0.05 ms**, with **59% less edit-and-capture time** on the structured document after optimization. The benchmark covers six checked-in 1 MiB Markdown fixtures on an Apple M4 with 24 GiB RAM: 36 independent runs and 1,080 edits across Write and Source modes.
+Mory's performance strengths are **low input-processing cost** and **complete large-table reading with bounded rendering work**. On an Apple M4 with 24 GiB RAM, the recorded 1 MiB structured and mixed-format documents have median edit actions below **0.05 ms**. Full-table navigation, including rendering and PNG capture, takes about **35–37 ms** across the three table fixtures.
 
 <p align="center">
   <img src="benchmark/performance-overview.svg" alt="Mory Markdown performance overview">
 </p>
 
-| Write workload | Edit action, before → after | Edit + rendering + PNG capture, before → after | Capture cost reduction | Save after optimization |
-| --- | ---: | ---: | ---: | ---: |
-| Structured document, 1 MiB | 58.76 → **0.044 ms** | 135.33 → **55.88 ms** | **59%** | 88.56 ms |
-| Mixed-format document, 1 MiB | 28.13 → **0.043 ms** | 95.04 → **53.53 ms** | **44%** | 61.99 ms |
+| Write workload | Edit action | Edit + rendering + PNG capture | Save, including serialization |
+| --- | ---: | ---: | ---: |
+| Structured document, 1 MiB | **0.044 ms** | 55.88 ms | 88.56 ms |
+| Mixed-format document, 1 MiB | **0.043 ms** | 53.53 ms | 61.99 ms |
 
-Mory achieves this by indexing editing targets and moving full-document serialization to autosave, save and source-consuming commands. Save timings include that work. Large tables now display every row in a virtualized viewport with a pinned header, horizontal scrolling and wrapped cell contents; editing them still uses Source mode. Exceptionally long lines retain the existing Source fallback. Values above are medians across three runs; capture includes PNG encoding, so neither metric is keyboard-to-display latency.
+Large-table reading covers **401–3,206 rows**, with loaded RSS of about **201–238 MiB**. Every row remains accessible, with pinned headers and wrapped cells. The editing matrix contains 36 independent runs and 1,080 edits; the table-reading matrix contains 18 runs and 162 verified row jumps. Values are medians across three runs. Input actions exclude rendering; capture includes PNG encoding, so neither is keyboard-to-display latency.
 
-The chart and editing measurements predate the full-table reader. See the [large-table reading benchmark](benchmark/large-table-performance-report.md) for measurements of the new complete-row navigation workflow.
-
-The [performance comparison](benchmark/performance-comparison.md) explains Mory's measured strengths and the available evidence for **Mory 0.1.0**, **ArcMD v0.0.11** and **Quiet.md v0.1.11**. The other editors' local process probes do not include matching editing workflows, so these results establish Mory's improvement rather than an overall three-editor ranking. See the [full performance data](benchmark/performance-report.md) and [raw measurements](benchmark/performance-data.jsonl).
+Reference editors: **ArcMD v0.0.11** and **Quiet.md v0.1.11**. Mory's measured strengths and the comparison boundaries are documented in the [performance comparison](benchmark/performance-comparison.md); different measurement workflows are not expressed as speed ratios. See the [editing data](benchmark/performance-report.md) and [full-table reading data](benchmark/large-table-performance-report.md) for reproducible results and raw samples.
 
 ## Build from source
 
