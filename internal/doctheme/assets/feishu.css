@@ -242,6 +242,10 @@ blockquote {
   border-left-color: #bbbfc4;
 }
 
+ul, ol {
+  padding-left: 40px;
+}
+
 .task {
   border-color: #00000038;
 }

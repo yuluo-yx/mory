@@ -23,6 +23,9 @@ func TestBuiltinsAndCSSCascade(t *testing.T) {
 		if rich.Headings[0].Size <= 1 {
 			t.Fatal("heading scale", name)
 		}
+		if theme.ListIndent(font) != 40 || rich.Indent*font.Size != 40 {
+			t.Fatal("built-in lists must leave room between their markers and body text", name)
+		}
 		if theme.Named("color", "red", ui.Transparent) == ui.Transparent {
 			t.Fatal("missing palette")
 		}

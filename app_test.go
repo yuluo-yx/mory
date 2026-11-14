@@ -239,7 +239,8 @@ func TestViewsAndOverlays(t *testing.T) {
 	a := testApp(t)
 	a.createNote(welcome, "Welcome to Mory")
 	a.home("All notes")
-	for i, title := range []string{"A gentle morning", "Ideas in motion", "Reading notes", "A small next step", "Project journal"} {
+	// Include long Latin and CJK titles in the home layout and image checks.
+	for i, title := range []string{"A gentle morning", "From a cluster to a running large language model", "万卡集群从开始到运行起来模型需要什么？", "A small next step", "Project journal"} {
 		n, err := a.lib.Create(title, "## A thought worth keeping\n\nA place for everything on your mind.\n", "markdown")
 		if err != nil {
 			t.Fatal(err)

@@ -84,7 +84,7 @@ func (a *app) view(c *ui.Context) {
 	}
 
 	ui.Row(c).Fill().AlignItems(ui.Stretch).Background(c.Theme().Background).Children(func() {
-		if !a.focus || a.settingsOpen || a.helpOpen {
+		if (!a.focus && !a.sidebarHidden) || a.settingsOpen || a.helpOpen {
 			a.sidebar(c)
 		}
 		ui.Column(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
@@ -128,12 +128,13 @@ func (a *app) sidebar(c *ui.Context) {
 	sideCol.Children(func() {
 		// Window control placeholder & sidebar toggle
 		ui.Row(c).Height(24).AlignItems(ui.Center).Justify(ui.End).Padding(0, 6).Children(func() {
-			btn := ghostButton(c, "").Tooltip(a.tr("Toggle sidebar")).Padding(3, 5).Radius(5)
+			btn := ghostButton(c, "").Label(a.tr("Toggle sidebar")).Tooltip(a.tr("Toggle sidebar")).Padding(3, 5).Radius(5)
 			btn.Children(func() {
 				ui.Icon(c, iconSidebar()).Width(15).Height(15).TextColor(t.TextMuted)
 			})
 			if btn.Clicked() {
-				a.focus = !a.focus
+				// Collapsing library navigation must not enter focus mode or hide the outline.
+				a.sidebarHidden = !a.sidebarHidden
 			}
 		})
 
@@ -208,33 +209,8 @@ func (a *app) sidebar(c *ui.Context) {
 			}
 		})
 
-		// Keep Trash reachable while editing, outside the scrollable document tree.
+		// Keep Settings outside the scrollable document tree.
 		ui.Box(c).Height(1).FillWidth().Background(t.Border.Alpha(0.5)).Margin(4, 0)
-		trashActive := a.current == nil && a.section == "Trash" && !a.settingsOpen
-		trashBtn := ghostButton(c, "").Label(a.tr("Open Trash")).Tooltip(a.tr("Mory Trash")).FillWidth().Shrink(0).Padding(7, 10).Radius(6)
-		trashColor := t.TextMuted
-		if trashActive {
-			trashBtn.Background(t.Accent.Alpha(0.18))
-			trashColor = t.Accent
-		}
-		trashBtn.Children(func() {
-			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Icon(c, iconTrash()).Size(16, 16).TextColor(trashColor)
-				ui.Text(c, a.tr("Trash")).FontSize(13).TextColor(trashColor).Grow(1)
-				count := 0
-				for _, note := range a.lib.Notes {
-					if note.Deleted {
-						count++
-					}
-				}
-				if count > 0 {
-					ui.Textf(c, "%d", count).Label(a.trf("%d documents in Trash", count)).FontSize(11).TextColor(trashColor)
-				}
-			})
-		})
-		if trashBtn.Clicked() {
-			a.home("Trash")
-		}
 		ui.Row(c).AlignItems(ui.Center).Children(func() {
 			settingsBtn := ghostButton(c, "").Label(a.tr("Settings")).Radius(6).Padding(7, 10).Grow(1)
 			if a.settingsOpen {
@@ -507,7 +483,7 @@ func (a *app) homeView(c *ui.Context) {
 	}
 
 	leftPad := float32(24)
-	if a.focus {
+	if a.focus || a.sidebarHidden {
 		leftPad = 84
 		if bar.Left > 0 {
 			leftPad = max(leftPad, bar.Left+16)
@@ -520,13 +496,13 @@ func (a *app) homeView(c *ui.Context) {
 	}
 	header.Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			if a.focus {
+			if a.focus || a.sidebarHidden {
 				btnSidebar := ghostButton(c, "").Label(a.tr("Toggle sidebar")).Tooltip(a.tr("Toggle sidebar")).Padding(4, 6).Radius(5)
 				btnSidebar.Children(func() {
 					ui.Icon(c, iconSidebar()).Width(15).Height(15).TextColor(t.TextMuted)
 				})
 				if btnSidebar.Clicked() {
-					a.focus = false
+					a.focus, a.sidebarHidden = false, false
 				}
 			}
 			heading := "Home"
@@ -765,9 +741,9 @@ func (a *app) noteCard(c *ui.Context, n *library.Note, list bool) {
 					}
 				}
 				ui.Icon(c, iconFileText()).Width(15).Height(15).TextColor(t.Accent)
-				ui.Column(c).Grow(1).Gap(3).Children(func() {
+				ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
 					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-						ui.Text(c, a.displayTitle(n.Title)).FontSize(14).Bold().LetterSpacing(-0.2).Grow(1)
+						ui.Text(c, a.displayTitle(n.Title)).FontSize(14).Bold().LetterSpacing(-0.2).Grow(1).MinWidth(0).SingleLine()
 						if n.Pinned {
 							ui.Icon(c, iconPin()).Width(12).Height(12).TextColor(t.TextMuted)
 						}
@@ -775,7 +751,7 @@ func (a *app) noteCard(c *ui.Context, n *library.Note, list bool) {
 							ui.Icon(c, iconStar()).Width(12).Height(12).TextColor(ui.Hex("#ff9500"))
 						}
 					})
-					ui.Text(c, a.dateText(n.Updated, false)+"  ·  "+formatLabel(n)).FontSize(11).TextColor(t.TextMuted)
+					ui.Text(c, a.dateText(n.Updated, false)+"  ·  "+formatLabel(n)).FontSize(11).TextColor(t.TextMuted).SingleLine()
 				})
 				btnMore := ghostButton(c, "").Label(a.tr("Actions ")+a.displayTitle(n.Title)).Padding(4, 6).Radius(5)
 				btnMore.Children(func() {
@@ -796,7 +772,7 @@ func (a *app) noteCard(c *ui.Context, n *library.Note, list bool) {
 		}
 		ui.Column(c).Grow(1).Padding(8, 8, 4).Radius(11, 11, 0, 0).Children(func() {
 			ui.Column(c).Fill().Padding(12, 14).Radius(8).Background(sheetBg).Border(1, t.Border.Alpha(0.6)).Shadow(0, 1, 3, 0, ui.RGBA(0, 0, 0, 0.04)).Children(func() {
-				ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
+				ui.Row(c).AlignItems(ui.Center).Gap(6).Shrink(0).Children(func() {
 					if a.selecting {
 						selected := a.selected[n.ID]
 						if ui.Checkbox(c, &selected, "").Label(a.tr("Select ") + a.displayTitle(n.Title)).Changed() {
@@ -804,7 +780,7 @@ func (a *app) noteCard(c *ui.Context, n *library.Note, list bool) {
 						}
 					}
 					ui.Icon(c, iconFileText()).Width(13).Height(13).TextColor(t.Accent)
-					ui.Text(c, a.displayTitle(n.Title)).FontSize(12).Bold().LetterSpacing(-0.2).Grow(1).MaxHeight(18).Clip()
+					ui.Text(c, a.displayTitle(n.Title)).FontSize(12).Bold().LetterSpacing(-0.2).Grow(1).MinWidth(0).SingleLine()
 					if n.Pinned {
 						ui.Icon(c, iconPin()).Width(11).Height(11).TextColor(t.TextMuted)
 					}
@@ -834,9 +810,10 @@ func (a *app) noteCard(c *ui.Context, n *library.Note, list bool) {
 			})
 		})
 
-		ui.Column(c).Padding(8, 14, 12).Gap(4).Children(func() {
-			ui.Text(c, a.displayTitle(n.Title)).FontSize(14).Bold().LetterSpacing(-0.2).MaxHeight(20).Clip()
-			ui.Text(c, a.dateText(n.Updated, false)+"  ·  "+formatLabel(n)).FontSize(11).TextColor(t.TextMuted)
+		// Limit title layout itself so wrapped glyphs cannot overlap the metadata.
+		ui.Column(c).Padding(8, 14, 12).Gap(4).Shrink(0).Children(func() {
+			ui.Text(c, a.displayTitle(n.Title)).FontSize(14).Bold().LetterSpacing(-0.2).SingleLine()
+			ui.Text(c, a.dateText(n.Updated, false)+"  ·  "+formatLabel(n)).FontSize(11).TextColor(t.TextMuted).SingleLine()
 		})
 	})
 
@@ -916,7 +893,7 @@ func (a *app) editorView(c *ui.Context) {
 	}
 
 	leftPad := float32(20)
-	if a.focus {
+	if a.focus || a.sidebarHidden {
 		leftPad = 84
 		if bar.Left > 0 {
 			leftPad = max(leftPad, bar.Left+16)
@@ -928,13 +905,13 @@ func (a *app) editorView(c *ui.Context) {
 		header.DragWindow()
 	}
 	header.Children(func() {
-		if a.focus {
+		if a.focus || a.sidebarHidden {
 			btnSidebar := ghostButton(c, "").Label(a.tr("Toggle sidebar")).Tooltip(a.tr("Toggle sidebar")).Padding(4, 6).Radius(5)
 			btnSidebar.Children(func() {
 				ui.Icon(c, iconSidebar()).Width(15).Height(15).TextColor(t.TextMuted)
 			})
 			if btnSidebar.Clicked() {
-				a.focus = false
+				a.focus, a.sidebarHidden = false, false
 			}
 		}
 
@@ -1022,11 +999,7 @@ func (a *app) editorView(c *ui.Context) {
 	ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Justify(a.pageAlignment()).Children(func() {
 		// Move the outline with the page so wide windows keep navigation nearby.
 		group := ui.Row(c).Grow(1).MinWidth(0).MinHeight(0).AlignItems(ui.Stretch)
-		if n.Width != "Full" && a.mode != "Split" {
-			width := float32(820)
-			if n.Width == "Wide" {
-				width = 1020
-			}
+		if width := documentPageWidth(n); width > 0 && a.mode != "Split" {
 			if a.outline && !a.focus {
 				width += a.outlineWidth()
 			}
@@ -1037,11 +1010,7 @@ func (a *app) editorView(c *ui.Context) {
 				a.outlineView(c)
 			}
 			column := ui.Column(c).Grow(1).MinWidth(0).Padding(32, 40, 16)
-			if n.Width != "Full" && a.mode != "Split" {
-				width := float32(820)
-				if n.Width == "Wide" {
-					width = 1020
-				}
+			if width := documentPageWidth(n); width > 0 && a.mode != "Split" {
 				column.MaxWidth(width)
 			}
 			column.Children(func() {
@@ -1071,6 +1040,7 @@ func (a *app) editorView(c *ui.Context) {
 					if a.blockEditor != nil {
 						a.blockView(c, true)
 					} else {
+						a.preview.Theme = &markdown.Theme{ListIndent: a.docTheme.ListIndent(a.writingFont(".page")) / c.Theme().FontSize}
 						ui.Scroll(c).Grow(1).Children(func() { markdown.View(c, a.markdownSource(), &a.preview).FillWidth() })
 					}
 				}
@@ -1116,7 +1086,7 @@ func (a *app) toolbar(c *ui.Context) {
 			text, label string
 			on          bool
 			run         func()
-		}{{"B", "Bold", f.Bold == richtext.FormatOn, doc.ToggleBold}, {"I", "Italic", f.Italic == richtext.FormatOn, doc.ToggleItalic}, {"U", "Underline", f.Underline == richtext.FormatOn, doc.ToggleUnderline}, {"S", "Strikethrough", f.Strikethrough == richtext.FormatOn, doc.ToggleStrikethrough}, {"‹›", "Inline code", f.Code == richtext.FormatOn, doc.ToggleCode}, {"•", "Bullet list", f.Paragraph.List == richtext.Bullets, func() { doc.ToggleList(richtext.Bullets) }}, {"1.", "Numbered list", f.Paragraph.List == richtext.Numbers, func() { doc.ToggleList(richtext.Numbers) }}, {"☑", "Task list", f.Paragraph.List == richtext.Tasks, func() { doc.ToggleList(richtext.Tasks) }}, {"❝", "Quote", f.Paragraph.Quote, doc.ToggleQuote}, {"{}", "Code block", f.Paragraph.CodeBlock, doc.ToggleCodeBlock}} {
+		}{{"B", "Bold", f.Bold == richtext.FormatOn, doc.ToggleBold}, {"I", "Italic", f.Italic == richtext.FormatOn, doc.ToggleItalic}, {"U", "Underline", f.Underline == richtext.FormatOn, doc.ToggleUnderline}, {"S", "Strikethrough", f.Strikethrough == richtext.FormatOn, doc.ToggleStrikethrough}, {"‹›", "Inline code", f.Code == richtext.FormatOn, doc.ToggleCode}, {"•", "Bullet list", f.Paragraph.List == richtext.Bullets, func() { doc.ToggleList(richtext.Bullets) }}, {"1.", "Numbered list", f.Paragraph.List == richtext.Numbers, func() { doc.ToggleList(richtext.Numbers) }}, {"☑", "Task list", f.Paragraph.List == richtext.Tasks, func() { doc.ToggleList(richtext.Tasks) }}, {"❝", "Quote", f.Paragraph.Quote, doc.ToggleQuote}, {"{}", "Code block", a.codeBlockActive(), a.toggleCodeBlock}} {
 			button := ghostButton(c, b.text).Label(a.tr(b.label)).Tooltip(a.tr(b.label)).KeepFocus().Padding(4, 8).Radius(5)
 			if b.on {
 				button.Background(t.Accent.Alpha(0.15)).TextColor(t.Accent).Bold()

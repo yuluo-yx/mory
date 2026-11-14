@@ -70,7 +70,7 @@ func (a *app) actions() []shortcut {
 		{"Numbers", "Cmd+Shift+7", edit(func(d *richtext.Document) { d.ToggleList(richtext.Numbers) })},
 		{"Tasks", "Cmd+Shift+9", edit(func(d *richtext.Document) { d.ToggleList(richtext.Tasks) })},
 		{"Quote", "Cmd+Shift+B", edit((*richtext.Document).ToggleQuote)},
-		{"Code block", "Cmd+Alt+C", edit((*richtext.Document).ToggleCodeBlock)},
+		{"Code block", "Cmd+Alt+C", a.toggleCodeBlock},
 		{"Indent", "Cmd+]", edit(func(d *richtext.Document) { d.Indent(1) })},
 		{"Outdent", "Cmd+[", edit(func(d *richtext.Document) { d.Indent(-1) })},
 		{"Align left", "Cmd+Shift+J", edit(func(d *richtext.Document) { d.SetAlign(ui.Start) })},

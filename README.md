@@ -19,13 +19,19 @@ Use **Help → Open welcome guide** for the editable [syntax and feature guide](
 
 New documents have an empty title with an **Untitled** placeholder. The sidebar shows a fallback name without storing it as document content.
 
-The outline can be placed on either side and hidden from its header. Restore it from the toolbar or **Cmd+Shift+H**. **Settings → Editor** controls text size, page placement, outline appearance and history retention.
+The library sidebar and document outline collapse independently. Focus mode temporarily hides both without changing their individual visibility preferences. The outline can be placed on either side and hidden from its header. Restore it from the toolbar or **Cmd+Shift+H**. **Settings → Editor** controls text size, page placement, outline appearance and history retention.
 
 In **Manage**, **Select all** switches to **Deselect all** for the current filtered list. **Cancel** clears selections and exits; it does not undo batch actions already performed. Canceling the move dialog keeps the selected documents.
 
-**Move to Trash** uses Mory's internal Trash, available beside **My documents / Favorites** and above Settings in the sidebar. Documents can be restored there. Permanent deletion and emptying Trash require confirmation; external originals and shared assets are kept.
+Page width offers **Standard**, **Wide**, **Full**, and **Custom** in document details and **Settings → Editor**. Custom widths range from 480 to 3840 logical pixels, with a draggable slider and numeric control. The preference is saved per document and copied when duplicating it; smaller windows automatically constrain the page to the available space. Existing documents keep their previous width. Split mode continues to fill its available space.
+
+Type a code fence such as \`\`\`go on its own paragraph and press **Enter** to create a code block with its language preserved. The toolbar and **Insert → Code block** use the same code editor. Each block provides a language field, syntax highlighting for supported languages, wrapping, and **Copy code**. An empty language field means plain text. Existing fenced Markdown opens in this editor without rewriting its source just by viewing it.
+
+**Move to Trash** uses Mory's internal Trash, available on the home page beside **My documents / Favorites**. Documents can be restored there. Permanent deletion and emptying Trash require confirmation; external originals and shared assets are kept.
 
 Common shortcuts are **Cmd+N** (new), **Cmd+O** (import), **Cmd+Shift+O** (open original), **Cmd+S** (save), **Cmd+F** (find), **Cmd+J** (search), and **Cmd+,** (settings). Customize them under **Keyboard shortcuts**. The global quick-note shortcut is off until configured.
+
+**Settings → General → Default application** associates `.md`, `.markdown`, and `.mdx` with the running Mory app bundle. The macOS bundle imports explicit Markdown and MDX type declarations so this also works when no other editor has registered those formats. The MDX identifier is a Mory-provided fallback for the external format. Changes to these declarations require rebuilding the `.app`; running a standalone Go binary does not install them.
 
 ## Files and recovery
 

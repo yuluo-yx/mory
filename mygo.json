@@ -13,6 +13,41 @@
   "macos": {
     "minimumSystemVersion": "13.0",
     "dmgTitle": "Mory",
-    "infoPlist": { "LSApplicationCategoryType": "public.app-category.productivity" }
+    "infoPlist": {
+      "LSApplicationCategoryType": "public.app-category.productivity",
+      "UTImportedTypeDeclarations": [
+        {
+          "UTTypeIdentifier": "net.daringfireball.markdown",
+          "UTTypeDescription": "Markdown Document",
+          "UTTypeConformsTo": ["public.plain-text"],
+          "UTTypeTagSpecification": {
+            "public.filename-extension": ["md", "markdown"],
+            "public.mime-type": "text/markdown"
+          }
+        },
+        {
+          "UTTypeIdentifier": "io.github.yuluo-yx.mory.mdx",
+          "UTTypeDescription": "MDX Document",
+          "UTTypeConformsTo": ["public.plain-text"],
+          "UTTypeTagSpecification": { "public.filename-extension": ["mdx"] }
+        }
+      ],
+      "CFBundleDocumentTypes": [
+        {
+          "CFBundleTypeName": "Markdown Document",
+          "CFBundleTypeRole": "Editor",
+          "LSHandlerRank": "Default",
+          "LSItemContentTypes": ["net.daringfireball.markdown", "io.github.yuluo-yx.mory.mdx"],
+          "CFBundleTypeExtensions": ["md", "markdown", "mdx"]
+        },
+        {
+          "CFBundleTypeName": "DocxXML Document",
+          "CFBundleTypeRole": "Editor",
+          "LSHandlerRank": "Default",
+          "LSItemContentTypes": ["public.xml"],
+          "CFBundleTypeExtensions": ["xml"]
+        }
+      ]
+    }
   }
 }

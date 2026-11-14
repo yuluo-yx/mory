@@ -198,7 +198,17 @@ func FromRich(text richtext.Text, original *Node) []*Node {
 		}
 		if p.Style.CodeBlock {
 			n.Kind = "pre"
-			n.Children = []*Node{New("code", Text(text.PlainText()))}
+			var code strings.Builder
+			for _, run := range p.Runs {
+				code.WriteString(run.Text)
+			}
+			n.Children = []*Node{New("code", Text(code.String()))}
+			// Adjacent rich code paragraphs are lines of one fenced block.
+			if len(nodes) > 0 && nodes[len(nodes)-1].Kind == "pre" && !p.Style.Quote {
+				previous := nodes[len(nodes)-1]
+				previous.Children = []*Node{New("code", Text(previous.Plain()+"\n"+code.String()))}
+				continue
+			}
 		}
 		if p.Style.Quote {
 			n = New("blockquote", n)

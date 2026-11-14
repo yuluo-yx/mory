@@ -56,13 +56,16 @@ type app struct {
 	blockEditor                                                                     *blockSession
 	documentColor                                                                   ui.Color
 	doc                                                                             *richtext.Document
+	codeFenceDoc                                                                    *richtext.Document
+	codeFenceInfo                                                                   string
+	inlineCodeInput                                                                 *inlineCodeInput
 	code                                                                            *editor.State
 	richVersion, codeVersion                                                        uint64
 	mode, section, query, folder, order                                             string
 	dirty                                                                           bool
 	dirtySince                                                                      time.Time
 	status, problem                                                                 string
-	outline, focus                                                                  bool
+	outline, focus, sidebarHidden                                                   bool
 	preview                                                                         markdown.Options
 	previewText                                                                     string
 	previewSource                                                                   string
@@ -169,12 +172,16 @@ func (a *app) capture() {
 	if a.current == nil {
 		return
 	}
+	a.applyInlineCodeInput()
 	if a.structured() {
 		a.captureBlocks()
 		return
 	}
 	if a.mode == "Write" && a.doc != nil && a.doc.Version() != a.richVersion {
 		a.richVersion = a.doc.Version()
+		if a.promoteRichCode() {
+			return
+		}
 		// Large documents serialize at the save boundary, not on the typing frame.
 		if a.doc.Text().Len() > 200000 {
 			a.richPending = true
@@ -260,6 +267,8 @@ func (a *app) loadEditors() {
 	}
 	n := a.current
 	a.blockEditor = nil
+	a.codeFenceDoc, a.codeFenceInfo = nil, ""
+	a.inlineCodeInput = nil
 	a.structuredHeadingVersion = 0
 	a.structuredHeadings = nil
 	largeDocument := largeDocumentBlocks(n)

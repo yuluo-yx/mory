@@ -491,9 +491,8 @@ func TestVisibleTrashNavigationAndRecovery(t *testing.T) {
 	a.createNote("Keep this content", "Recoverable document")
 	note := a.current
 	tt := ui.NewTester(a.view, 1280, 820)
-	entry, ok := tt.AccessByRole(ui.RoleButton, "Open Trash")
-	if !ok || entry.Offscreen || entry.Bounds.W < 100 || entry.Bounds.H < 24 {
-		t.Fatalf("Trash entry is not a visible navigation control: %+v", entry)
+	if _, ok := tt.AccessByRole(ui.RoleButton, "Open Trash"); ok {
+		t.Fatal("sidebar still exposes a Trash entry")
 	}
 	if err := tt.RightClick("Open Recoverable document"); err != nil {
 		t.Fatal(err)
@@ -506,16 +505,13 @@ func TestVisibleTrashNavigationAndRecovery(t *testing.T) {
 	if err != nil || !stored.Get(note.ID).Deleted || stored.Get(note.ID).Source != "Keep this content" {
 		t.Fatal("Move to Trash did not preserve the library document", err)
 	}
-	if !tt.HasText("1 documents in Trash") {
-		t.Fatal("sidebar did not show the trash count")
-	}
 	tab, ok := tt.AccessByRole(ui.RoleButton, "Trash")
 	if !ok || tab.Offscreen || tab.Bounds.W < 40 || tab.Bounds.H < 24 {
 		t.Fatalf("home page Trash tab is hidden: %+v", tab)
 	}
-	click(t, tt, "Open Trash")
+	click(t, tt, "Trash")
 	if a.section != "Trash" || !tt.HasText("Note Recoverable document") || !tt.HasText("Mory Trash") {
-		t.Fatal("visible Trash entry did not show the deleted document")
+		t.Fatal("home Trash tab did not show the deleted document")
 	}
 	if dir := os.Getenv("MORY_TEST_IMAGES"); dir != "" {
 		a.lib.Settings.Language = "zh-CN"

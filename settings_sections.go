@@ -90,16 +90,7 @@ func (a *app) editorSettings(c *ui.Context) {
 		})
 		ui.Text(c, a.tr("Position the cover, title and body together within the writing area.")).FontSize(12).TextColor(c.Theme().TextMuted)
 		if a.current != nil {
-			ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, a.tr("Page width")).Grow(1)
-				width := a.current.Width
-				if width == "" {
-					width = "Standard"
-				}
-				if a.selectText(c, &width, []string{"Standard", "Wide", "Full"}).Label(a.tr("Page width")).Width(140).Changed() {
-					a.mutate(a.current, func() { a.current.Width = width })
-				}
-			})
+			a.pageWidthControls(c, a.current)
 		}
 	})
 	settingsCard(c, a.tr("Document outline"), func() {

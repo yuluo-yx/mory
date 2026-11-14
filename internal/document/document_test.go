@@ -6,12 +6,12 @@ import (
 )
 
 func TestRichSafety(t *testing.T) {
-	for _, s := range []string{"# Heading\n\n**bold** *italic*", "- [ ] Task\n- [x] Done", "```go\nfunc main() {}\n```"} {
+	for _, s := range []string{"# Heading\n\n**bold** *italic*", "- [ ] Task\n- [x] Done"} {
 		if !RichSafe(s) {
 			t.Errorf("safe source rejected %q", s)
 		}
 	}
-	for _, s := range []string{"| A | B |\n| --- | --- |\n| a | b |", "---\n", "$$\nx\n$$", "<div>content</div>", "[x]: https://example.com", "[^1]: footnote", "$x$", "> [!NOTE]\n> Text"} {
+	for _, s := range []string{"```go\nfunc main() {}\n```", "```\nplain code\n```", "    indented code\n", "| A | B |\n| --- | --- |\n| a | b |", "---\n", "$$\nx\n$$", "<div>content</div>", "[x]: https://example.com", "[^1]: footnote", "$x$", "> [!NOTE]\n> Text"} {
 		if RichSafe(s) {
 			t.Errorf("unsafe source accepted %q", s)
 		}

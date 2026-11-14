@@ -189,6 +189,12 @@ func (a *app) captureBlocks() {
 		if f.doc != nil && f.doc.Version() != f.version {
 			f.version = f.doc.Version()
 			replacement := blocks.FromRich(f.doc.Text(), n)
+			for _, node := range replacement {
+				if node.Kind == "pre" {
+					a.applyCodeFence(f.doc, node)
+					break
+				}
+			}
 			p, at := s.doc.Parent(id)
 			if p == nil {
 				continue
@@ -201,17 +207,15 @@ func (a *app) captureBlocks() {
 			}
 			s.lastTextID, s.lastText = id, time.Now()
 			s.lastTextVersion = s.doc.Version
-			if len(replacement) > 1 {
+			if len(replacement) > 1 || replacement[0].Kind == "pre" {
 				_, caret := f.doc.Selection()
-				index, offset := 0, 0
-				for start, paragraph := range f.doc.Text().Paragraphs() {
-					if start <= caret {
-						offset = caret - start
-						s.focus = replacement[index].ID
-						s.focusAt = offset
+				start := 0
+				for _, node := range replacement {
+					if start > caret {
+						break
 					}
-					_ = paragraph
-					index++
+					s.active, s.focus, s.focusAt = node.ID, node.ID, caret-start
+					start += len([]rune(node.Plain())) + 1
 				}
 				delete(s.fields, id)
 			}
@@ -572,11 +576,17 @@ func (a *app) blockNode(c *ui.Context, n *blocks.Node, readOnly bool, depth int)
 					}
 				})
 			case n.Kind == "ul" || n.Kind == "ol" || n.Kind == "column" || n.Kind == "markdown-group":
-				for i, child := range blocks.Visible(n.Children) {
+				children := blocks.Visible(n.Children)
+				font := a.writingFont(".page")
+				indent := a.docTheme.ListIndent(font)
+				gap := indent * 0.25
+				markerWidth, _ := ui.ShapeText(fmt.Sprintf("%d.", len(children)), font, 0).Size()
+				for i, child := range children {
 					if n.Kind == "ol" && child.Kind == "li" {
-						ui.Row(c).Gap(8).Children(func() {
-							ui.Textf(c, a.tr("%d."), i+1).TextColor(t.TextMuted)
-							ui.Column(c).Grow(1).Children(func() { a.blockNode(c, child, readOnly, depth+1) })
+						// Reserve one marker column so wrapped text and multi-digit items align.
+						ui.Row(c).AlignItems(ui.Start).Padding(0, 0, 0, max(0, indent-markerWidth-gap)).Gap(gap).Children(func() {
+							ui.Textf(c, a.tr("%d."), i+1).Font(font.Family).FontSize(font.Size).LineHeight(font.LineHeight).Width(markerWidth).Shrink(0).TextAlign(ui.End).TextColor(t.Text)
+							ui.Column(c).Grow(1).MinWidth(0).Children(func() { a.blockNode(c, child, readOnly, depth+1) })
 						})
 					} else {
 						a.blockNode(c, child, readOnly, depth+1)
@@ -642,7 +652,7 @@ func (a *app) blockText(c *ui.Context, n *blocks.Node, readOnly bool) {
 	if len(n.Kind) == 2 && n.Kind[0] == 'h' && n.Kind[1] > '6' {
 		richTheme.Headings[5].Size = a.docTheme.Length(n.Kind, "font-size", font.Size, font.Size, font.Size) / font.Size
 	}
-	ed := richtext.EditorBase(c.Key("text"), field.doc, richtext.EditorOptions{Label: "Block text " + n.ID, Placeholder: "Write something…", ReadOnly: readOnly, Font: font, Theme: richTheme, OnLink: a.openLink, OnLinkCommand: func() { a.doc = field.doc; a.linkURL = field.doc.Formatting().Link; a.linkOpen = true }}).FillWidth()
+	ed := richtext.EditorBase(c.Key("text"), field.doc, richtext.EditorOptions{Label: "Block text " + n.ID, ReadOnly: readOnly, Font: font, Theme: richTheme, OnLink: a.openLink, OnLinkCommand: func() { a.doc = field.doc; a.linkURL = field.doc.Formatting().Link; a.linkOpen = true }}).FillWidth()
 	width := ed.LayoutBounds().W
 	if width < 80 {
 		width = 600
@@ -679,14 +689,19 @@ func (a *app) blockText(c *ui.Context, n *blocks.Node, readOnly bool) {
 		a.textFocused = true
 		s.active = n.ID
 		a.doc = field.doc
+		// List navigation must not consume Enter, arrows, or Select All in an editor.
+		s.list.Selection = nil
 	}
 	if s.focus == n.ID {
 		ed.Focus()
+		s.list.Selection = nil
 		field.doc.SetSelection(min(s.focusAt, field.doc.Text().Len()), min(s.focusAt, field.doc.Text().Len()))
 		s.focus = ""
 	}
 	if !readOnly {
+		ed.OnPaste(func(text string) bool { a.queueInlineCode(field.doc, text); return false })
 		ed.ObserveInput(func(event ui.InputEvent) {
+			a.observeCodeFence(field.doc, event)
 			if event.Kind == ui.InputCommand && (event.Text == "undo" || event.Text == "redo") {
 				a.blockUndo(event.Text == "redo")
 				return
@@ -825,7 +840,7 @@ func (a *app) blockMenu(m *ui.Menu, n *blocks.Node) {
 func (a *app) blockCode(c *ui.Context, n *blocks.Node, readOnly bool) {
 	s := a.blockEditor
 	f := s.fields[n.ID]
-	if f == nil {
+	if f == nil || f.code == nil {
 		b := editor.NewBuffer(n.Plain())
 		b.SetLanguage(codeLanguage(n.Attr("lang")))
 		f = &blockField{nodeID: n.ID, code: &editor.State{Buffer: b, SoftWrap: n.Attr("wrap") == "true"}, version: b.Version(), lastUsed: s.fieldEpoch}
@@ -838,7 +853,11 @@ func (a *app) blockCode(c *ui.Context, n *blocks.Node, readOnly bool) {
 	}
 	ui.Row(c).Gap(8).Children(func() {
 		language := n.Attr("lang")
-		if ui.TextInput(c, &language).Label(a.tr("Code language")).Width(120).Disabled(readOnly).Changed() {
+		languageInput := ui.TextInput(c, &language).Label(a.tr("Code language")).Placeholder(a.tr("Plain text")).Width(140).Disabled(readOnly)
+		if languageInput.Focused() {
+			s.list.Selection = nil
+		}
+		if languageInput.Changed() {
 			a.fail(s.doc.Transform(n.ID, func(n *blocks.Node) { n.Set("lang", language) }))
 			f.code.Buffer.SetLanguage(codeLanguage(language))
 		}
@@ -875,10 +894,23 @@ func (a *app) blockCode(c *ui.Context, n *blocks.Node, readOnly bool) {
 		f.code.Theme = editor.DefaultTheme(c.Theme())
 	}
 	lines := strings.Count(f.code.Buffer.String(), "\n") + 1
-	editor.View(c.Key("code"), f.code).Height(float32(min(24, max(3, lines)))*22 + 12).FillWidth().Label(a.tr("Code block"))
+	ed := editor.View(c.Key("code"), f.code).Height(float32(min(24, max(3, lines)))*22 + 12).FillWidth().Label(a.tr("Code editor"))
+	if ed.Focused() {
+		s.active = n.ID
+		a.textFocused = true
+		s.list.Selection = nil
+	}
+	if s.focus == n.ID && !readOnly {
+		ed.Focus()
+		s.list.Selection = nil
+		at := min(s.focusAt, len([]rune(f.code.Buffer.String())))
+		f.code.Select(at, at)
+		s.focus = ""
+	}
 }
 
 func codeLanguage(name string) *editor.Language {
+	name = strings.ToLower(strings.TrimSpace(name))
 	ext := map[string]string{"python": "py", "javascript": "js", "typescript": "ts", "rust": "rs", "ruby": "rb", "shell": "sh", "bash": "sh", "csharp": "cs", "cpp": "cpp", "plaintext": "txt", "markdown": "md"}[strings.ToLower(name)]
 	if ext == "" {
 		ext = name

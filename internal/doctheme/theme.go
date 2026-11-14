@@ -166,7 +166,7 @@ func supported(s, key string) bool {
 		"strong":  "font-weight color", "a": "color text-decoration text-decoration-color", "a:hover": "color",
 		"code": "color background-color border-color border-radius padding-left", "pre": "font-family font-size line-height color background-color border-color border-radius",
 		".line-numbers": "display color background-color", "blockquote": "border-left border-left-width border-left-color padding-left color font-style",
-		"ul": "padding-left", "ul li::marker": "color", "ol li::marker": "color", "li::marker": "color",
+		"ul": "padding-left", "ol": "padding-left", "ul li::marker": "color", "ol li::marker": "color", "li::marker": "color",
 		".task": "width border-radius border-color", ".task:checked": "background-color color", ".task-done": "color text-decoration",
 		"hr": "border-top border-top-style border-top-width border-top-color", "table": "font-size line-height border-color border-radius", "th": "background-color",
 		".callout": "border-radius border-width padding",
@@ -378,6 +378,11 @@ func (t *Theme) Font(selector string, base ui.Font) ui.Font {
 	return base
 }
 
+// ListIndent reserves room for the marker and a modest inset from body text.
+func (t *Theme) ListIndent(font ui.Font) float32 {
+	return t.Length("ul", "padding-left", font.Size, font.Size, 40)
+}
+
 func (t *Theme) Rich(base *ui.Theme, font ui.Font) *richtext.Theme {
 	r := richtext.DefaultTheme(base)
 	r.Text = t.Color(".page", "color", base.Text)
@@ -390,7 +395,7 @@ func (t *Theme) Rich(base *ui.Theme, font ui.Font) *richtext.Theme {
 	r.CodeBlockBackground = t.Color("pre", "background-color", r.CodeBlockBackground)
 	r.CodeBlockRadius = t.Length("pre", "border-radius", font.Size, font.Size, 5) / font.Size
 	r.ParagraphSpacing = t.Length("p", "margin-bottom", font.Size, font.Size, 8) / font.Size
-	r.Indent = t.Length("ul", "padding-left", font.Size, font.Size, 24) / font.Size
+	r.Indent = t.ListIndent(font) / font.Size
 	r.Marker = t.Color("li::marker", "color", r.Text)
 	r.Checkbox = t.Color(".task:checked", "background-color", base.Accent)
 	r.Checkmark = t.Color(".task:checked", "color", ui.RGB(255, 255, 255))

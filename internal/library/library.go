@@ -25,6 +25,7 @@ type Note struct {
 	CoverX         float32   `json:"coverX,omitempty"`
 	CoverY         float32   `json:"coverY,omitempty"`
 	Width          string    `json:"width,omitempty"`
+	PageWidth      int       `json:"pageWidth,omitempty"` // Preferred logical pixels when Width is Custom.
 	HideInfo       bool      `json:"hideInfo,omitempty"`
 	ShowCreated    bool      `json:"showCreated,omitempty"`
 	HideReferences bool      `json:"hideReferences,omitempty"`
@@ -272,6 +273,7 @@ func (l *Library) Duplicate(n *Note) (*Note, error) {
 	copy.Parent = n.Parent
 	copy.Icon, copy.Cover, copy.CoverX, copy.CoverY = n.Icon, n.Cover, n.CoverX, n.CoverY
 	copy.Width, copy.HideInfo, copy.ShowCreated = n.Width, n.HideInfo, n.ShowCreated
+	copy.PageWidth = n.PageWidth
 	return copy, l.Save(copy)
 }
 

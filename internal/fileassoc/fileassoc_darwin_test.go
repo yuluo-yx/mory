@@ -1,9 +1,64 @@
 package fileassoc
 
 import (
+	"encoding/json"
+	"os"
+	"slices"
 	"strings"
 	"testing"
 )
+
+// Launch Services needs declared content types to persist default handlers.
+// Extension-only bundle declarations leave MDX as an unregistered dynamic UTI.
+func TestPackagedMarkdownTypes(t *testing.T) {
+	data, err := os.ReadFile("../../mygo.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config struct {
+		MacOS struct {
+			InfoPlist struct {
+				Imported []struct {
+					Identifier string   `json:"UTTypeIdentifier"`
+					ConformsTo []string `json:"UTTypeConformsTo"`
+					Tags       struct {
+						Extensions []string `json:"public.filename-extension"`
+					} `json:"UTTypeTagSpecification"`
+				} `json:"UTImportedTypeDeclarations"`
+				Documents []struct {
+					Role  string   `json:"CFBundleTypeRole"`
+					Types []string `json:"LSItemContentTypes"`
+				} `json:"CFBundleDocumentTypes"`
+			} `json:"infoPlist"`
+		} `json:"macos"`
+	}
+	if err := json.Unmarshal(data, &config); err != nil {
+		t.Fatal(err)
+	}
+	plist := config.MacOS.InfoPlist
+	for _, ext := range []string{"md", "markdown", "mdx"} {
+		t.Run(ext, func(t *testing.T) {
+			for _, typ := range plist.Imported {
+				if !slices.Contains(typ.Tags.Extensions, ext) {
+					continue
+				}
+				if typ.Identifier == "" || strings.HasPrefix(typ.Identifier, "dyn.") || typ.Identifier == "public.plain-text" {
+					t.Fatalf("extension %s needs its own declared content type: %q", ext, typ.Identifier)
+				}
+				if !slices.Contains(typ.ConformsTo, "public.plain-text") {
+					t.Fatalf("%s must conform to plain text", typ.Identifier)
+				}
+				for _, doc := range plist.Documents {
+					if doc.Role == "Editor" && slices.Contains(doc.Types, typ.Identifier) {
+						return
+					}
+				}
+				t.Fatalf("no document editor registered for %s", typ.Identifier)
+			}
+			t.Fatalf("no imported content type declared for .%s", ext)
+		})
+	}
+}
 
 func TestDefaultAssociations(t *testing.T) {
 	for _, failure := range []string{"", "register", "resolve", "set"} {

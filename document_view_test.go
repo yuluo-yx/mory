@@ -35,11 +35,14 @@ func TestDocumentPagePlacement(t *testing.T) {
 		}
 		for _, mode := range []string{"Write", "Source", "Read"} {
 			a.changeMode(mode)
-			for _, width := range []string{"Standard", "Wide", "Full"} {
+			for _, width := range []string{"Standard", "Wide", "Full", "Custom"} {
 				a.current.Width = width
+				a.current.PageWidth = 1600
 				pageWidth := float32(820)
 				if width == "Wide" {
 					pageWidth = 1020
+				} else if width == "Custom" {
+					pageWidth = 1600
 				} else if width == "Full" {
 					pageWidth = right - left
 				}
@@ -76,6 +79,61 @@ func TestDocumentPagePlacement(t *testing.T) {
 					}
 				}
 			}
+		}
+	}
+}
+
+func TestSidebarAndOutlineToggleIndependently(t *testing.T) {
+	for _, side := range []string{"Left", "Right"} {
+		for _, mode := range []string{"Write", "Source", "Read"} {
+			t.Run(side+"/"+mode, func(t *testing.T) {
+				a := testApp(t)
+				a.createNote("# Heading\n\nDocument body", "Independent navigation")
+				a.lib.Settings.OutlineSide = side
+				a.changeMode(mode)
+				tt := ui.NewTester(a.view, 1280, 820)
+				assertPanels := func(sidebar, outline bool) {
+					t.Helper()
+					tt.Frame()
+					_, hasSidebar := tt.Find("New folder")
+					_, hasOutline := tt.Find("ON THIS PAGE")
+					if hasSidebar != sidebar || hasOutline != outline {
+						t.Fatalf("navigation visibility: sidebar=%t outline=%t; want %t/%t", hasSidebar, hasOutline, sidebar, outline)
+					}
+				}
+				assertPanels(true, true)
+				click(t, tt, "Toggle sidebar")
+				assertPanels(false, true)
+				if a.focus {
+					t.Fatal("collapsing the sidebar entered focus mode")
+				}
+				if dir := os.Getenv("MORY_TEST_IMAGES"); dir != "" && mode == "Write" {
+					saveImage(t, tt, filepath.Join(dir, "independent-outline-"+side+".png"))
+				}
+				click(t, tt, "Hide outline")
+				assertPanels(false, false)
+				click(t, tt, "Toggle sidebar")
+				assertPanels(true, false)
+				click(t, tt, "Toggle outline")
+				assertPanels(true, true)
+				click(t, tt, "Hide outline")
+				assertPanels(true, false)
+				click(t, tt, "Toggle outline")
+				click(t, tt, "Toggle sidebar")
+				// Focus mode is a temporary override, preserving both panel preferences.
+				click(t, tt, "Toggle focus mode")
+				assertPanels(false, false)
+				click(t, tt, "Toggle focus mode")
+				assertPanels(false, true)
+				if a.outlineSide() != side || a.current.Source != "# Heading\n\nDocument body" {
+					t.Fatal("navigation toggles changed the outline position or document")
+				}
+				// The home header must also restore an independently collapsed sidebar.
+				click(t, tt, "Back to library")
+				assertPanels(false, false)
+				click(t, tt, "Toggle sidebar")
+				assertPanels(true, false)
+			})
 		}
 	}
 }
@@ -180,7 +238,7 @@ func TestChildAndCopiedNotesKeepEmptyTitles(t *testing.T) {
 func TestOutlineRenderedTitlesAndWrapping(t *testing.T) {
 	a := testApp(t)
 	const title = "1. Physical infrastructure and software facilities for a large computing cluster"
-	source := "## 1\\. **Physical infrastructure and software facilities for a large computing cluster**\n\nIntroduction.\n\n### 1\\.1 IDC facilities\n\n1. Power distribution and battery backup for continuous operation.\n2. Cooling systems for high density equipment.\n\nClosing paragraph.\n"
+	source := "## 1\\. **Physical infrastructure and software facilities for a large computing cluster**\n\nIntroduction.\n\n### 1\\.1 IDC facilities\n\n1. Power distribution and battery backup for continuous operation.\n2. Cooling systems for high density equipment, including air cooling, liquid cooling and redundant systems that keep the facility operating continuously.\n   - Monitor coolant temperature.\n   - Maintain backup capacity.\n\nClosing paragraph.\n\n- Inspect the equipment.\n- Record maintenance and operational changes for the next shift.\n"
 	a.createNote(source, "Infrastructure")
 	a.outline = true
 	a.lib.Settings.OutlineSide = "Right"
@@ -208,6 +266,17 @@ func TestOutlineRenderedTitlesAndWrapping(t *testing.T) {
 			a.lib.Settings.Appearance = appearance
 			tt.Frame()
 			saveImage(t, tt, filepath.Join(dir, "typography-"+strings.ToLower(appearance)+".png"))
+		}
+		for _, mode := range []string{"Read", "Write"} {
+			a.changeMode(mode)
+			if mode == "Write" && !a.enableBlocks() {
+				t.Fatal(a.problem)
+			}
+			tt.Frame()
+			saveImage(t, tt, filepath.Join(dir, "list-layout-"+strings.ToLower(mode)+".png"))
+		}
+		if a.current.Source != source {
+			t.Fatal("list layout changed the source")
 		}
 	}
 }

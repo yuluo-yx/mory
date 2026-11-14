@@ -265,16 +265,8 @@ func (a *app) documentControls(c *ui.Context) {
 					a.fail(a.lib.Save(n))
 				}
 			}
-			ui.Box(c).Grow(1)
-			ui.Text(c, a.tr("Page width")).FontSize(13).TextColor(t.TextMuted)
-			width := n.Width
-			if width == "" {
-				width = "Standard"
-			}
-			if a.selectText(c, &width, []string{"Standard", "Wide", "Full"}).Label(a.tr("Page width")).Width(120).Changed() {
-				a.mutate(n, func() { n.Width = width })
-			}
 		})
+		a.pageWidthControls(c, n)
 	})
 
 	// 2. Metadata & Attributes Card

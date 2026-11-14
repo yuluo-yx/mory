@@ -292,8 +292,8 @@ blockquote {
   font-style: normal;
 }
 
-ul {
-  padding-left: 28px;
+ul, ol {
+  padding-left: 40px;
 }
 
 ul li::marker {

@@ -78,6 +78,18 @@ def exercise(binary, root):
             call("input", events=[dict(type="key", key=name)])
             time.sleep(0.04)
 
+        def wait_editor_text(label, text):
+            # Input events are queued by the native surface. A capture alone can
+            # precede their consumption; observe the editor before invoking Save.
+            deadline = time.monotonic() + 5
+            while True:
+                field = next((n for n in nodes() if n.get("label") == label), {})
+                if text in field.get("value", ""):
+                    return
+                if time.monotonic() >= deadline:
+                    raise AssertionError(f"Editor did not receive input: {label}: {field}")
+                time.sleep(0.05)
+
         windows = call("windows")["windows"]
         assert any(w["kind"] == "content" for w in windows), "Editor is not a native window"
         pdf_deadline = time.monotonic() + 25
@@ -87,7 +99,11 @@ def exercise(binary, root):
             time.sleep(0.1)
         assert (root / "export.pdf").read_bytes().startswith(b"%PDF-"), "Invalid PDF export"
         call("menu", path=["Help", "Open welcome guide"])
-        assert any(n.get("label") == "Document title" and n.get("value") == "Welcome to Mory" for n in nodes())
+        welcome_deadline = time.monotonic() + 5
+        while not any(n.get("label") == "Document title" and n.get("value") == "Welcome to Mory" for n in nodes()):
+            if time.monotonic() > welcome_deadline:
+                raise AssertionError("Welcome guide did not finish opening")
+            time.sleep(0.05)
         guide = next(json.loads(p.read_text()) for p in (root / "library" / "notes").glob("*.json")
                      if json.loads(p.read_text())["title"] == "Welcome to Mory")
         assert guide["source"] == (Path(__file__).resolve().parent.parent / "resources" / "welcome.md").read_text()
@@ -98,7 +114,7 @@ def exercise(binary, root):
         act("Document title", "setValue", text=title)
         act("Document editor", "focus")
         call("input", events=[dict(type="text", text="Hello 世界 — native editing")])
-        time.sleep(0.1)
+        wait_editor_text("Document editor", "Hello 世界 — native editing")
         key("Cmd+A")
         act("Bold")
         call("menu", path=["File", "Save"])
@@ -184,9 +200,12 @@ def exercise(binary, root):
         call("menu", path=["File", "Open local file"])
         act("Document title", "setValue", text="Original file editing")
         act("Source")
-        act("Source editor", "focus")
-        key("Cmd+End")
-        call("input", events=[dict(type="text", text="\nSaved to original file.")])
+        # This path verifies saving to the original file. Set the source through
+        # its native accessibility action so window focus cannot swallow input;
+        # native keyboard editing is exercised separately above.
+        source = next(n["value"] for n in nodes() if n.get("label") == "Source editor")
+        act("Source editor", "setValue", text=source + "\nSaved to original file.")
+        wait_editor_text("Source editor", "Saved to original file.")
         call("menu", path=["File", "Save"])
         nodes()
         assert "Saved to original file." in (fixtures / "Fixture import.md").read_text(), "Original file not updated"

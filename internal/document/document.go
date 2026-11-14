@@ -31,9 +31,8 @@ func RichSafe(source string) bool {
 	for i := 1; i < d.Len(); i++ {
 		switch d.Block(i).Kind {
 		case parser.CodeBlock:
-			if strings.ContainsAny(d.Block(i).Info(), " \t") || strings.Contains(d.Lines(i), "highlight-") {
-				return false
-			}
+			// The paragraph editor discards fence languages and cannot highlight code.
+			return false
 		case parser.Table, parser.HTMLBlock, parser.MathBlock, parser.FootnoteDefinition, parser.ThematicBreak:
 			return false
 		}
