@@ -75,7 +75,7 @@ Performance is a core Mory differentiator. The benchmark uses the checked-in 1 M
 
 See the [performance data](benchmark/performance-report.md) and [raw measurements](benchmark/performance-data.jsonl).
 
-On the same Apple M4, the latest optimization reduced `structured-1m` Write edit time from **109 to 59 ms** and loaded RSS from **550 to 412 MiB**. For `memory-heavy-1m`, edit time fell from **53 to 28 ms** and loaded RSS from **394 to 319 MiB** (medians of three runs). The report and chart retain the before/after measurements; action timings are not end-to-end input latency.
+On the same Apple M4, the latest optimization reduced Write edit actions from **58.76 to 0.044 ms** for `structured-1m` and **28.13 to 0.043 ms** for `memory-heavy-1m` (medians of three runs). Full-document serialization now runs at save boundaries instead of every keystroke; save actions, including serialization, take **88.56 ms** and **61.99 ms**, respectively. Edit plus rendering and PNG capture fell from **135.33 to 55.88 ms** and **95.04 to 53.53 ms**. These are measured action and capture costs, not keyboard-to-display latency.
 
 Separate process measurements are available for [Quiet.md v0.1.11](benchmark/quiet-md-performance-report.md) and [ArcMD v0.0.11](benchmark/arcmd-performance-report.md). Their workflows and observation windows differ from Mory's, so they do not establish an overall performance ranking.
 

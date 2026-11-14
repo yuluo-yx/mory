@@ -20,6 +20,10 @@ def load(path):
     for record in records[1:]:
         if record["failures"] or len(record["runs"]) != 3:
             raise ValueError(f"Incomplete benchmark: {record['kind']} {record['mode']}")
+        for run in record["runs"]:
+            actions = [run["open"], run["save"], run["undo"], *run["edits"], *run["scroll"]]
+            if len(run["edits"]) != 30 or any(action["error"] for action in actions):
+                raise ValueError(f"Incomplete actions: {record['kind']} {record['mode']}")
         cases[(record["kind"], record["mode"])] = record
     return records[0]["environment"], cases
 
@@ -57,6 +61,11 @@ def main():
     for key in before:
         if before[key]["sha256"] != after[key]["sha256"]:
             raise ValueError(f"Fixture changed: {key}")
+        for field in ("effective_mode", "window_width", "window_height"):
+            old = {r["open"][field] for r in before[key]["runs"]}
+            new = {r["open"][field] for r in after[key]["runs"]}
+            if old != new or len(new) != 1:
+                raise ValueError(f"Rendering conditions differ: {key} {field}")
     keys = sorted(after)
     values = {k: metrics(v) for k, v in after.items()}
     previous = {k: metrics(v) for k, v in before.items()}
@@ -64,19 +73,25 @@ def main():
     version = after_env.get("product_version", "unrecorded version")
     plt.rcParams.update({"font.family": "sans-serif", "font.size": 10,
                          "svg.fonttype": "none", "svg.hashsalt": "mory-performance"})
-    figure, axes = plt.subplots(2, 2, figsize=(13, 8), layout="constrained")
+    figure, axes = plt.subplots(3, 2, figsize=(13, 12), layout="constrained")
     short = [k[0].replace("-1m", "").replace("-12x1m", "") + " / " + k[1] for k in keys]
     for ax, (metric, title, unit) in zip(axes.flat, [
         ("loaded", "Loaded resident memory", "MiB"),
         ("peak", "Peak resident memory", "MiB"),
-        ("edit", "Edit action", "ms"),
+        ("edit", "Edit action (excludes rendering)", "ms"),
+        ("capture", "Edit + rendering + PNG capture", "ms"),
+        ("open", "Open action", "ms"),
         ("save", "Save action", "ms"),
     ]):
         y = list(range(len(keys)))
-        ax.barh([i - .19 for i in y], [previous[k][metric] for k in keys], height=.36,
-                label="Before", color="#a7b0ba")
-        ax.barh([i + .19 for i in y], [values[k][metric] for k in keys], height=.36,
-                label="After", color="#287b9b")
+        old_bars = ax.barh([i - .19 for i in y], [previous[k][metric] for k in keys], height=.36,
+                          label="Before", color="#a7b0ba")
+        new_bars = ax.barh([i + .19 for i in y], [values[k][metric] for k in keys], height=.36,
+                          label="After", color="#287b9b")
+        if metric == "edit":
+            for bars in (old_bars, new_bars):
+                ax.bar_label(bars, fmt="%.2f", fontsize=7, padding=2)
+            ax.margins(x=.15)
         ax.set_yticks(y, short, fontsize=8)
         ax.invert_yaxis()
         ax.set_title(title, loc="left", fontweight="bold")
@@ -87,6 +102,8 @@ def main():
     axes[0, 0].legend(loc="lower right", frameon=False)
     figure.suptitle(f"Mory {version} · same-machine optimization\n"
                    f"{after_env['cpu']} · 1 MiB fixtures · medians of 3 runs", fontsize=16)
+    figure.supxlabel("Large-document serialization is deferred to save boundaries. Capture is not display latency.",
+                     fontsize=10)
     chart = out / "performance-overview.svg"
     figure.savefig(chart, metadata={"Date": None})
     chart.write_text("\n".join(line.rstrip() for line in chart.read_text().splitlines()) + "\n")
@@ -100,6 +117,13 @@ def main():
              "30 edits per process. Values below are medians across runs; edit values use each run's median. "
              "RSS is sampled every 50 ms. Long-line Write requests use the existing Source fallback; "
              "large tables retain the existing compact preview. These results do not measure full rich rendering of every table cell.", "",
+             "The baseline build is identified by commit `" + before_env["commit"][:12] + "` "
+             "and the worktree diff and binary hashes in its raw records. "
+             "The optimized build adds indexed block lookup, compact typing undo records and deferred serialization "
+             "for large block documents. Edit actions update the editor model; full source serialization now occurs "
+             "at autosave, save and source-consuming commands. The edit speedup therefore includes work moved out "
+             "of the input handler. Save timings include pending serialization; capture timings include rendering "
+             "and PNG encoding. Neither is keyboard-to-display latency.", "",
              "![Mory performance overview](performance-overview.svg)", "",
              "## Before / after", "",
              "| Fixture | Mode | Open (ms) | Edit (ms) | Save (ms) | Loaded RSS (MiB) | Peak RSS (MiB) |",

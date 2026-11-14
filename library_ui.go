@@ -29,6 +29,8 @@ func (a *app) refreshDisk() {
 	a.checkReminders(time.Now())
 	if a.current != nil && a.lib.Changed(a.current) {
 		if a.dirty {
+			a.capture()
+			a.flushSource()
 			_ = a.lib.Recover(a.current)
 			return
 		}

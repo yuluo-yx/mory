@@ -63,8 +63,6 @@ type blockSession struct {
 	lastTextVersion        uint64
 	chosen                 ui.Selection[string]
 	tables                 map[string]tableCache
-	tableMembership        map[string]bool
-	tableMembershipVersion uint64
 	fieldEpoch             uint64
 	sourceRevision         uint64
 	visibleCache           []*blocks.Node
@@ -86,38 +84,16 @@ func newBlockSession(source, format string, sourceRevision uint64) (*blockSessio
 	if err != nil {
 		return nil, err
 	}
-	return &blockSession{doc: doc, fields: map[string]*blockField{}, version: doc.Version, sourceRevision: sourceRevision, selection: map[string]bool{}, images: map[string]*ui.Bitmap{}, imagePending: map[string]bool{}, imageErrors: map[string]bool{}, tables: map[string]tableCache{}, tableMembership: map[string]bool{}}, nil
-}
-
-// ensureTableMembership builds a revision-scoped lookup for text blocks that
-// live inside table cells. Looking up a parent by walking the whole document
-// for every cell is quadratic for documents with many table rows.
-func (s *blockSession) ensureTableMembership() {
-	if s.tableMembershipVersion == s.doc.Version {
-		return
-	}
-	if s.tableMembership == nil {
-		s.tableMembership = map[string]bool{}
-	} else {
-		clear(s.tableMembership)
-	}
-	var walk func(*blocks.Node, bool)
-	walk = func(n *blocks.Node, inTable bool) {
-		if n.Kind == "td" || n.Kind == "th" {
-			inTable = true
-		}
-		s.tableMembership[n.ID] = inTable
-		for _, child := range n.Children {
-			walk(child, inTable)
-		}
-	}
-	walk(s.doc.Root, false)
-	s.tableMembershipVersion = s.doc.Version
+	return &blockSession{doc: doc, fields: map[string]*blockField{}, version: doc.Version, sourceRevision: sourceRevision, selection: map[string]bool{}, images: map[string]*ui.Bitmap{}, imagePending: map[string]bool{}, imageErrors: map[string]bool{}, tables: map[string]tableCache{}}, nil
 }
 
 func (s *blockSession) insideTable(id string) bool {
-	s.ensureTableMembership()
-	return s.tableMembership[id]
+	for parent, _ := s.doc.Parent(id); parent != nil; parent, _ = s.doc.Parent(parent.ID) {
+		if parent.Kind == "td" || parent.Kind == "th" {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *app) structured() bool {
@@ -236,9 +212,13 @@ func (a *app) captureBlocks() {
 	}
 	if s.doc.Version != s.version {
 		s.version = s.doc.Version
-		a.setCurrentSource(s.doc.Source())
-		s.sourceRevision = a.sourceRevision
-		a.richSource = a.current.Source
+		// Match the large rich/source editors: the block tree is authoritative
+		// until autosave or a source-consuming command flushes it. Ordinary
+		// typing must not hash and serialize every block in a large document.
+		a.blockPending = true
+		if len(a.current.Source) <= 200000 {
+			a.flushSource()
+		}
 		a.markDirty()
 	}
 }

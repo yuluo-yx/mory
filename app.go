@@ -74,6 +74,7 @@ type app struct {
 	previewSource                                                                   string
 	richSource                                                                      string
 	richPending, codePending                                                        bool
+	blockPending                                                                    bool
 	statsSource                                                                     string
 	words, characters                                                               int
 	headingSource                                                                   string
@@ -323,6 +324,7 @@ func (a *app) loadEditors() {
 	}
 	a.richPending = false
 	a.codePending = false
+	a.blockPending = false
 	if sourceOnlyDocument(n) {
 		a.doc = nil
 		a.richSource = ""
@@ -646,6 +648,12 @@ func (a *app) richText(source string) richtext.Text {
 func (a *app) flushSource() {
 	if a.current == nil {
 		return
+	}
+	if a.blockPending {
+		a.setCurrentSource(a.blockEditor.doc.Source())
+		a.blockEditor.sourceRevision = a.sourceRevision
+		a.richSource = a.current.Source
+		a.blockPending = false
 	}
 	if a.richPending {
 		a.setCurrentSource(a.doc.Text().Markdown())

@@ -199,7 +199,13 @@ func (a *app) toggleHeading(n *blocks.Node) {
 
 func (a *app) restoreUnfoldedEditor() {
 	s := a.blockEditor
-	if s == nil || !s.restoreRich || a.current == nil || !document.RichSafe(a.current.Source) {
+	if s == nil || !s.restoreRich || a.current == nil {
+		return
+	}
+	// Replacing the block editor must retain edits that have not reached autosave.
+	a.captureBlocks()
+	a.flushSource()
+	if !document.RichSafe(a.current.Source) {
 		return
 	}
 	a.doc = richtext.NewDocument(a.richText(a.current.Source))

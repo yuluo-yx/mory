@@ -299,6 +299,47 @@ type Document struct {
 	Version    uint64
 	undo, redo []transaction
 	batch      *transaction
+	locations  map[string]nodeLocation
+}
+
+type nodeLocation struct {
+	node, parent *Node
+	at           int
+}
+
+// Editing targets have stable IDs. Maintain their locations at splice boundaries
+// so a keystroke never searches unrelated subtrees. Tree edits must use the
+// document's mutation methods after the index has been initialized.
+func (d *Document) indexNode(n, parent *Node, at int) {
+	d.locations[n.ID] = nodeLocation{n, parent, at}
+	for i, child := range n.Children {
+		d.indexNode(child, n, i)
+	}
+}
+
+func (d *Document) ensureLocations() {
+	if d.locations == nil {
+		d.locations = make(map[string]nodeLocation)
+		d.indexNode(d.Root, nil, -1)
+	}
+}
+
+func (d *Document) replaceNodes(parent *Node, at, count int, nodes []*Node) {
+	for _, old := range parent.Children[at : at+count] {
+		old.Walk(func(n *Node) { delete(d.locations, n.ID) })
+	}
+	parent.Children = slices.Replace(parent.Children, at, at+count, nodes...)
+	for i, n := range nodes {
+		d.indexNode(n, parent, at+i)
+	}
+	if count != len(nodes) {
+		// Only structural changes shift following siblings; text replacements
+		// update the changed subtree alone.
+		for i := at + len(nodes); i < len(parent.Children); i++ {
+			n := parent.Children[i]
+			d.locations[n.ID] = nodeLocation{n, parent, i}
+		}
+	}
 }
 
 func Parse(source, format string) (*Document, error) {
@@ -323,19 +364,16 @@ func (d *Document) Source() string {
 	}
 	return d.Root.Markdown()
 }
-func (d *Document) Find(id string) *Node { return d.Root.Find(id) }
+func (d *Document) Find(id string) *Node {
+	d.ensureLocations()
+	return d.locations[id].node
+}
 func (d *Document) Parent(id string) (*Node, int) {
-	var parent *Node
-	index := -1
-	d.Root.Walk(func(n *Node) {
-		for i, c := range n.Children {
-			if c.ID == id {
-				parent = n
-				index = i
-			}
-		}
-	})
-	return parent, index
+	d.ensureLocations()
+	if location, ok := d.locations[id]; ok {
+		return location.parent, location.at
+	}
+	return nil, -1
 }
 func cloneNodes(nodes []*Node) []*Node {
 	out := make([]*Node, len(nodes))
@@ -351,7 +389,7 @@ func (d *Document) Splice(parentID string, at, count int, nodes ...*Node) error 
 		return fmt.Errorf("invalid block range")
 	}
 	e := edit{Parent: parentID, At: at, Removed: cloneNodes(p.Children[at : at+count]), Inserted: cloneNodes(nodes)}
-	p.Children = slices.Replace(p.Children, at, at+count, nodes...)
+	d.replaceNodes(p, at, count, nodes)
 	d.Version++
 	d.redo = nil
 	if d.batch != nil {
@@ -408,7 +446,7 @@ func (d *Document) apply(t transaction, reverse bool) {
 		if reverse {
 			removed, inserted = inserted, removed
 		}
-		p.Children = slices.Replace(p.Children, e.At, e.At+len(removed), cloneNodes(inserted)...)
+		d.replaceNodes(p, e.At, len(removed), cloneNodes(inserted))
 	}
 	d.Version++
 }
@@ -430,6 +468,18 @@ func (d *Document) Coalesce() {
 		return
 	}
 	i := len(d.undo) - 2
+	left, right := &d.undo[i], &d.undo[i+1]
+	if len(left.Edits) == 1 && len(right.Edits) == 1 {
+		a, b := &left.Edits[0], &right.Edits[0]
+		if a.Parent == b.Parent && a.At == b.At && len(a.Removed) == 1 && len(a.Inserted) == 1 && len(b.Removed) == 1 && len(b.Inserted) == 1 && a.Inserted[0].ID == b.Removed[0].ID {
+			// Keep the original before-image and newest after-image rather than
+			// retaining a growing list of intermediate typing snapshots.
+			a.Inserted = b.Inserted
+			d.undo[i+1] = transaction{}
+			d.undo = d.undo[:i+1]
+			return
+		}
+	}
 	d.undo[i].Edits = append(d.undo[i].Edits, d.undo[i+1].Edits...)
 	d.undo = d.undo[:i+1]
 }

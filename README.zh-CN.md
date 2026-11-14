@@ -73,7 +73,7 @@ export function transform({ title, markdown }) {
   <img src="benchmark/performance-overview.svg" alt="Mory Markdown 性能概览">
 </p>
 
-在同一台 Apple M4 上，本轮优化将 `structured-1m` 写作模式的编辑耗时从 **109 ms 降到 59 ms**，加载后 RSS 从 **550 MiB 降到 412 MiB**；`memory-heavy-1m` 的编辑耗时从 **53 ms 降到 28 ms**，加载后 RSS 从 **394 MiB 降到 319 MiB**。以上为三次独立运行的中位数，报告和图表保留优化前后的数据。操作耗时不等同于端到端输入延迟。
+在同一台 Apple M4 上，本轮优化将 `structured-1m` 写作模式的输入处理耗时从 **58.76 ms 降到 0.044 ms**，`memory-heavy-1m` 从 **28.13 ms 降到 0.043 ms**，均为三次独立运行的中位数。整篇序列化移至保存等操作，包含序列化的保存耗时分别为 **88.56 ms** 和 **61.99 ms**。包含输入处理、渲染与 PNG 编码的截图测量分别从 **135.33 ms 降到 55.88 ms**、从 **95.04 ms 降到 53.53 ms**。这些指标不等同于按键到屏幕显示的延迟。
 
 另外提供 [Quiet.md v0.1.11](benchmark/quiet-md-performance-report.md) 和 [ArcMD v0.0.11](benchmark/arcmd-performance-report.md) 的进程级测量。它们与 Mory 的操作流程和观察窗口不同，不能据此确定综合性能排名。
 
