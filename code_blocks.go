@@ -55,7 +55,7 @@ func (a *app) promoteRichCode() bool {
 	if start < 0 {
 		return false
 	}
-	s, err := newBlockSession(doc.Text().Markdown(), a.current.Format)
+	s, err := newBlockSession(doc.Text().Markdown(), a.current.Format, a.sourceRevision)
 	if a.fail(err) {
 		return false
 	}
@@ -72,7 +72,8 @@ func (a *app) promoteRichCode() bool {
 	_, caret := doc.Selection()
 	s.active, s.focus, s.focusAt = code.ID, code.ID, max(0, caret-start)
 	a.blockEditor = s
-	a.current.Source = s.doc.Source()
+	a.setCurrentSource(s.doc.Source())
+	s.sourceRevision = a.sourceRevision
 	a.richSource = "\x00"
 	a.markDirty()
 	return true

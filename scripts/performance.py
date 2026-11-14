@@ -187,6 +187,7 @@ def main():
     else:
         fixture_cases = [(kind, "", None) for kind in args.kinds.split(",")]
     metadata = dict(date=time.strftime("%Y-%m-%d"), os=platform.platform(),
+                    product_version=json.loads((repo / "mygo.json").read_text())["version"],
                     cpu=subprocess.check_output(["sysctl", "-n", "machdep.cpu.brand_string"], text=True).strip(),
                     ram_bytes=int(subprocess.check_output(["sysctl", "-n", "hw.memsize"], text=True)),
                     go=subprocess.check_output(["go", "version"], text=True).strip(),
@@ -195,12 +196,15 @@ def main():
                     requested_window=f"{args.width}x{args.height}", sample_interval_ms=50,
                     fixture_dir=str(args.fixture_dir) if args.fixture_dir else None,
                     action_timeout_seconds=args.timeout)
-    print(json.dumps(dict(environment=metadata)), flush=True)
     with tempfile.TemporaryDirectory(prefix="perf-", dir=output) as temp:
         work = Path(temp)
         binary = work / "mory-perf"
         subprocess.run(["go", "build", "-trimpath", "-tags=performance,mygo_noinspector",
                         "-ldflags=-s -w", "-o", str(binary), "."], cwd=repo, check=True)
+        metadata["binary_sha256"] = hashlib.sha256(binary.read_bytes()).hexdigest()
+        metadata["source_diff_sha256"] = hashlib.sha256(subprocess.check_output(
+            ["git", "diff", "HEAD", "--", "*.go", "go.mod", "go.sum"], cwd=repo)).hexdigest()
+        print(json.dumps(dict(environment=metadata)), flush=True)
         for kind, fixture_path, fixture_data in fixture_cases:
             case_sizes = [len(fixture_data)] if fixture_data is not None else sizes
             for size in case_sizes:
@@ -224,6 +228,7 @@ def main():
                             idle_cpu = native.idle_cpu_percent
                             opened = native.call("open", Path=str(path), Mode=mode)
                             loaded = native.settled_rss()
+                            loaded_cpu = native.idle_cpu_percent
                             edits = []
                             for i in range(args.edits):
                                 edits.append(native.call("edit", Position="start", Text="x"))
@@ -237,7 +242,8 @@ def main():
                             record = dict(startup_ms=native.startup_ms, idle_rss_mib=idle,
                                 open=opened, loaded_rss_mib=loaded, edits=edits, save=saved, undo=undo,
                                 scroll=scrolling, after_edit_rss_mib=after_edit,
-                                home_idle_cpu_percent=idle_cpu, loaded_idle_cpu_percent=native.idle_cpu_percent,
+                                home_idle_cpu_percent=idle_cpu, loaded_idle_cpu_percent=loaded_cpu,
+                                after_edit_idle_cpu_percent=native.idle_cpu_percent,
                                 sampled_peak_rss_mib=max(value for _, value in native.samples))
                             results.append(record)
                         except (OSError, RuntimeError, AssertionError) as error:

@@ -145,11 +145,14 @@ func (n *Node) Markdown() string {
 	if n.Kind == "root" || n.Kind == "markdown-group" {
 		var b strings.Builder
 		for _, c := range n.Children {
-			part := c.Markdown()
-			b.WriteString(part)
+			// An unchanged block already has its exact source spelling. Validate it
+			// once instead of hashing it both here and inside Markdown.
 			if c.markdown != "" && c.signature() == c.mdBaseline {
+				b.WriteString(c.markdown)
 				continue
 			}
+			part := c.Markdown()
+			b.WriteString(part)
 			if !strings.HasSuffix(part, "\n\n") {
 				if c.Kind != "#raw" && !strings.HasSuffix(part, "\n") {
 					b.WriteByte('\n')

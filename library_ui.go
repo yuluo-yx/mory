@@ -268,7 +268,7 @@ func (a *app) libraryOverlays(c *ui.Context) {
 							if !a.save() {
 								return
 							}
-							a.current.Source = revision.Note.Source
+							a.setCurrentSource(revision.Note.Source)
 							a.loadEditors()
 							a.markDirty()
 							if a.saveWithHistory(true) {

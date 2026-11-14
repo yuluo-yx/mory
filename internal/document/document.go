@@ -21,6 +21,8 @@ type Heading struct {
 	Text          string
 }
 
+var headingID = regexp.MustCompile(`\s+\{#[^{}\s]+\}\s*$`)
+
 // RichSafe rejects constructs the framework's paragraph editor would flatten.
 // Source editing always retains the original bytes, including unknown XML blocks.
 func RichSafe(source string) bool {
@@ -78,7 +80,7 @@ func Headings(source string) []Heading {
 		if b.Kind == parser.Heading {
 			// Use rendered inline text so escapes, links and emphasis match the page.
 			text := strings.TrimSpace(parser.PlainText(d.Inlines(i)))
-			text = regexp.MustCompile(`\s+\{#[^{}\s]+\}\s*$`).ReplaceAllString(text, "")
+			text = headingID.ReplaceAllString(text, "")
 			result = append(result, Heading{Level: b.Level, Offset: base + b.Start, Text: text})
 		}
 	}

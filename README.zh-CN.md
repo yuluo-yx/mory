@@ -73,7 +73,9 @@ export function transform({ title, markdown }) {
   <img src="benchmark/performance-overview.svg" alt="Mory Markdown 性能概览">
 </p>
 
-与 Quiet.md `v0.1.11` 使用同一组 fixture 测试时，Mory 在复杂文档上的优势是性能更稳定：Mory 测得的 RSS 峰值约保持在 `682 MiB` 以内，而 Quiet.md 在表格密集和目标负载文档上达到 `2.1–2.4 GiB`，采样 CPU 接近 `100%`。Quiet.md 在简单文档上的内存占用更低（`207–296 MiB`），因此差异取决于文档负载；完整数据见 [Quiet.md 性能基线](benchmark/quiet-md-performance-report.md)。两组数据的指标层级不同：Mory 记录编辑操作和画面捕获耗时，Quiet.md 基线记录发布包进程的 RSS 和 CPU。
+在同一台 Apple M4 上，本轮优化将 `structured-1m` 写作模式的编辑耗时从 **109 ms 降到 59 ms**，加载后 RSS 从 **550 MiB 降到 412 MiB**；`memory-heavy-1m` 的编辑耗时从 **53 ms 降到 28 ms**，加载后 RSS 从 **394 MiB 降到 319 MiB**。以上为三次独立运行的中位数，报告和图表保留优化前后的数据。操作耗时不等同于端到端输入延迟。
+
+另外提供 [Quiet.md v0.1.11](benchmark/quiet-md-performance-report.md) 和 [ArcMD v0.0.11](benchmark/arcmd-performance-report.md) 的进程级测量。它们与 Mory 的操作流程和观察窗口不同，不能据此确定综合性能排名。
 
 详见 [性能数据](benchmark/performance-report.md) 和 [原始测量结果](benchmark/performance-data.jsonl)。
 

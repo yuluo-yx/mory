@@ -996,6 +996,9 @@ func (a *app) editorView(c *ui.Context) {
 	if a.findOpen && a.mode == "Write" {
 		a.findBar(c)
 	}
+	// Dock changes take effect on the next frame, so a click cannot build the
+	// same outline list twice (first on the left, then again on the right).
+	outlineSide := a.outlineSide()
 	ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Justify(a.pageAlignment()).Children(func() {
 		// Move the outline with the page so wide windows keep navigation nearby.
 		group := ui.Row(c).Grow(1).MinWidth(0).MinHeight(0).AlignItems(ui.Stretch)
@@ -1006,7 +1009,7 @@ func (a *app) editorView(c *ui.Context) {
 			group.MaxWidth(width)
 		}
 		group.Children(func() {
-			if a.outline && !a.focus && a.mode != "Split" && a.outlineSide() == "Left" {
+			if a.outline && !a.focus && a.mode != "Split" && outlineSide == "Left" {
 				a.outlineView(c)
 			}
 			column := ui.Column(c).Grow(1).MinWidth(0).Padding(32, 40, 16)
@@ -1045,7 +1048,7 @@ func (a *app) editorView(c *ui.Context) {
 					}
 				}
 			})
-			if a.outline && !a.focus && a.mode != "Split" && a.outlineSide() == "Right" {
+			if a.outline && !a.focus && a.mode != "Split" && outlineSide == "Right" {
 				a.outlineView(c)
 			}
 		})
@@ -1147,7 +1150,7 @@ func (a *app) outlineView(c *ui.Context) {
 	if a.current != nil && a.current.Cover != "" && a.loadAssetBitmap(a.current.Cover) != nil {
 		top += documentCoverHeight + documentCoverBottomGap
 	}
-	ui.Scroll(c).Width(a.outlineWidth()).Shrink(0).Padding(top, 12, 16).Gap(4).Children(func() {
+	ui.Column(c).Width(a.outlineWidth()).Shrink(0).MinHeight(0).Padding(top, 12, 16).Gap(4).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Gap(4).Children(func() {
 			ui.Text(c, a.tr("ON THIS PAGE")).FontSize(11).TextColor(t.TextMuted).Grow(1)
 			for _, side := range []string{"Left", "Right"} {
@@ -1185,11 +1188,13 @@ func (a *app) outlineView(c *ui.Context) {
 				})
 				a.structuredHeadingVersion = s.doc.Version
 			}
-			for _, h := range a.structuredHeadings {
+			a.outlineList.Key = func(i int) any { return a.structuredHeadings[i].id }
+			ui.List(c, &a.outlineList, len(a.structuredHeadings), func(i int) {
+				h := a.structuredHeadings[i]
 				if a.outlineHeading(c.Key(h.id), h.title, h.level).Clicked() {
 					a.focusBlock(h.id, 0)
 				}
-			}
+			}).Grow(1).FillWidth().Gap(4)
 			return
 		}
 		source := a.markdownSource()
@@ -1197,7 +1202,9 @@ func (a *app) outlineView(c *ui.Context) {
 			a.headingSource = source
 			a.headings = document.Headings(source)
 		}
-		for _, h := range a.headings {
+		a.outlineList.Key = func(i int) any { return a.headings[i].Offset }
+		ui.List(c, &a.outlineList, len(a.headings), func(i int) {
+			h := a.headings[i]
 			if a.outlineHeading(c.Key(h.Offset), h.Text, h.Level).Clicked() {
 				if a.mode == "Write" {
 					for pos, p := range a.doc.Text().Paragraphs() {
@@ -1213,7 +1220,7 @@ func (a *app) outlineView(c *ui.Context) {
 					a.preview.AnchorVersion++
 				}
 			}
-		}
+		}).Grow(1).FillWidth().Gap(4)
 	})
 }
 

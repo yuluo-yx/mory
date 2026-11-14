@@ -22,6 +22,8 @@ import (
 )
 
 type app struct {
+	// The outline retains only visible heading controls, like the document list.
+	outlineList                                                                     ui.ListState
 	associationStatus                                                               string
 	searchFocus                                                                     bool
 	settingsTab                                                                     string
@@ -53,6 +55,7 @@ type app struct {
 	lib                                                                             *library.Library
 	win                                                                             *mygo.Window
 	current                                                                         *library.Note
+	sourceRevision                                                                  uint64
 	blockEditor                                                                     *blockSession
 	documentColor                                                                   ui.Color
 	doc                                                                             *richtext.Document
@@ -147,6 +150,16 @@ func (a *app) ensureRichDocument() {
 	}
 }
 
+// setCurrentSource records source changes so structured views can invalidate
+// their parsed session without serializing the entire document every frame.
+func (a *app) setCurrentSource(source string) {
+	if a.current == nil {
+		return
+	}
+	a.current.Source = source
+	a.sourceRevision++
+}
+
 func newApp(dir string) (*app, error) {
 	l, err := library.Open(dir)
 	if err != nil {
@@ -209,7 +222,7 @@ func (a *app) capture() {
 			a.markDirty()
 			return
 		}
-		a.current.Source = a.doc.Text().Markdown()
+		a.setCurrentSource(a.doc.Text().Markdown())
 		a.richSource = a.current.Source
 		a.markDirty()
 		anchor, caret := a.doc.Selection()
@@ -229,7 +242,7 @@ func (a *app) capture() {
 			a.markDirty()
 			return
 		}
-		a.current.Source = a.code.Buffer.String()
+		a.setCurrentSource(a.code.Buffer.String())
 		a.markDirty()
 	}
 }
@@ -268,6 +281,7 @@ func (a *app) openNote(n *library.Note) {
 		return
 	}
 	a.current = n
+	a.sourceRevision++
 	a.settingsOpen, a.helpOpen = false, false
 	if a.lib.Changed(n) {
 		if a.fail(a.lib.Reload(n.ID)) {
@@ -296,12 +310,13 @@ func (a *app) loadEditors() {
 	a.inlineCodeInput = nil
 	a.structuredHeadingVersion = 0
 	a.structuredHeadings = nil
+	a.outlineList = ui.ListState{}
 	largeDocument := largeDocumentBlocks(n)
 	if !sourceOnlyDocument(n) && (largeDocument || n.Format == "xml" || !document.RichSafe(n.Source)) {
 		// Large documents use the block editor from the first frame. This keeps
 		// the normal Write experience while avoiding a second whole-document
 		// rich-text tree and allows large tables to use their compact renderer.
-		session, err := newBlockSession(n.Source, n.Format)
+		session, err := newBlockSession(n.Source, n.Format, a.sourceRevision)
 		if !a.fail(err) {
 			a.blockEditor = session
 		}
@@ -349,8 +364,8 @@ func (a *app) changeMode(mode string) {
 	}
 	if mode == "Write" || mode == "Read" {
 		if largeDocumentBlocks(a.current) || a.current.Format == "xml" || !document.RichSafe(a.current.Source) {
-			if a.blockEditor == nil || a.blockEditor.doc.Source() != a.current.Source {
-				session, err := newBlockSession(a.current.Source, a.current.Format)
+			if a.blockEditor == nil || a.blockEditor.sourceRevision != a.sourceRevision {
+				session, err := newBlockSession(a.current.Source, a.current.Format, a.sourceRevision)
 				if a.fail(err) {
 					return
 				}
@@ -633,12 +648,12 @@ func (a *app) flushSource() {
 		return
 	}
 	if a.richPending {
-		a.current.Source = a.doc.Text().Markdown()
+		a.setCurrentSource(a.doc.Text().Markdown())
 		a.richSource = a.current.Source
 		a.richPending = false
 	}
 	if a.codePending {
-		a.current.Source = a.code.Buffer.String()
+		a.setCurrentSource(a.code.Buffer.String())
 		a.codePending = false
 	}
 }

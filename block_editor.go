@@ -66,6 +66,7 @@ type blockSession struct {
 	tableMembership        map[string]bool
 	tableMembershipVersion uint64
 	fieldEpoch             uint64
+	sourceRevision         uint64
 	visibleCache           []*blocks.Node
 	visibleCacheVersion    uint64
 	visibleCacheFold       uint64
@@ -80,12 +81,12 @@ type tableCache struct {
 	simple bool
 }
 
-func newBlockSession(source, format string) (*blockSession, error) {
+func newBlockSession(source, format string, sourceRevision uint64) (*blockSession, error) {
 	doc, err := blocks.Parse(source, format)
 	if err != nil {
 		return nil, err
 	}
-	return &blockSession{doc: doc, fields: map[string]*blockField{}, version: doc.Version, selection: map[string]bool{}, images: map[string]*ui.Bitmap{}, imagePending: map[string]bool{}, imageErrors: map[string]bool{}, tables: map[string]tableCache{}, tableMembership: map[string]bool{}}, nil
+	return &blockSession{doc: doc, fields: map[string]*blockField{}, version: doc.Version, sourceRevision: sourceRevision, selection: map[string]bool{}, images: map[string]*ui.Bitmap{}, imagePending: map[string]bool{}, imageErrors: map[string]bool{}, tables: map[string]tableCache{}, tableMembership: map[string]bool{}}, nil
 }
 
 // ensureTableMembership builds a revision-scoped lookup for text blocks that
@@ -124,8 +125,8 @@ func (a *app) structured() bool {
 }
 
 func (a *app) splitPreview(c *ui.Context) {
-	if a.blockEditor == nil || a.blockEditor.doc.Source() != a.current.Source {
-		s, err := newBlockSession(a.current.Source, a.current.Format)
+	if a.blockEditor == nil || a.blockEditor.sourceRevision != a.sourceRevision {
+		s, err := newBlockSession(a.current.Source, a.current.Format, a.sourceRevision)
 		if err != nil {
 			ui.Text(c, err.Error()).TextColor(c.Theme().Danger)
 			return
@@ -148,7 +149,7 @@ func (a *app) enableBlocks() bool {
 	}
 	a.capture()
 	a.flushSource()
-	session, err := newBlockSession(a.current.Source, a.current.Format)
+	session, err := newBlockSession(a.current.Source, a.current.Format, a.sourceRevision)
 	if a.fail(err) {
 		return false
 	}
@@ -235,7 +236,8 @@ func (a *app) captureBlocks() {
 	}
 	if s.doc.Version != s.version {
 		s.version = s.doc.Version
-		a.current.Source = s.doc.Source()
+		a.setCurrentSource(s.doc.Source())
+		s.sourceRevision = a.sourceRevision
 		a.richSource = a.current.Source
 		a.markDirty()
 	}

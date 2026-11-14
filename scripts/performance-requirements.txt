@@ -1,0 +1,2 @@
+# Used only to regenerate benchmark charts, not by the application.
+matplotlib==3.11.2

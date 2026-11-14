@@ -8,6 +8,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"slices"
 	"sort"
@@ -41,7 +42,7 @@ type CompactTable struct {
 }
 
 func New(kind string, children ...*Node) *Node {
-	return &Node{ID: rand.Text(), Kind: kind, Attrs: map[string]string{}, Children: children}
+	return &Node{ID: rand.Text(), Kind: kind, Children: children}
 }
 func Text(s string) *Node      { n := New("#text"); n.Text = s; return n }
 func Paragraph(s string) *Node { return New("p", Text(s)) }
@@ -50,10 +51,7 @@ func (n *Node) Clone() *Node {
 		return nil
 	}
 	out := *n
-	out.Attrs = map[string]string{}
-	for k, v := range n.Attrs {
-		out.Attrs[k] = v
-	}
+	out.Attrs = maps.Clone(n.Attrs)
 	out.Children = make([]*Node, len(n.Children))
 	for i, c := range n.Children {
 		out.Children[i] = c.Clone()
@@ -67,12 +65,14 @@ func (n *Node) Attr(key string) string {
 	return n.Attrs[key]
 }
 func (n *Node) Set(key, value string) {
-	if n.Attrs == nil {
-		n.Attrs = map[string]string{}
-	}
 	if value == "" {
 		delete(n.Attrs, key)
 	} else {
+		// Most text and structural nodes have no attributes. Allocate only when
+		// adding one, including when a cloned node first acquires formatting.
+		if n.Attrs == nil {
+			n.Attrs = make(map[string]string)
+		}
 		n.Attrs[key] = value
 	}
 }
@@ -132,21 +132,33 @@ func (n *Node) Walk(fn func(*Node)) {
 
 func (n *Node) signature() [32]byte {
 	h := sha256.New()
-	io.WriteString(h, n.Kind+"\x00"+n.Text+"\x00")
-	keys := make([]string, 0, len(n.Attrs))
+	// Keep the digest and output buffer on the stack. Formatting through io.Writer
+	// made every node allocate during lossless source validation on each edit.
+	h.Write([]byte(n.Kind))
+	h.Write([]byte{0})
+	h.Write([]byte(n.Text))
+	h.Write([]byte{0})
+	var localKeys [8]string
+	keys := localKeys[:0]
+	if len(n.Attrs) > len(localKeys) {
+		keys = make([]string, 0, len(n.Attrs))
+	}
 	for k := range n.Attrs {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		fmt.Fprintf(h, "%s\x00%s\x00", k, n.Attrs[k])
+		h.Write([]byte(k))
+		h.Write([]byte{0})
+		h.Write([]byte(n.Attrs[k]))
+		h.Write([]byte{0})
 	}
 	for _, c := range n.Children {
 		s := c.signature()
 		h.Write(s[:])
 	}
 	var sum [32]byte
-	copy(sum[:], h.Sum(nil))
+	h.Sum(sum[:0])
 	return sum
 }
 
@@ -227,6 +239,10 @@ func ParseXML(source string) (*Node, error) {
 				name := attr.Name.Local
 				if attr.Name.Space != "" {
 					name = attr.Name.Space + ":" + name
+				}
+				// Empty XML attributes must also survive a lossless round trip.
+				if n.Attrs == nil {
+					n.Attrs = make(map[string]string)
 				}
 				n.Attrs[name] = attr.Value
 			}

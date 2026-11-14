@@ -75,7 +75,9 @@ Performance is a core Mory differentiator. The benchmark uses the checked-in 1 M
 
 See the [performance data](benchmark/performance-report.md) and [raw measurements](benchmark/performance-data.jsonl).
 
-Compared with Quiet.md `v0.1.11` on the same fixture set, Mory's advantage is stability on complex documents: Mory's measured RSS peaks stayed around or below `682 MiB`, while Quiet.md reached `2.1–2.4 GiB` and about `100%` sampled CPU on table-heavy and target-shape documents. Quiet.md used less memory on simpler fixtures (`207–296 MiB`), so the difference depends on the workload; see the [Quiet.md baseline](benchmark/quiet-md-performance-report.md). These are directional measurements: Mory reports editor actions and capture times, while the Quiet.md baseline reports release-process RSS and CPU.
+On the same Apple M4, the latest optimization reduced `structured-1m` Write edit time from **109 to 59 ms** and loaded RSS from **550 to 412 MiB**. For `memory-heavy-1m`, edit time fell from **53 to 28 ms** and loaded RSS from **394 to 319 MiB** (medians of three runs). The report and chart retain the before/after measurements; action timings are not end-to-end input latency.
+
+Separate process measurements are available for [Quiet.md v0.1.11](benchmark/quiet-md-performance-report.md) and [ArcMD v0.0.11](benchmark/arcmd-performance-report.md). Their workflows and observation windows differ from Mory's, so they do not establish an overall performance ranking.
 
 ## Build from source
 
