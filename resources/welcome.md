@@ -80,6 +80,8 @@ The next line is a divider, written as `---`:
 
 Fenced code blocks support syntax highlighting, a language selector, wrapping, and copying. Code remains editable in Write mode.
 
+Enter adds a line inside the code block. To continue outside it, place the caret at the end and press Down or Right. The caret moves to the following text block, or a new paragraph when needed. You can also click the gap immediately below the code block; hovering reveals **Write below code**. This creates a plain paragraph before a following heading, or reuses an existing empty paragraph. Creating the paragraph can be undone.
+
 ```go title="hello.go" {3} showLineNumbers
 package main
 

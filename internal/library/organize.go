@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 )
 
 // Descendants is cycle safe even for a manually edited library index.
@@ -50,27 +51,37 @@ func (l *Library) Move(n *Note, folder, parent string) error {
 // TrashTree records the deletion group, so restoring a parent does not restore
 // descendants that were already independently in the trash.
 func (l *Library) TrashTree(n *Note, deleted bool) error {
-	notes := l.Descendants(n.ID)
 	if !deleted {
-		notes = []*Note{n}
-		for _, child := range l.Notes {
-			if child.ID != n.ID && child.TrashRoot == n.ID {
-				notes = append(notes, child)
+		_, err := l.RestoreTree(n)
+		return err
+	}
+	if n == nil || !validID(n.ID) {
+		return fmt.Errorf("invalid note ID")
+	}
+	if n.External != "" && !n.Deleted {
+		return l.Forget(n)
+	}
+	notes := l.Descendants(n.ID)
+	unlock, err := l.lock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	for _, item := range notes {
+		if !item.Deleted && item.External == "" {
+			if err := l.checkTrashMove(item, true); err != nil {
+				return err
 			}
 		}
 	}
+	now := time.Now()
 	for _, item := range notes {
-		if item.Deleted == deleted {
+		if item.Deleted || item.External != "" {
 			continue
 		}
-		old := item.TrashRoot
-		if deleted {
-			item.TrashRoot = n.ID
-		} else {
-			item.TrashRoot = ""
-		}
-		if err := l.SetDeleted(item, deleted); err != nil {
-			item.TrashRoot = old
+		next := *item
+		next.TrashRoot = n.ID
+		if err := l.setDeleted(item, next, true, now); err != nil {
 			return err
 		}
 	}
@@ -79,7 +90,7 @@ func (l *Library) TrashTree(n *Note, deleted bool) error {
 
 func (l *Library) EmptyTrash() error {
 	for _, n := range slices.Clone(l.Notes) {
-		if n.Deleted {
+		if n.Deleted && l.Get(n.ID) != nil {
 			if err := l.Purge(n); err != nil {
 				return err
 			}

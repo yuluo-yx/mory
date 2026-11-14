@@ -33,6 +33,7 @@ type Note struct {
 	External       string    `json:"external,omitempty"`
 	ExternalHash   string    `json:"externalHash,omitempty"`
 	TrashRoot      string    `json:"trashRoot,omitempty"`
+	DeletedAt      time.Time `json:"deletedAt,omitzero"`
 	ID             string    `json:"id"`
 	Title          string    `json:"title"`
 	Source         string    `json:"source"`
@@ -75,36 +76,13 @@ type Library struct {
 
 func Open(dir string) (*Library, error) {
 	l := &Library{Dir: dir, versions: make(map[string][32]byte), Settings: Settings{Theme: "Craft", Appearance: "System", FontSize: 17}}
-	for _, child := range []string{"notes", "plugins", "assets", "history", "recovery", "themes"} {
+	for _, child := range []string{"notes", "trash", "plugins", "assets", "history", "recovery", "themes"} {
 		if err := os.MkdirAll(filepath.Join(dir, child), 0o755); err != nil {
 			return nil, err
 		}
 	}
-	entries, err := os.ReadDir(filepath.Join(dir, "notes"))
-	if err != nil {
+	if err := l.loadNotes(); err != nil {
 		return nil, err
-	}
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
-			continue
-		}
-		path := filepath.Join(dir, "notes", entry.Name())
-		b, err := os.ReadFile(path)
-		if err != nil {
-			return nil, err
-		}
-		var n Note
-		if err := json.Unmarshal(b, &n); err != nil {
-			return nil, fmt.Errorf("read %s: %w", path, err)
-		}
-		if !validID(n.ID) || entry.Name() != n.ID+".json" {
-			return nil, fmt.Errorf("invalid note ID in %s", path)
-		}
-		if n.Format != "markdown" && n.Format != "xml" {
-			return nil, fmt.Errorf("unsupported note format in %s", path)
-		}
-		l.Notes = append(l.Notes, &n)
-		l.versions[n.ID] = sha256.Sum256(b)
 	}
 	b, err := os.ReadFile(filepath.Join(dir, "settings.json"))
 	if err == nil {
@@ -182,7 +160,7 @@ func (l *Library) save(n *Note, forceHistory bool, now time.Time) error {
 		return err
 	}
 	defer unlock()
-	path := filepath.Join(l.Dir, "notes", n.ID+".json")
+	path := l.notePath(n)
 	if err := checkVersion(path, l.versions[n.ID]); err != nil {
 		return err
 	}
@@ -277,30 +255,14 @@ func (l *Library) Duplicate(n *Note) (*Note, error) {
 	return copy, l.Save(copy)
 }
 
-// SetDeleted keeps every byte of a note; restoring does not depend on a second index.
-func (l *Library) SetDeleted(n *Note, deleted bool) error {
-	old := n.Deleted
-	n.Deleted = deleted
-	if err := l.Save(n); err != nil {
-		n.Deleted = old
-		return err
-	}
-	return nil
-}
-
-func (l *Library) Purge(n *Note) error {
+func (l *Library) purgeOne(n *Note) error {
 	if !validID(n.ID) {
 		return errors.New("invalid note ID")
 	}
 	if !n.Deleted {
 		return errors.New("only trashed notes can be permanently deleted")
 	}
-	unlock, err := l.lock()
-	if err != nil {
-		return err
-	}
-	defer unlock()
-	path := filepath.Join(l.Dir, "notes", n.ID+".json")
+	path := l.notePath(n)
 	if err := checkVersion(path, l.versions[n.ID]); err != nil {
 		return err
 	}
@@ -341,6 +303,11 @@ func (l *Library) Query(section, query, folder, order string) []*Note {
 		if n.Deleted != (section == "Trash") {
 			continue
 		}
+		if n.Deleted && n.TrashRoot != n.ID {
+			if root := l.Get(n.TrashRoot); root != nil && root.Deleted {
+				continue
+			}
+		}
 		if section == "Favorites" && !n.Starred {
 			continue
 		}
@@ -350,13 +317,27 @@ func (l *Library) Query(section, query, folder, order string) []*Note {
 		if folder != "" && n.Folder != folder {
 			continue
 		}
-		if query != "" && !strings.Contains(strings.ToLower(n.Title+"\n"+n.Source), query) {
-			continue
+		if query != "" {
+			matches := strings.Contains(strings.ToLower(n.Title+"\n"+n.Source), query)
+			if n.Deleted && !matches {
+				for _, child := range l.trashGroup(n) {
+					matches = matches || strings.Contains(strings.ToLower(child.Title+"\n"+child.Source), query)
+				}
+			}
+			if !matches {
+				continue
+			}
 		}
 		result = append(result, n)
 	}
 	sort.Slice(result, func(i, j int) bool {
 		a, b := result[i], result[j]
+		if section == "Trash" {
+			if !a.DeletedAt.Equal(b.DeletedAt) {
+				return a.DeletedAt.After(b.DeletedAt)
+			}
+			return a.ID < b.ID
+		}
 		if a.Pinned != b.Pinned {
 			return a.Pinned
 		}

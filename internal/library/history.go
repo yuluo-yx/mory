@@ -23,7 +23,7 @@ func (l *Library) beforeSave(n *Note, path string, forceHistory bool, now time.T
 	// Check ownership before creating history, so rejected external writes leave
 	// neither duplicate snapshots nor a changed external document.
 	var current []byte
-	if n.External != "" {
+	if n.External != "" && !n.Deleted {
 		var err error
 		current, err = os.ReadFile(n.External)
 		if err != nil {
@@ -48,7 +48,7 @@ func (l *Library) beforeSave(n *Note, path string, forceHistory bool, now time.T
 			}
 		}
 	}
-	if n.External == "" {
+	if n.External == "" || n.Deleted {
 		return nil
 	}
 	if string(current) == n.Source {
@@ -100,7 +100,12 @@ func (l *Library) Reload(id string) error {
 	if n == nil {
 		return fmt.Errorf("note no longer exists")
 	}
-	b, err := os.ReadFile(filepath.Join(l.Dir, "notes", id+".json"))
+	b, err := os.ReadFile(l.notePath(n))
+	if errors.Is(err, fs.ErrNotExist) {
+		other := *n
+		other.Deleted = !n.Deleted
+		b, err = os.ReadFile(l.notePath(&other))
+	}
 	if err != nil {
 		return err
 	}
@@ -108,7 +113,7 @@ func (l *Library) Reload(id string) error {
 	if err := json.Unmarshal(b, &fresh); err != nil {
 		return err
 	}
-	if fresh.External != "" {
+	if fresh.External != "" && !fresh.Deleted {
 		data, err := os.ReadFile(fresh.External)
 		if err != nil {
 			return err
@@ -121,10 +126,10 @@ func (l *Library) Reload(id string) error {
 }
 
 func (l *Library) Changed(n *Note) bool {
-	if checkVersion(filepath.Join(l.Dir, "notes", n.ID+".json"), l.versions[n.ID]) != nil {
+	if checkVersion(l.notePath(n), l.versions[n.ID]) != nil {
 		return true
 	}
-	if n.External != "" {
+	if n.External != "" && !n.Deleted {
 		b, err := os.ReadFile(n.External)
 		return err != nil || sourceHash(b) != n.ExternalHash
 	}

@@ -7,6 +7,7 @@ import (
 )
 
 func (a *app) overlays(c *ui.Context) {
+	a.syncNoteActionState()
 	a.libraryOverlays(c)
 	a.themeOverlay(c)
 	a.blockOverlays(c)
@@ -109,7 +110,7 @@ func (a *app) overlays(c *ui.Context) {
 			})
 
 			ui.Row(c).AlignItems(ui.Center).Children(func() {
-				if ui.Button(c, a.tr("Move to Trash")).Padding(5, 10).Radius(6).TextColor(ui.Hex("#ff3b30")).Clicked() {
+				if ui.Button(c, a.tr(deleteLabel(a.target))).Padding(5, 10).Radius(6).TextColor(ui.Hex("#ff3b30")).Clicked() {
 					a.trash(a.target)
 					a.renameOpen = false
 				}
@@ -183,9 +184,10 @@ func (a *app) overlays(c *ui.Context) {
 		ui.Column(c).Width(400).Gap(16).Children(func() {
 			ui.Text(c, a.tr("In the Trash")).FontSize(24)
 			ui.Text(c, a.displayTitle(a.target.Title))
-			ui.Text(c, a.tr("Restore this note, or permanently delete it. Permanent deletion cannot be undone."))
+			ui.Text(c, a.noteSummary(a.target))
+			ui.Text(c, a.tr("Restore this note and its deleted child notes, or permanently delete the group. Permanent deletion cannot be undone."))
 			ui.Row(c).Gap(10).Children(func() {
-				if ui.PrimaryButton(c, a.tr("Restore note")).Clicked() && !a.fail(a.lib.TrashTree(a.target, false)) {
+				if ui.PrimaryButton(c, a.tr("Restore note")).Clicked() && a.restoreNote(a.target) {
 					a.deleteOpen = false
 				}
 				if ui.Button(c, a.tr("Delete permanently")).Clicked() && !a.fail(a.lib.Purge(a.target)) {

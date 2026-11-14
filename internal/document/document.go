@@ -46,6 +46,11 @@ func RichSafe(source string) bool {
 	}
 	for _, line := range strings.Split(source, "\n") {
 		s := strings.TrimSpace(line)
+		// The paragraph parser drops empty blockquotes; the structured editor
+		// keeps an editable paragraph inside them without inventing content.
+		if strings.HasPrefix(s, ">") && strings.Trim(s, "> \t") == "" {
+			return false
+		}
 		if strings.HasPrefix(s, "import ") || strings.HasPrefix(s, "export ") {
 			return false
 		}

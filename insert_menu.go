@@ -34,7 +34,10 @@ func (a *app) insertMenu(c *ui.Context) {
 						run()
 					}
 				}
-				for _, b := range []struct{ name, source string }{{"Heading", "\n## Heading\n"}, {"Bullet list", "\n- List item\n"}, {"To-do list", "\n- [ ] A small next step\n"}, {"Quote", "\n> A thought worth keeping.\n"}, {"Code block", "\n```go\nfunc main() {}\n```\n"}, {"Table", "\n| Column A | Column B |\n| --- | --- |\n| Value | Value |\n"}, {"Math", "\n$$\nE = mc^2\n$$\n"}, {"Callout", "\n> [!NOTE]\n> Something to remember.\n"}, {"Divider", "\n---\n"}} {
+				for _, name := range []string{"Heading", "Bullet list", "To-do list", "Quote", "Code block", "Callout"} {
+					item(name, func() { a.insertEmptyBlock(name) })
+				}
+				for _, b := range []struct{ name, source string }{{"Table", "\n| Column A | Column B |\n| --- | --- |\n| Value | Value |\n"}, {"Math", "\n$$\nE = mc^2\n$$\n"}, {"Divider", "\n---\n"}} {
 					item(b.name, func() { a.insert(b.source) })
 				}
 				item("Image or attachment…", func() { a.insertOpen = false; a.chooseAttachment() })
@@ -47,4 +50,48 @@ func (a *app) insertMenu(c *ui.Context) {
 			})
 		})
 	})
+}
+
+// Instructional examples must never become editable document content. Build an
+// empty structural block and focus its text field without inserting hint text.
+func (a *app) insertEmptyBlock(name string) {
+	if a.current == nil {
+		return
+	}
+	if a.slashPending {
+		if a.blockEditor != nil {
+			if f := a.blockEditor.fields[a.blockEditor.active]; f != nil && f.doc != nil {
+				f.doc.SetSelection(0, f.doc.Text().Len())
+				f.doc.InsertText("")
+			}
+		} else {
+			a.doc.SetSelection(a.slashOffset, a.slashOffset+1)
+			a.doc.InsertText("")
+		}
+		a.capture()
+		a.slashPending = false
+	}
+	text := blocks.New("p")
+	node := text
+	switch name {
+	case "Heading":
+		text.Kind = "h2"
+	case "Bullet list":
+		text.Kind = "li"
+		node = blocks.New("ul", text)
+	case "To-do list":
+		text.Kind = "checkbox"
+	case "Quote":
+		node = blocks.New("blockquote", text)
+	case "Code block":
+		text.Kind = "pre"
+	case "Callout":
+		node = blocks.New("callout", text)
+		node.Set("alert", "NOTE")
+		node.Set("emoji", "💡")
+	}
+	a.insertNodes(node)
+	if s := a.blockEditor; s != nil {
+		s.active, s.focus, s.focusAt = text.ID, text.ID, 0
+	}
 }

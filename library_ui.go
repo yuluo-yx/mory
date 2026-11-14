@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -34,7 +35,24 @@ func (a *app) refreshDisk() {
 			_ = a.lib.Recover(a.current)
 			return
 		}
-		if a.fail(a.lib.Reload(a.current.ID)) {
+		err := a.lib.Reload(a.current.ID)
+		if errors.Is(err, fs.ErrNotExist) && a.lib.Get(a.current.ID) != nil {
+			// A clean document removed by another window must not stay open.
+			fresh, openErr := library.Open(a.lib.Dir)
+			if !a.fail(openErr) {
+				if fresh.Get(a.current.ID) == nil {
+					a.current, a.lib = nil, fresh
+				} else {
+					a.fail(err)
+				}
+			}
+			return
+		}
+		if a.fail(err) {
+			return
+		}
+		if a.current.Deleted {
+			a.current = nil
 			return
 		}
 		a.readMetadata()
@@ -45,6 +63,9 @@ func (a *app) refreshDisk() {
 		fresh, err := library.Open(a.lib.Dir)
 		if !a.fail(err) {
 			a.lib = fresh
+			if a.section == "Trash" {
+				a.fail(a.lib.PruneTrash(time.Now()))
+			}
 		}
 	}
 }
@@ -94,7 +115,11 @@ func (a *app) batch(action string) {
 	if !a.save() {
 		return
 	}
+	moved := false
 	for _, n := range a.selectedNotes() {
+		if a.lib.Get(n.ID) == nil || action == "Restore" && !n.Deleted {
+			continue
+		}
 		var err error
 		switch action {
 		case "Duplicate":
@@ -102,7 +127,9 @@ func (a *app) batch(action string) {
 		case "Trash":
 			err = a.lib.TrashTree(n, true)
 		case "Restore":
-			err = a.lib.TrashTree(n, false)
+			var fallback bool
+			fallback, err = a.lib.RestoreTree(n)
+			moved = moved || fallback
 		case "Move":
 			err = a.lib.Move(n, a.moveFolder, a.moveParent)
 		}
@@ -112,6 +139,9 @@ func (a *app) batch(action string) {
 	}
 	a.selected = map[string]bool{}
 	a.status = "Batch operation completed"
+	if moved {
+		a.status = "Restored to My documents because the original location no longer exists"
+	}
 }
 
 // Ending selection discards only UI state; batch actions run when explicitly chosen.
@@ -238,7 +268,7 @@ func (a *app) libraryOverlays(c *ui.Context) {
 	ui.Modal(c, &a.emptyTrashOpen, func() {
 		ui.Column(c).Width(400).Gap(12).Children(func() {
 			ui.Text(c, a.tr("Empty Trash permanently?")).FontSize(24)
-			ui.Text(c, a.tr("All trashed library notes will be deleted. Original external files are kept."))
+			ui.Text(c, a.tr("All trashed notes and their child notes will be permanently deleted. This cannot be undone. Original external files are kept."))
 			if ui.Button(c, a.tr("Empty Trash")).Clicked() && !a.fail(a.lib.EmptyTrash()) {
 				a.emptyTrashOpen = false
 				a.selected = map[string]bool{}
@@ -405,7 +435,8 @@ func (a *app) assetRoot() string {
 }
 
 func (a *app) reorderNote(from, to string) {
-	if from == to || !a.save() {
+	source, target := a.lib.Get(from), a.lib.Get(to)
+	if a.section == "Trash" || source == nil || target == nil || source.Deleted || target.Deleted || from == to || !a.save() {
 		return
 	}
 	notes := a.lib.Query(a.section, a.query, a.folder, "Manual")

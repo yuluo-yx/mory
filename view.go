@@ -661,7 +661,7 @@ func (a *app) homeView(c *ui.Context) {
 		})
 
 		if a.section == "Trash" {
-			ui.Text(c, a.tr("Documents moved here stay in Mory until you restore or permanently delete them.")).FontSize(12).TextColor(t.TextMuted).FillWidth()
+			ui.Text(c, a.tr("Deleted documents and their child notes are kept for 30 days, then permanently deleted. Mory Trash is separate from the system Trash.")).FontSize(12).TextColor(t.TextMuted).FillWidth()
 		}
 		a.batchBar(c, notes)
 
@@ -718,7 +718,13 @@ func (a *app) noteCard(c *ui.Context, n *library.Note, list bool) {
 	if !dark {
 		cardBg = ui.Hex("#f8f8fa")
 	}
-	card := ui.Column(c.Key("card-"+n.ID)).Height(height).MinWidth(0).Radius(12).Border(1, t.Border).Background(cardBg).Label(a.tr("Note ") + a.displayTitle(n.Title)).Focusable().Drag(noteDrag{n.ID}).Cursor(ui.CursorPointer)
+	card := ui.Column(c.Key("card-"+n.ID)).Height(height).MinWidth(0).Radius(12).Border(1, t.Border).Background(cardBg).Label(a.tr("Note ") + a.displayTitle(n.Title)).Focusable().Cursor(ui.CursorPointer)
+	if !n.Deleted {
+		card.Drag(noteDrag{n.ID})
+	} else {
+		// Keep the recovery action button accessible inside the clickable card.
+		card.Role(ui.RoleGroup)
+	}
 	if card.Hovered() {
 		card.Border(1, t.Border).Shadow(0, 8, 20, 0, ui.RGBA(0, 0, 0, 0.08)).Translate(0, -2)
 	} else {
@@ -727,7 +733,7 @@ func (a *app) noteCard(c *ui.Context, n *library.Note, list bool) {
 	if a.selected[n.ID] {
 		card.Border(2, t.Accent)
 	}
-	if drag, ok := ui.Drop[noteDrag](card); ok {
+	if drag, ok := ui.Drop[noteDrag](card); ok && !n.Deleted {
 		a.reorderNote(drag.ID, n.ID)
 	}
 
@@ -751,16 +757,14 @@ func (a *app) noteCard(c *ui.Context, n *library.Note, list bool) {
 							ui.Icon(c, iconStar()).Width(12).Height(12).TextColor(ui.Hex("#ff9500"))
 						}
 					})
-					ui.Text(c, a.dateText(n.Updated, false)+"  ·  "+formatLabel(n)).FontSize(11).TextColor(t.TextMuted).SingleLine()
+					ui.Text(c, a.noteSummary(n)).FontSize(11).TextColor(t.TextMuted).SingleLine()
 				})
 				btnMore := ghostButton(c, "").Label(a.tr("Actions ")+a.displayTitle(n.Title)).Padding(4, 6).Radius(5)
 				btnMore.Children(func() {
 					ui.Icon(c, iconMore()).Width(14).Height(14).TextColor(t.TextMuted)
 				})
 				if btnMore.Clicked() {
-					a.target = n
-					a.renameTitle = n.Title
-					a.renameOpen = true
+					a.openNoteActions(n)
 				}
 			})
 			return
@@ -792,9 +796,7 @@ func (a *app) noteCard(c *ui.Context, n *library.Note, list bool) {
 						ui.Icon(c, iconMore()).Width(13).Height(13).TextColor(t.TextMuted)
 					})
 					if btnActions.Clicked() {
-						a.target = n
-						a.renameTitle = n.Title
-						a.renameOpen = true
+						a.openNoteActions(n)
 					}
 				})
 				preview := n.Source
@@ -813,7 +815,7 @@ func (a *app) noteCard(c *ui.Context, n *library.Note, list bool) {
 		// Limit title layout itself so wrapped glyphs cannot overlap the metadata.
 		ui.Column(c).Padding(8, 14, 12).Gap(4).Shrink(0).Children(func() {
 			ui.Text(c, a.displayTitle(n.Title)).FontSize(14).Bold().LetterSpacing(-0.2).SingleLine()
-			ui.Text(c, a.dateText(n.Updated, false)+"  ·  "+formatLabel(n)).FontSize(11).TextColor(t.TextMuted).SingleLine()
+			ui.Text(c, a.noteSummary(n)).FontSize(11).TextColor(t.TextMuted).SingleLine()
 		})
 	})
 
@@ -821,8 +823,7 @@ func (a *app) noteCard(c *ui.Context, n *library.Note, list bool) {
 		if a.selecting {
 			a.selected[n.ID] = !a.selected[n.ID]
 		} else if n.Deleted {
-			a.target = n
-			a.deleteOpen = true
+			a.openNoteActions(n)
 		} else {
 			a.openNote(n)
 		}
@@ -838,13 +839,16 @@ func formatLabel(n *library.Note) string {
 }
 
 func (a *app) noteMenu(m *ui.Menu, n *library.Note) {
+	n = a.lib.Get(n.ID)
+	if n == nil {
+		return
+	}
 	if n.Deleted {
 		if m.Item(a.tr("Restore")).Chosen() {
-			a.fail(a.lib.TrashTree(n, false))
+			a.restoreNote(n)
 		}
 		if m.Item(a.tr("Delete permanently…")).Chosen() {
-			a.target = n
-			a.deleteOpen = true
+			a.openNoteActions(n)
 		}
 		return
 	}
@@ -858,9 +862,7 @@ func (a *app) noteMenu(m *ui.Menu, n *library.Note) {
 		a.openWindow(n)
 	}
 	if m.Item(a.tr("Rename…")).Chosen() {
-		a.target = n
-		a.renameTitle = n.Title
-		a.renameOpen = true
+		a.openNoteActions(n)
 	}
 	if m.Item(a.tr("Move…")).Chosen() {
 		a.target = n
@@ -878,7 +880,7 @@ func (a *app) noteMenu(m *ui.Menu, n *library.Note) {
 		a.mutate(n, func() { n.Pinned = !n.Pinned })
 	}
 	m.Separator()
-	if m.Item(a.tr("Move to Trash")).Chosen() {
+	if m.Item(a.tr(deleteLabel(n))).Chosen() {
 		a.trash(n)
 	}
 }
@@ -981,9 +983,7 @@ func (a *app) editorView(c *ui.Context) {
 			ui.Icon(c, iconMore()).Width(15).Height(15).TextColor(t.TextMuted)
 		})
 		if btnActions.Clicked() {
-			a.target = n
-			a.renameTitle = n.Title
-			a.renameOpen = true
+			a.openNoteActions(n)
 		}
 	})
 

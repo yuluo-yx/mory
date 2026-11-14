@@ -381,6 +381,9 @@ func TestBatchSelectionToggleAndCancel(t *testing.T) {
 			a.home(section)
 			a.lib.Settings.List = list
 			path := filepath.Join(a.lib.Dir, "notes", one.ID+".json")
+			if section == "Trash" {
+				path = filepath.Join(a.lib.Dir, "trash", one.ID+".json")
+			}
 			before, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatal(err)
@@ -642,8 +645,7 @@ func TestWelcomeGuidePreservesUserEdits(t *testing.T) {
 		t.Fatal("edited guide overwritten")
 	}
 	guide := a.current
-	guide.Deleted = true
-	if err := a.lib.Save(guide); err != nil {
+	if err := a.lib.TrashTree(guide, true); err != nil {
 		t.Fatal(err)
 	}
 	a.openWelcome()

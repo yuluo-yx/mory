@@ -410,7 +410,7 @@ func TestFormattingAndFindControls(t *testing.T) {
 	click(t, tt, "Insert block")
 	click(t, tt, "Insert Bullet list")
 	a.capture()
-	if !strings.Contains(a.current.Source, "List item") {
+	if strings.Contains(a.current.Source, "List item") || a.blockEditor == nil {
 		t.Fatal("insert")
 	}
 }

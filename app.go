@@ -289,6 +289,10 @@ func (a *app) openNote(n *library.Note) {
 			return
 		}
 	}
+	if n.Deleted {
+		a.current, a.target, a.deleteOpen = nil, n, true
+		return
+	}
 	a.readMetadata()
 	n.Opened = time.Now()
 	a.mode = "Write"
@@ -446,6 +450,9 @@ func (a *app) home(section string) {
 	a.current = nil
 	a.settingsOpen, a.helpOpen = false, false
 	a.section = section
+	if section == "Trash" {
+		a.fail(a.lib.PruneTrash(time.Now()))
+	}
 	a.folder = ""
 	a.query = ""
 }
@@ -523,13 +530,17 @@ func (a *app) trash(n *library.Note) {
 	if !a.save() {
 		return
 	}
-	if a.fail(a.lib.TrashTree(n, true)) {
-		return
-	}
-	if a.current != nil && a.current.Deleted {
+	err := a.lib.TrashTree(n, true)
+	if a.current != nil && (a.current.Deleted || a.lib.Get(a.current.ID) == nil) {
 		a.current = nil
 	}
+	if a.fail(err) {
+		return
+	}
 	a.status = "Moved to Trash"
+	if n.External != "" {
+		a.status = "Removed from list; original file kept"
+	}
 }
 
 func (a *app) runPlugin(p *plugins.Plugin) {

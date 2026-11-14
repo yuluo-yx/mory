@@ -287,6 +287,10 @@ func markdownBlock(p *parser.Document, index int) *Node {
 			}
 			n.Children = append(n.Children, markdownBlock(p, i))
 		}
+		// Empty quotes and callouts still need a text field after reopening.
+		if len(n.Children) == 0 {
+			n.Children = []*Node{New("p")}
+		}
 	case parser.List:
 		n.Kind = "ul"
 		if b.Ordered {

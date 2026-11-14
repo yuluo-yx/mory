@@ -33,8 +33,31 @@ func (a *app) deleteBlocks() {
 	if s == nil {
 		return
 	}
-	a.fail(s.doc.Transaction(func() error {
-		for id := range s.chosen.All() {
+	var ids []string
+	for id := range s.chosen.All() {
+		ids = append(ids, id)
+	}
+	a.removeBlocks(ids)
+}
+
+// Every block-deletion entry point shares one undo transaction and restores a
+// reachable caret, including when no body blocks remain.
+func (a *app) removeBlocks(ids []string) {
+	s := a.blockEditor
+	if s == nil || len(ids) == 0 {
+		return
+	}
+	a.captureBlocks()
+	index := len(s.visibleBlocks())
+	for i, n := range s.visibleBlocks() {
+		for _, id := range ids {
+			if n.ID == id {
+				index = min(index, i)
+			}
+		}
+	}
+	if a.fail(s.doc.Transaction(func() error {
+		for _, id := range ids {
 			if s.doc.Find(id) != nil {
 				if err := s.doc.Remove(id); err != nil {
 					return err
@@ -42,10 +65,41 @@ func (a *app) deleteBlocks() {
 			}
 		}
 		return nil
-	}))
-	s.chosen.Clear()
+	})) {
+		return
+	}
 	s.fields = map[string]*blockField{}
+	a.focusAfterBlockRemoval(index)
 	a.captureBlocks()
+}
+
+func (a *app) focusAfterBlockRemoval(index int) {
+	s := a.blockEditor
+	s.chosen.Clear()
+	s.active, s.focus, s.focusAt = "", "", 0
+	visible := s.visibleBlocks()
+	if len(visible) == 0 {
+		if s.emptyBody == nil {
+			s.emptyBody = blocks.Paragraph("")
+		}
+		s.active, s.focus = s.emptyBody.ID, s.emptyBody.ID
+		// Keep the formatting toolbar present before the next view is built.
+		// Adding it a pass later changes the editor's identity and loses focus.
+		a.doc = a.blockField(s.emptyBody, a.documentColor).doc
+		return
+	}
+	for offset := range len(visible) {
+		n := visible[(min(index, len(visible)-1)+offset)%len(visible)]
+		n.Walk(func(child *blocks.Node) {
+			if s.focus == "" && (blocks.IsText(child) || child.Kind == "pre") && child.Kind != "title" {
+				s.active, s.focus = child.ID, child.ID
+			}
+		})
+		if s.focus != "" {
+			a.focusBlock(s.focus, 0)
+			return
+		}
+	}
 }
 
 func (a *app) focusBlock(id string, offset int) {

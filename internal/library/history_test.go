@@ -60,8 +60,8 @@ func TestExternalHistoryAndConflictRecovery(t *testing.T) {
 	if err = l.TrashTree(n, true); err != nil {
 		t.Fatal(err)
 	}
-	if err = l.Purge(n); err != nil {
-		t.Fatal(err)
+	if l.Get(n.ID) != nil || len(l.Query("Trash", "", "", "")) != 0 {
+		t.Fatal("external file was not removed from the list")
 	}
 	if b, err = os.ReadFile(path); err != nil || string(b) != "other editor" {
 		t.Fatal("purge touched original file")

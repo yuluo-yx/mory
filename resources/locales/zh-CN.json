@@ -498,5 +498,15 @@
   "Tab ": "选项卡 ",
   "Open welcome guide": "打开欢迎指南",
   "This document opens in Source mode because it contains a very long line.": "此文稿包含超长行，已使用源码模式打开。",
-  "This document stays in Source mode because it contains a very long line.": "此文稿包含超长行，将保持在源码模式。"
+  "This document stays in Source mode because it contains a very long line.": "此文稿包含超长行，将保持在源码模式。",
+  "Write below code": "在代码块下方继续输入",
+  "Remove from list": "从列表中移除",
+  "Removed from list; original file kept": "已从列表中移除，原文件已保留",
+  "Restored": "已恢复",
+  "Restored to My documents because the original location no longer exists": "原位置已不存在，已恢复到我的文档",
+  "Will be permanently deleted soon": "即将彻底删除",
+  "%d days remaining": "剩余 %d 天",
+  "Deleted documents and their child notes are kept for 30 days, then permanently deleted. Mory Trash is separate from the system Trash.": "已删除的文稿及其子文稿保留 30 天，之后将永久删除。Mory 回收站与系统废纸篓相互独立。",
+  "Restore this note and its deleted child notes, or permanently delete the group. Permanent deletion cannot be undone.": "恢复此文稿及随其删除的子文稿，或永久删除整组文稿。永久删除后无法撤销。",
+  "All trashed notes and their child notes will be permanently deleted. This cannot be undone. Original external files are kept.": "回收站中的所有文稿及其子文稿将永久删除，且无法撤销。原始外部文件会保留。"
 }

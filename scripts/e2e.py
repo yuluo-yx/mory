@@ -11,6 +11,8 @@ import time
 import struct
 import zlib
 
+from editor_e2e import exercise_editor
+
 
 def exercise(binary, root):
     sock_path = root / "app.sock"
@@ -87,7 +89,9 @@ def exercise(binary, root):
                 if text in field.get("value", ""):
                     return
                 if time.monotonic() >= deadline:
-                    raise AssertionError(f"Editor did not receive input: {label}: {field}")
+                    tree = call("tree")
+                    focused = next((n for n in tree["nodes"] if n["id"] == tree.get("focus")), None)
+                    raise AssertionError(f"Editor did not receive input: {label}: {field}; focused={focused}")
                 time.sleep(0.05)
 
         windows = call("windows")["windows"]
@@ -133,11 +137,106 @@ def exercise(binary, root):
         act("Toggle focus mode")
         act("Document actions")
         act("Move to Trash")
+        active_path = root / "library" / "notes" / (note["id"] + ".json")
+        trash_path = root / "library" / "trash" / (note["id"] + ".json")
+        assert not active_path.exists() and trash_path.exists(), "Delete did not move the library record"
+        assert json.loads(trash_path.read_text()).get("deletedAt"), "Deletion time is missing"
         act("Trash")
-        act("Note " + title)
+        act("Actions " + title)
+        assert not any(n.get("label") in {"Note name", "Rename", "Move to Trash"} for n in nodes()), "Trash exposed ordinary document details"
         act("Restore note")
+        assert active_path.exists() and not trash_path.exists(), "Restore did not return the library record"
         act("Favorites")
         act("Note " + title)
+        # A quote starts empty, receives authored text, and preserves its syntax.
+        call("menu", path=["File", "New note"])
+        act("Document title", "setValue", text="Native empty quote")
+        act("Insert block")
+        act("Insert Quote")
+        call("menu", path=["File", "Save"])
+        quote_path = next(p for p in (root / "library" / "notes").glob("*.json")
+                          if json.loads(p.read_text())["title"] == "Native empty quote")
+        assert json.loads(quote_path.read_text())["source"].strip() == ">", "Quote contains sample text"
+        field = next(n for n in nodes() if n.get("label", "").startswith("Block text "))
+        assert not field.get("value"), "Empty quote exposes authored content"
+        box = field["bounds"]
+        call("input", events=[dict(type="click", x=box["x"]+20, y=box["y"]+12)])
+        call("input", events=[dict(type="text", text="My quotation 世界")])
+        wait_editor_text(field["label"], "My quotation 世界")
+        call("menu", path=["File", "Save"])
+        nodes()
+        assert "> My quotation 世界" in json.loads(quote_path.read_text())["source"]
+        # Deleting the last slash-inserted callout must leave a live caret.
+        call("menu", path=["File", "New note"])
+        act("Document title", "setValue", text="Native block deletion")
+        act("Document editor", "focus")
+        call("input", events=[dict(type="text", text="/")])
+        act("Insert Callout")
+        act("Block actions callout")
+        # Accessibility press does not move keyboard focus like a pointer click.
+        act("Block actions callout", "focus")
+        key("Cmd+A")
+        key("Backspace")
+        empty_field = next(n for n in nodes() if n.get("label", "").startswith("Block text "))
+        assert not empty_field.get("value"), "Deleted callout still contains text"
+        call("input", events=[dict(type="text", text="Continue")])
+        wait_editor_text(empty_field["label"], "Continue")
+        call("input", events=[dict(type="text", text=" after deletion 世界")])
+        wait_editor_text(empty_field["label"], "Continue after deletion 世界")
+        call("menu", path=["File", "Save"])
+        nodes()
+        after_delete = next(json.loads(p.read_text()) for p in (root / "library" / "notes").glob("*.json")
+                            if json.loads(p.read_text())["title"] == "Native block deletion")
+        assert "Continue after deletion 世界" in after_delete["source"] and "[!NOTE]" not in after_delete["source"], after_delete["source"]
+        # Code editing and structural edits use one undo history, including
+        # when keyboard shortcuts and the native Edit menu are mixed.
+        call("menu", path=["File", "New note"])
+        act("Document title", "setValue", text="Native code undo")
+        act("Insert block")
+        act("Insert Code block")
+        act("Code editor", "focus")
+        call("input", events=[dict(type="text", text="package main")])
+        wait_editor_text("Code editor", "package main")
+        key("Cmd+A")
+        key("Backspace")
+        key("Cmd+Z")
+        wait_editor_text("Code editor", "package main")
+        call("menu", path=["Edit", "Redo"])
+        assert next(n.get("value", "") for n in nodes() if n.get("label") == "Code editor") == ""
+        call("menu", path=["Edit", "Undo"])
+        wait_editor_text("Code editor", "package main")
+        key("Cmd+Shift+Z")
+        assert next(n.get("value", "") for n in nodes() if n.get("label") == "Code editor") == ""
+        call("menu", path=["Edit", "Undo"])
+        call("menu", path=["Edit", "Undo"])
+        call("menu", path=["Edit", "Undo"])
+        assert not any(n.get("label") == "Code editor" for n in nodes()), "Empty code swallowed insertion undo"
+        # Keyboard and mouse can both leave code without changing its contents.
+        act("Insert block")
+        act("Insert Code block")
+        act("Code editor", "focus")
+        call("input", events=[dict(type="text", text="package main")])
+        wait_editor_text("Code editor", "package main")
+        key("Down")
+        prose = next(n for n in nodes() if n.get("label", "").startswith("Block text "))
+        call("input", events=[dict(type="text", text="Outside")])
+        wait_editor_text(prose["label"], "Outside")
+        call("input", events=[dict(type="text", text=" code")])
+        wait_editor_text(prose["label"], "Outside code")
+        act("Write below code")
+        fresh_prose = next(n for n in nodes() if n.get("label", "").startswith("Block text ") and not n.get("value"))
+        call("input", events=[dict(type="text", text="Mouse paragraph")])
+        wait_editor_text(fresh_prose["label"], "Mouse paragraph")
+        call("menu", path=["File", "Save"])
+        nodes()
+        code_note = next(json.loads(p.read_text()) for p in (root / "library" / "notes").glob("*.json")
+                         if json.loads(p.read_text())["title"] == "Native code undo")
+        fenced_parts = code_note["source"].split("```")
+        assert len(fenced_parts) == 3 and "package main" in fenced_parts[1] and "Mouse paragraph" in fenced_parts[2] and "Outside code" in fenced_parts[2], code_note["source"]
+        exercise_editor(call, nodes, act, key, root, fixtures)
+        act("All notes")
+        act("Grid view")
+        act("Note Native code undo")
         act("Settings")
         act("Editor")
         act("Larger text")
@@ -210,6 +309,11 @@ def exercise(binary, root):
         call("menu", path=["File", "Save"])
         nodes()
         assert "Saved to original file." in (fixtures / "Fixture import.md").read_text(), "Original file not updated"
+        original_bytes = (fixtures / "Fixture import.md").read_bytes()
+        act("Document actions")
+        act("Remove from list")
+        assert (fixtures / "Fixture import.md").read_bytes() == original_bytes, "Remove from list changed original"
+        assert not any(json.loads(p.read_text()).get("external") for p in (root / "library" / "trash").glob("*.json"))
         act("▱   Import folder")
         act("Document title", "setValue", text="Structured import")
         deadline = time.monotonic() + 15
@@ -266,7 +370,7 @@ def exercise(binary, root):
         assert process.returncode == 0, process.communicate()[1].decode()
         saved = json.loads((root / "library" / "notes" / (note["id"] + ".json")).read_text())
         assert not saved.get("deleted", False) and saved["starred"]
-        print("Native E2E passed: launch, Unicode editing, formatting, save, modes, plugin, favorite, trash, restore, settings, native PDF, quit.")
+        print("Native E2E passed: launch, Unicode editing, formatting, save, modes, plugin, favorite, trash file moves, restore, empty quote editing, external removal, settings, native PDF, quit.")
     finally:
         if channel:
             channel.close()

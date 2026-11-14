@@ -28,6 +28,7 @@ type blockField struct {
 	height        float32
 	heightWidth   float32
 	heightFont    ui.Font
+	heightTheme   richtext.Theme
 	heightVersion uint64
 	heightValid   bool
 	lastUsed      uint64
@@ -36,6 +37,7 @@ type blockDrag struct{ ID string }
 type blockSession struct {
 	componentChoice        map[string]string
 	doc                    *blocks.Document
+	emptyBody              *blocks.Node // View-only paragraph until the first edit.
 	fields                 map[string]*blockField
 	active, focus          string
 	focusAt                int
@@ -162,6 +164,10 @@ func (a *app) captureBlocks() {
 			continue
 		}
 		n := s.doc.Find(id)
+		emptyBody := n == nil && s.emptyBody != nil && s.emptyBody.ID == id
+		if emptyBody {
+			n = s.emptyBody
+		}
 		if n == nil {
 			delete(s.fields, id)
 			continue
@@ -176,11 +182,22 @@ func (a *app) captureBlocks() {
 				}
 			}
 			p, at := s.doc.Parent(id)
+			count := 1
+			if emptyBody {
+				p, at, count = s.doc.Root, len(s.doc.Root.Children), 0
+			}
 			if p == nil {
 				continue
 			}
-			if err := s.doc.Splice(p.ID, at, 1, replacement...); a.fail(err) {
+			if err := s.doc.Splice(p.ID, at, count, replacement...); a.fail(err) {
 				continue
+			}
+			if emptyBody {
+				s.emptyBody = nil
+				// The first edit promotes the view-only field into a list row.
+				// Transfer its caret to the row so later keystrokes keep arriving.
+				s.active, s.focus = replacement[0].ID, replacement[0].ID
+				_, s.focusAt = f.doc.Selection()
 			}
 			if len(replacement) == 1 && s.lastTextID == id && s.doc.Version == s.lastTextVersion+1 && time.Since(s.lastText) < 700*time.Millisecond {
 				s.doc.Coalesce()
@@ -231,6 +248,15 @@ func (a *app) blockUndo(redo bool) {
 		return
 	}
 	a.captureBlocks()
+	active, caret := s.active, 0
+	if field := s.fields[active]; field != nil {
+		if field.doc != nil {
+			_, caret = field.doc.Selection()
+		}
+		if field.code != nil {
+			caret = field.code.Selection().Head
+		}
+	}
 	s.lastTextID = ""
 	if redo {
 		s.doc.Redo()
@@ -238,6 +264,10 @@ func (a *app) blockUndo(redo bool) {
 		s.doc.Undo()
 	}
 	s.fields = map[string]*blockField{}
+	a.focusAfterBlockRemoval(0)
+	if node := s.doc.Find(active); node != nil && (blocks.IsText(node) || node.Kind == "pre") {
+		a.focusBlock(active, caret)
+	}
 	a.captureBlocks()
 }
 
@@ -430,11 +460,31 @@ func (a *app) blockImage(path string) *ui.Bitmap {
 }
 
 func (a *app) blockView(c *ui.Context, readOnly bool) {
+	// List hover is useful in a library, but looks like selected text in a
+	// document. Keep selection feedback while leaving mere hover unpainted.
+	theme := *c.Theme()
+	theme.SurfaceHover = ui.Transparent
+	ui.Themed(c.Key("document-blocks"), &theme).Background(ui.Transparent).Grow(1).FillWidth().MinHeight(0).Children(func() {
+		a.blockListView(c, readOnly)
+	})
+}
+
+func (a *app) blockListView(c *ui.Context, readOnly bool) {
 	s := a.blockEditor
 	a.captureBlocks()
 	s.fieldEpoch++
 	s.pruneFields(maxCachedBlockFields)
 	visible := s.visibleBlocks()
+	if !readOnly && len(visible) == 0 {
+		// An empty document still has a mouse and keyboard target. Merely viewing
+		// it must not insert a paragraph into the source or its undo history.
+		if s.emptyBody == nil {
+			s.emptyBody = blocks.Paragraph("")
+		}
+		s.chosen.Clear()
+		ui.Column(c.Key("empty-body")).Grow(1).FillWidth().Children(func() { a.blockText(c, s.emptyBody, false) })
+		return
+	}
 	s.list.Key = func(i int) any { return visible[i].ID }
 	s.list.Selection = &s.chosen
 	if s.foldPresentation {
@@ -473,7 +523,20 @@ func (a *app) blockView(c *ui.Context, readOnly bool) {
 		} else {
 			a.blockNode(c, visible[i], readOnly, 0)
 		}
-	}).Grow(1).Gap(7)
+	}).Grow(1).Gap(7).Label("Document blocks")
+	if !readOnly && !s.foldPresentation && s.chosen.Len() > 0 && !c.FocusTakesText() {
+		list.ObserveInput(func(event ui.InputEvent) {
+			if event.Kind == ui.InputCommand && event.Text == "delete" {
+				a.deleteBlocks()
+			}
+		})
+		backspace := list.Shortcut(0, ui.KeyBackspace)
+		forwardDelete := list.Shortcut(0, ui.KeyDelete)
+		if backspace || forwardDelete {
+			a.deleteBlocks()
+			c.AnimationFrame()
+		}
+	}
 	if syncSplit {
 		list.FillWidth().Padding(4, 0, 48).TrackScroll(&s.split.scroll).Draw(func(_ *ui.Painter, r ui.Rect) {
 			s.split.viewport = r
@@ -489,15 +552,15 @@ func (a *app) blockView(c *ui.Context, readOnly bool) {
 	} else {
 		list.Margin(0, 0, 0, -headingGutterWidth).Padding(4, 0, 48, headingGutterWidth)
 	}
-	if !readOnly && !s.foldPresentation && s.chosen.Len() > 1 {
+	if !readOnly && !s.foldPresentation && s.chosen.Len() > 0 {
 		ui.Row(c).Gap(8).Padding(6).Children(func() {
-			if ghostButton(c, a.tr("Copy blocks")).Clicked() {
+			if ghostButton(c, a.tr("Copy blocks")).KeepFocus().Clicked() {
 				a.copyBlocks(c, false)
 			}
-			if ghostButton(c, a.tr("Cut blocks")).Clicked() {
+			if ghostButton(c, a.tr("Cut blocks")).KeepFocus().Clicked() {
 				a.copyBlocks(c, true)
 			}
-			if ghostButton(c, a.tr("Delete selected blocks")).Clicked() {
+			if ghostButton(c, a.tr("Delete selected blocks")).KeepFocus().Clicked() {
 				a.deleteBlocks()
 			}
 		})
@@ -513,13 +576,15 @@ func (a *app) blockNode(c *ui.Context, n *blocks.Node, readOnly bool, depth int)
 	row := ui.Row(c.Key(n.ID)).FillWidth().MinWidth(0).AlignItems(ui.Start).Gap(6)
 	row.Children(func() {
 		if !readOnly && depth == 0 && !s.foldPresentation {
-			handle := ghostButton(c.Key("handle"), "⠿").Label(a.tr("Block actions ") + n.Kind).Padding(3).Width(21).Drag(blockDrag{n.ID})
-			if headingLevel(n) > 0 {
-				// The heading toggle occupies this gutter slot without moving the text.
+			handle := ghostButton(c.Key("handle"), "⠿").Label(a.tr("Block actions ") + n.Kind).Tooltip(a.tr("Block actions ") + n.Kind).Padding(3).Width(21).Drag(blockDrag{n.ID})
+			if !row.Hovered() && !handle.Hovered() && !handle.Focused() && !s.chosen.Has(n.ID) {
 				handle.Opacity(0)
 			}
 			if handle.Clicked() {
 				s.active = n.ID
+				// A handle explicitly selects a block; typing into its text clears it.
+				s.chosen.Clear()
+				s.chosen.Add(n.ID)
 			}
 			handle.PopoverMenu(func(m *ui.Menu) { a.blockMenu(m, n) })
 		}
@@ -633,9 +698,6 @@ func (a *app) blockNode(c *ui.Context, n *blocks.Node, readOnly bool, depth int)
 	if level := headingLevel(n); level > 0 && depth == 0 && a.mode != "Split" {
 		row.Children(func() {
 			left := float32(-headingGutterWidth)
-			if !readOnly && !s.foldPresentation {
-				left += 27
-			}
 			top := float32(4)
 			if field := s.fields[n.ID]; field != nil && field.doc != nil {
 				if boxes := field.doc.VisibleParagraphs(); len(boxes) > 0 {
@@ -672,18 +734,24 @@ func (a *app) blockText(c *ui.Context, n *blocks.Node, readOnly bool) {
 	}
 	height := field.height
 	version := field.doc.Version()
-	if !field.heightValid || field.heightVersion != version || field.heightWidth != width || field.heightFont != font {
+	if !field.heightValid || field.heightVersion != version || field.heightWidth != width || field.heightFont != font || field.heightTheme != *richTheme {
 		height = float32(0)
 		for _, p := range field.doc.Text().Paragraphs() {
 			f := font
 			if p.Style.Heading > 0 {
-				f.Size *= []float32{1.8, 1.45, 1.2, 1.1, 1, .9}[p.Style.Heading-1]
+				h := richTheme.Headings[p.Style.Heading-1]
+				f.Size *= h.Size
+				f.Weight = h.Weight
 			}
 			text := pText(p)
 			if text == "" {
 				text = " "
 			}
-			_, h := ui.ShapeText(text, f, max(40, width-28)).Size()
+			inset := float32(0)
+			if p.Style.List != richtext.NoList {
+				inset = richTheme.Indent * font.Size
+			}
+			_, h := ui.ShapeText(text, f, max(40, width-inset)).Size()
 			for _, run := range p.Runs {
 				if run.Attributes.Attachment != nil {
 					h = max(h, run.Attributes.Attachment.Height+6)
@@ -695,15 +763,35 @@ func (a *app) blockText(c *ui.Context, n *blocks.Node, readOnly bool) {
 		field.heightVersion = version
 		field.heightWidth = width
 		field.heightFont = font
+		field.heightTheme = *richTheme
 		field.heightValid = true
 	}
-	ed.Height(max(32, height+10))
+	// Use the renderer's actual line boxes once available. Plain-text estimates
+	// miss rich runs, CJK wrapping and theme changes and can leave dead space.
+	paragraphs := 0
+	var lastStyle richtext.ParagraphStyle
+	for _, p := range field.doc.Text().Paragraphs() {
+		paragraphs++
+		lastStyle = p.Style
+	}
+	if boxes := field.doc.VisibleParagraphs(); len(boxes) == paragraphs && paragraphs > 0 {
+		last := boxes[len(boxes)-1]
+		height = last.Top + last.Height - boxes[0].Top
+		if lastStyle.Heading > 0 {
+			height += richTheme.Headings[lastStyle.Heading-1].Bottom * font.Size
+		}
+	}
+	ed.Height(max(32, height+2))
+	if n == s.emptyBody {
+		ed.Height(180)
+	}
 	if ed.Focused() {
 		a.textFocused = true
 		s.active = n.ID
 		a.doc = field.doc
 		// List navigation must not consume Enter, arrows, or Select All in an editor.
 		s.list.Selection = nil
+		s.chosen.Clear()
 	}
 	if s.focus == n.ID {
 		ed.Focus()
@@ -730,9 +818,9 @@ func (a *app) blockText(c *ui.Context, n *blocks.Node, readOnly bool) {
 				a.mergeBlock(n.ID, -1)
 			} else if event.Key == ui.KeyDelete && caret == field.doc.Text().Len() && event.Mods == 0 {
 				a.mergeBlock(n.ID, 1)
-			} else if (event.Key == ui.KeyUp || event.Key == ui.KeyLeft) && caret == 0 {
+			} else if (event.Key == ui.KeyUp || event.Key == ui.KeyLeft) && caret == 0 && event.Mods == 0 {
 				a.focusAdjacent(n.ID, -1)
-			} else if (event.Key == ui.KeyDown || event.Key == ui.KeyRight) && caret == field.doc.Text().Len() {
+			} else if (event.Key == ui.KeyDown || event.Key == ui.KeyRight) && caret == field.doc.Text().Len() && event.Mods == 0 {
 				a.focusAdjacent(n.ID, 1)
 			}
 		})
@@ -750,18 +838,18 @@ func (a *app) focusAdjacent(id string, direction int) {
 	s := a.blockEditor
 	var all []*blocks.Node
 	s.doc.Root.Walk(func(n *blocks.Node) {
-		if blocks.IsText(n) && n.Kind != "title" {
+		if (blocks.IsText(n) || n.Kind == "pre") && n.Kind != "title" {
 			all = append(all, n)
 		}
 	})
 	for i, n := range all {
 		if n.ID == id && i+direction >= 0 && i+direction < len(all) {
 			dest := all[i+direction]
-			s.focus = dest.ID
-			s.focusAt = 0
+			offset := 0
 			if direction < 0 {
-				s.focusAt = len([]rune(dest.Plain()))
+				offset = len([]rune(dest.Plain()))
 			}
+			a.focusBlock(dest.ID, offset)
 			return
 		}
 	}
@@ -774,7 +862,32 @@ func (a *app) mergeBlock(id string, direction int) {
 		return
 	}
 	other := index + direction
-	if other < 0 || other >= len(p.Children) || !blocks.IsText(p.Children[other]) {
+	// Lossless Markdown separators are not editable blocks. Cross only blank
+	// separators; unknown raw content must not disappear during a text join.
+	for other >= 0 && other < len(p.Children) && p.Children[other].Kind == "#raw" && strings.TrimSpace(p.Children[other].Text) == "" {
+		other += direction
+	}
+	if other < 0 || other >= len(p.Children) {
+		return
+	}
+	current, adjacent := p.Children[index], p.Children[other]
+	if current.Kind == "p" && blocks.ToRich(current, blocks.RichOptions{}).Len() == 0 && (blocks.IsText(adjacent) || adjacent.Kind == "pre") {
+		// Removing an empty insertion target must not absorb or reformat code
+		// and headings. Leave the caret in the adjacent editable text instead.
+		if a.fail(s.doc.Remove(id)) {
+			return
+		}
+		delete(s.fields, id)
+		s.lastTextID = ""
+		offset := 0
+		if direction < 0 {
+			offset = len([]rune(adjacent.Plain()))
+		}
+		a.focusBlock(adjacent.ID, offset)
+		a.captureBlocks()
+		return
+	}
+	if !blocks.IsText(adjacent) {
 		return
 	}
 	left, right := index, other
@@ -785,7 +898,10 @@ func (a *app) mergeBlock(id string, direction int) {
 	caret := len([]rune(first.Plain()))
 	merged := first.Clone()
 	merged.Children = append(merged.Children, second.Clone().Children...)
-	a.fail(s.doc.Splice(p.ID, left, right-left+1, merged))
+	if a.fail(s.doc.Splice(p.ID, left, right-left+1, merged)) {
+		return
+	}
+	s.lastTextID = ""
 	s.fields = map[string]*blockField{}
 	s.focus = merged.ID
 	s.focusAt = caret
@@ -845,7 +961,7 @@ func (a *app) blockMenu(m *ui.Menu, n *blocks.Node) {
 	})
 	m.Separator()
 	if m.Item(a.tr("Delete block")).Chosen() {
-		a.fail(s.doc.Remove(n.ID))
+		a.removeBlocks([]string{n.ID})
 	}
 	a.captureBlocks()
 }
@@ -884,6 +1000,32 @@ func (a *app) blockCode(c *ui.Context, n *blocks.Node, readOnly bool) {
 		}
 	})
 	f.code.ReadOnly = readOnly
+	// The document owns structural and code edits together. Consuming these
+	// events prevents the code buffer's separate history from swallowing menu
+	// undo, or losing redo after a document-level undo rebuilt the field.
+	f.code.OnInput = func(event ui.InputEvent) bool {
+		if a.blockEditor != s || readOnly || a.mode != "Write" {
+			return false
+		}
+		if a.codeBoundaryInput(n.ID, f, event) {
+			return true
+		}
+		for _, action := range []struct{ name, key, command string }{
+			{"Undo", "Cmd+Z", "undo"}, {"Redo", "Cmd+Shift+Z", "redo"},
+		} {
+			matches := event.Kind == ui.InputCommand && event.Text == action.command
+			if event.Kind == ui.InputKeyDown {
+				mods, key, err := parseKey(a.keyFor(action.name, action.key))
+				matches = err == nil && event.Mods == mods && event.Key == key
+			}
+			if matches {
+				s.active = n.ID
+				a.blockUndo(action.command == "redo")
+				return true
+			}
+		}
+		return false
+	}
 	f.code.Font = a.writingFont("pre")
 	f.code.Theme = editor.DefaultTheme(c.Theme())
 	f.code.Theme.Background = a.docTheme.Color("pre", "background-color", c.Theme().Surface)
@@ -912,6 +1054,7 @@ func (a *app) blockCode(c *ui.Context, n *blocks.Node, readOnly bool) {
 		s.active = n.ID
 		a.textFocused = true
 		s.list.Selection = nil
+		s.chosen.Clear()
 	}
 	if s.focus == n.ID && !readOnly {
 		ed.Focus()
@@ -919,6 +1062,19 @@ func (a *app) blockCode(c *ui.Context, n *blocks.Node, readOnly bool) {
 		at := min(s.focusAt, len([]rune(f.code.Buffer.String())))
 		f.code.Select(at, at)
 		s.focus = ""
+	}
+	if !readOnly {
+		// The gap belongs to the page, outside the code editor's scrolling area.
+		below := ui.Row(c.Key("below-code")).FillWidth().Height(24).AlignItems(ui.Center).Focusable().Cursor(ui.CursorText).
+			Label(a.tr("Write below code")).Tooltip(a.tr("Write below code"))
+		if below.Hovered() || below.Focused() {
+			below.Background(c.Theme().Accent.Alpha(.06)).Radius(4).Children(func() {
+				ui.Text(c, a.tr("Write below code")).FontSize(11).TextColor(c.Theme().TextMuted)
+			})
+		}
+		if below.Clicked() {
+			a.leaveCode(n.ID, 1, true)
+		}
 	}
 }
 
