@@ -616,7 +616,7 @@ func (a *app) blockNode(c *ui.Context, n *blocks.Node, readOnly bool, depth int)
 				a.docusaurusComponent(c, n, readOnly, depth)
 			case n.Kind == "mdx-source":
 				ui.Text(c, a.tr("MDX source · edit in Source mode")).FontSize(12).TextColor(t.TextMuted)
-				ui.Text(c, n.Plain()).Font("Menlo").FontSize(12)
+				ui.Text(c, n.Plain()).Font("Menlo, Luo").FontSize(12)
 			case n.Kind == "latex":
 				a.blockMath(c, n, readOnly)
 			case n.Kind == "img":

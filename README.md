@@ -44,6 +44,8 @@ Download **Mory 0.0.1 Alpha** for your Mac:
 
 Open Mory to create a local library, then use the English or Chinese welcome guide as the starting point. The complete editor tour and syntax reference live in [`resources/welcome.md`](resources/welcome.md) and [`resources/welcome.zh-CN.md`](resources/welcome.zh-CN.md).
 
+Mory bundles [Luo Regular](https://github.com/tw93/Luo) for Chinese text in its native interface and built-in writing styles. The font works offline without a system installation. Latin text and code retain their native fonts, while Chinese characters outside Luo's coverage and emoji use macOS fallback fonts. Custom CSS keeps its authored font cascade; add `"Luo"` after a Latin family to opt in, for example `font-family: "Helvetica Neue", "Luo", sans-serif`. Native macOS menus and HTML/PDF export retain their existing typography. Font provenance and the SIL OFL 1.1 notice are recorded in [`THIRD_PARTY.md`](THIRD_PARTY.md).
+
 ## Library and recovery
 
 The default library is `~/Documents/Mory`. Set `MORY_LIBRARY` to use another directory.

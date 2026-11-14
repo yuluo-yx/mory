@@ -356,13 +356,8 @@ func Color(value string, fallback ui.Color) (ui.Color, bool) {
 
 func (t *Theme) Font(selector string, base ui.Font) ui.Font {
 	if family := t.Value(selector, "font-family"); family != "" {
-		family = strings.Trim(strings.TrimSpace(strings.Split(family, ",")[0]), "\"'")
-		switch family {
-		case "system-ui", "-apple-system", "sans-serif":
-			family = "Helvetica Neue"
-		case "ui-monospace":
-			family = "monospace"
-		}
+		// MyGo resolves CSS family lists and generic families natively. Keep
+		// the complete cascade so a CJK-only face can fall back for Latin.
 		base.Family = family
 	}
 	base.Size = t.Length(selector, "font-size", base.Size, base.Size, base.Size)

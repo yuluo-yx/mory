@@ -12,6 +12,7 @@ import (
 	"github.com/yuluo-yx/mory/internal/blocks"
 	"github.com/yuluo-yx/mory/internal/doctheme"
 	"github.com/yuluo-yx/mory/internal/library"
+	"github.com/yuluo-yx/mory/internal/typography"
 )
 
 func (a *app) reloadTheme() {
@@ -69,7 +70,7 @@ func (a *app) pageTheme(base *ui.Theme) *ui.Theme {
 }
 
 func (a *app) writingFont(selector string) ui.Font {
-	font := ui.Font{Family: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif", Size: 16, LineHeight: 1.6}
+	font := ui.Font{Family: typography.Text, Size: 16, LineHeight: 1.6}
 	if a.docTheme != nil {
 		font = a.docTheme.Font(selector, font)
 	}
@@ -174,7 +175,7 @@ func (a *app) stylesheetField(c *ui.Context) {
 		buffer := editor.NewBuffer(a.cssText)
 		buffer.SetLanguage(editor.LanguageFor("theme.css"))
 		a.cssEditor = &stylesheetEditor{
-			state:  editor.State{Buffer: buffer, Font: ui.Font{Family: "monospace", Size: 13}, SoftWrap: true, NoScrollPastEnd: true},
+			state:  editor.State{Buffer: buffer, Font: ui.Font{Family: typography.Mono, Size: 13}, SoftWrap: true, NoScrollPastEnd: true},
 			source: a.cssText,
 		}
 	} else if a.cssText != a.cssEditor.source {

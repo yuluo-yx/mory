@@ -123,7 +123,7 @@
 .page {
   background-color: #ffffff;
   color: #1f2225;
-  font-family: system-ui;
+  font-family: "Helvetica Neue", "Luo";
   font-size: 16px;
   line-height: 28px;
   max-width: 820px;
@@ -139,7 +139,7 @@ p {
 }
 
 .title {
-  font-family: system-ui;
+  font-family: "Helvetica Neue", "Luo";
   font-size: 34px;
   line-height: 55.25px;
   font-weight: 700;
@@ -147,7 +147,7 @@ p {
 }
 
 h1 {
-  font-family: system-ui;
+  font-family: "Helvetica Neue", "Luo";
   font-size: 26px;
   line-height: 27px;
   font-weight: 700;
@@ -157,7 +157,7 @@ h1 {
 }
 
 h2 {
-  font-family: system-ui;
+  font-family: "Helvetica Neue", "Luo";
   font-size: 22px;
   line-height: 25px;
   font-weight: 700;
@@ -167,7 +167,7 @@ h2 {
 }
 
 h3 {
-  font-family: system-ui;
+  font-family: "Helvetica Neue", "Luo";
   font-size: 20px;
   line-height: 24px;
   font-weight: 600;
@@ -177,7 +177,7 @@ h3 {
 }
 
 h4 {
-  font-family: system-ui;
+  font-family: "Helvetica Neue", "Luo";
   font-size: 18px;
   line-height: 25px;
   font-weight: 600;
@@ -187,7 +187,7 @@ h4 {
 }
 
 h5 {
-  font-family: system-ui;
+  font-family: "Helvetica Neue", "Luo";
   font-size: 16px;
   line-height: 22px;
   font-weight: 600;
@@ -197,7 +197,7 @@ h5 {
 }
 
 h6 {
-  font-family: system-ui;
+  font-family: "Helvetica Neue", "Luo";
   font-size: 16px;
   line-height: 22px;
   font-weight: 600;
@@ -207,7 +207,7 @@ h6 {
 }
 
 h7 {
-  font-family: system-ui;
+  font-family: "Helvetica Neue", "Luo";
   font-size: 16px;
   line-height: 22px;
   font-weight: 600;
@@ -217,7 +217,7 @@ h7 {
 }
 
 h8 {
-  font-family: system-ui;
+  font-family: "Helvetica Neue", "Luo";
   font-size: 16px;
   line-height: 22px;
   font-weight: 600;
@@ -227,7 +227,7 @@ h8 {
 }
 
 h9 {
-  font-family: system-ui;
+  font-family: "Helvetica Neue", "Luo";
   font-size: 16px;
   line-height: 22px;
   font-weight: 600;
@@ -260,7 +260,7 @@ code {
 }
 
 pre {
-  font-family: ui-monospace;
+  font-family: ui-monospace, "Luo";
   font-size: 13px;
   line-height: 20px;
   color: #4c4d50;

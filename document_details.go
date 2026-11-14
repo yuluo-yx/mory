@@ -11,6 +11,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/yuluo-yx/mory/internal/blocks"
 	"github.com/yuluo-yx/mory/internal/document"
+	"github.com/yuluo-yx/mory/internal/typography"
 )
 
 // File-level title attributes travel with DocxXML exports. Reading them does
@@ -209,7 +210,7 @@ func (a *app) documentHeader(c *ui.Context) {
 				})
 			})
 		}
-		if ui.TextInput(c, &n.Title).Label(a.tr("Document title")).Placeholder(a.tr("Untitled")).PlaceholderColor(t.TextMuted).Font("-apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif").FontSize(32).Bold().LetterSpacing(-0.5).Grow(1).Background(ui.Transparent).Border(0, ui.Transparent).Changed() {
+		if ui.TextInput(c, &n.Title).Label(a.tr("Document title")).Placeholder(a.tr("Untitled")).PlaceholderColor(t.TextMuted).Font(typography.Display).FontSize(32).Bold().LetterSpacing(-0.5).Grow(1).Background(ui.Transparent).Border(0, ui.Transparent).Changed() {
 			a.syncMetadata()
 		}
 	})

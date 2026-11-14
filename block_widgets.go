@@ -204,7 +204,7 @@ func (a *app) largeTableView(c *ui.Context, n *blocks.Node, table *blocks.Table,
 	options.OnLink, options.LoadImage = a.openLink, a.loadPreviewImage
 	options.Extensions = a.preview.Extensions
 	options.Math, options.InlineMath = a.preview.Math, a.preview.InlineMath
-	options.Theme = &markdown.Theme{Font: font.Family, FontSize: font.Size}
+	options.Theme = &markdown.Theme{Font: font.Family, FontSize: font.Size, CodeFont: a.writingFont("pre").Family}
 	ui.Column(c).FillWidth().Gap(6).Children(func() {
 		ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
 			ui.Textf(c, a.tr("Large table: %d rows × %d columns"), table.Rows, table.Columns).FontSize(12).TextColor(t.TextMuted).Grow(1)
@@ -386,7 +386,7 @@ func (a *app) blockOverlays(c *ui.Context) {
 	ui.Modal(c, &s.formulaOpen, func() {
 		ui.Column(c).Width(520).Gap(14).Children(func() {
 			ui.Text(c, a.tr("Edit equation")).FontSize(24)
-			ui.TextArea(c, &s.formulaText).Label(a.tr("LaTeX source")).Font("Menlo").Height(110).FillWidth().AutoFocus()
+			ui.TextArea(c, &s.formulaText).Label(a.tr("LaTeX source")).Font("Menlo, Luo").Height(110).FillWidth().AutoFocus()
 			formula, err := mathrender.Layout(s.formulaText, true, 22, c.Theme().Text, 0)
 			if err != nil {
 				ui.Text(c, err.Error()).TextColor(c.Theme().Danger).MaxHeight(90).Clip()

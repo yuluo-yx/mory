@@ -5,7 +5,7 @@
   --theme-base: feishu;
   --color-green: #2e8555;
 }
-.page { font-family: system-ui; font-size: 17px; line-height: 1.65; color: #1c1e21; background-color: #ffffff; }
+.page { font-family: "Helvetica Neue", "Luo"; font-size: 17px; line-height: 1.65; color: #1c1e21; background-color: #ffffff; }
 .title { font-size: 2.4em; font-weight: 700; line-height: 1.2; }
 h1 { font-size: 2em; font-weight: 700; line-height: 1.25; margin-top: 32px; margin-bottom: 20px; }
 h2 { font-size: 1.5em; font-weight: 700; line-height: 1.3; margin-top: 32px; margin-bottom: 16px; }
@@ -14,7 +14,7 @@ p { margin-bottom: 16px; }
 ul, ol { padding-left: 40px; }
 a { color: #2e8555; text-decoration: underline; }
 code { background-color: #f0f0f2; color: #1c1e21; border-radius: 4px; }
-pre { font-family: ui-monospace; font-size: 14px; line-height: 1.5; background-color: #f6f7f8; color: #393a34; border-radius: 6px; }
+pre { font-family: ui-monospace, "Luo"; font-size: 14px; line-height: 1.5; background-color: #f6f7f8; color: #393a34; border-radius: 6px; }
 blockquote { border-left-width: 3px; border-left-color: #dadde1; padding-left: 16px; color: #606770; }
 .callout { border-radius: 6px; }
 table { border-color: #dadde1; }

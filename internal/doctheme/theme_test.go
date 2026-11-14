@@ -16,6 +16,9 @@ func TestBuiltinsAndCSSCascade(t *testing.T) {
 			t.Fatal(name, "has no body style")
 		}
 		font := theme.Font(".page", ui.Font{Size: 17})
+		if !strings.Contains(font.Family, `"Luo"`) || !strings.Contains(theme.Font("pre", font).Family, `"Luo"`) {
+			t.Fatal("built-in theme lost its Chinese font cascade", name)
+		}
 		if font.Size < 10 || font.Size > 30 {
 			t.Fatal(font)
 		}
@@ -45,7 +48,7 @@ func TestBuiltinsAndCSSCascade(t *testing.T) {
 		t.Fatal(theme.Warnings)
 	}
 	font := theme.Font("body", ui.Font{Size: 16})
-	if font.Family != "Georgia" || font.LineHeight != 1.6 {
+	if font.Family != `"Georgia",serif` || font.LineHeight != 1.6 {
 		t.Fatal(font)
 	}
 	if theme.Color("a", "color", ui.Transparent) != ui.Hex("#112233") {

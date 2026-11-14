@@ -19,6 +19,7 @@ import (
 	"github.com/yuluo-yx/mory/internal/document"
 	"github.com/yuluo-yx/mory/internal/library"
 	"github.com/yuluo-yx/mory/internal/plugins"
+	"github.com/yuluo-yx/mory/internal/typography"
 )
 
 type app struct {
@@ -162,6 +163,9 @@ func (a *app) setCurrentSource(source string) {
 }
 
 func newApp(dir string) (*app, error) {
+	if err := typography.Register(); err != nil {
+		return nil, fmt.Errorf("register bundled Chinese font: %w", err)
+	}
 	l, err := library.Open(dir)
 	if err != nil {
 		return nil, err
@@ -349,7 +353,7 @@ func (a *app) loadEditors() {
 		name = "note.xml"
 	}
 	b.SetLanguage(editor.LanguageFor(name))
-	a.code = &editor.State{Buffer: b, SoftWrap: true}
+	a.code = &editor.State{Buffer: b, Font: ui.Font{Family: typography.Mono}, SoftWrap: true}
 	a.codeVersion = b.Version()
 	a.preview.LoadImage = a.loadPreviewImage
 	a.preview.OnLink = a.openLink

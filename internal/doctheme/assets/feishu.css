@@ -123,7 +123,7 @@
 .page {
   background-color: #ffffff;
   color: #1f2329;
-  font-family: system-ui;
+  font-family: "Helvetica Neue", "Luo";
   font-size: 16px;
   line-height: 26px;
   max-width: 820px;
@@ -139,7 +139,7 @@ p {
 }
 
 .title {
-  font-family: system-ui;
+  font-family: "Helvetica Neue", "Luo";
   font-size: 34px;
   line-height: 55.25px;
   font-weight: 500;
@@ -227,7 +227,7 @@ a:hover {
 }
 
 pre {
-  font-family: Menlo;
+  font-family: Menlo, "Luo";
   color: #4c4d50;
   background-color: #fbfbfb;
   border-color: #eaebeb;

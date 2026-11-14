@@ -12,6 +12,7 @@ import (
 	"github.com/yuluo-yx/mory/internal/blocks"
 	"github.com/yuluo-yx/mory/internal/document"
 	"github.com/yuluo-yx/mory/internal/library"
+	"github.com/yuluo-yx/mory/internal/typography"
 )
 
 func (a *app) theme(c *ui.Context) {
@@ -25,7 +26,7 @@ func (a *app) theme(c *ui.Context) {
 	if dark {
 		t = *ui.DarkTheme()
 	}
-	t.Font = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif"
+	t.Font = typography.Text
 	t.FontSize = 13
 	t.Radius = 9
 	if dark {
@@ -1043,7 +1044,7 @@ func (a *app) editorView(c *ui.Context) {
 					if a.blockEditor != nil {
 						a.blockView(c, true)
 					} else {
-						a.preview.Theme = &markdown.Theme{ListIndent: a.docTheme.ListIndent(a.writingFont(".page")) / c.Theme().FontSize}
+						a.preview.Theme = &markdown.Theme{CodeFont: a.writingFont("pre").Family, ListIndent: a.docTheme.ListIndent(a.writingFont(".page")) / c.Theme().FontSize}
 						ui.Scroll(c).Grow(1).Children(func() { markdown.View(c, a.markdownSource(), &a.preview).FillWidth() })
 					}
 				}
