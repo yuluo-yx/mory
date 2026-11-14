@@ -15,7 +15,10 @@ const pendingMarker = "Edited 世界 🧪 "
 func pendingBlockEdit(t *testing.T) (*app, string) {
 	t.Helper()
 	a := testApp(t)
-	source := "Start\n\n" + strings.Repeat("Paragraph **bold**.\n\n", 27000)
+	// Cross the real document-size threshold without constructing thousands
+	// of unnecessary nodes in every persistence scenario.
+	paragraph := strings.Repeat("Paragraph text. ", 40) + "**bold**.\n\n"
+	source := "Start\n\n" + strings.Repeat(paragraph, largeDocumentBytes/len(paragraph)+1)
 	a.createNote(source, "Large block edit")
 	f := a.blockField(a.blockEditor.doc.Root.Children[0], ui.Hex("#303030"))
 	f.doc.SetSelection(0, 0)
@@ -28,9 +31,9 @@ func pendingBlockEdit(t *testing.T) (*app, string) {
 }
 
 func TestPendingBlocksAtSourceBoundaries(t *testing.T) {
-	for _, action := range []string{"save", "Source", "Split", "Read", "home", "background", "flush"} {
+	for _, action := range []string{"save", "Source", "Split", "Read", "home", "background", "unfold"} {
 		t.Run(action, func(t *testing.T) {
-			a, _ := pendingBlockEdit(t)
+			a, source := pendingBlockEdit(t)
 			note := a.current
 			switch action {
 			case "save":
@@ -42,13 +45,19 @@ func TestPendingBlocksAtSourceBoundaries(t *testing.T) {
 			case "background":
 				a.dirtySince = time.Now().Add(-time.Second)
 				a.backgroundTick()
-			case "flush":
-				a.flushSource()
+			case "unfold":
+				a.blockEditor.restoreRich = true
+				a.restoreUnfoldedEditor()
+				if a.blockEditor != nil || !strings.HasPrefix(a.doc.Text().String(), pendingMarker+"Start") {
+					t.Fatal("restoring the rich editor lost deferred edits")
+				}
 			default:
 				a.changeMode(action)
 			}
-			if a.blockPending || !strings.HasPrefix(note.Source, pendingMarker+"Start") {
-				t.Fatal("boundary lost the pending edit")
+			// The edited paragraph may normalize its separator; untouched blocks
+			// must retain every source byte, not just the visible prefix.
+			if a.blockPending || !strings.HasPrefix(note.Source, pendingMarker+"Start\n\n") || !strings.HasSuffix(note.Source, strings.TrimPrefix(source, "Start\n\n")) {
+				t.Fatal("boundary lost pending text or changed untouched blocks")
 			}
 			if action == "Source" || action == "Split" {
 				if a.code.Buffer.String() != note.Source {
@@ -79,20 +88,8 @@ func TestPendingBlockUndoRedo(t *testing.T) {
 	if !a.blockPending {
 		t.Fatal("redo did not mark the block source pending")
 	}
-	if !a.save() || !strings.HasPrefix(a.current.Source, pendingMarker+"Start") {
+	if !a.save() || !strings.HasPrefix(a.current.Source, pendingMarker+"Start\n\n") || !strings.HasSuffix(a.current.Source, strings.TrimPrefix(source, "Start\n\n")) {
 		t.Fatal("redo was not persisted")
-	}
-}
-
-func TestPendingBlocksWhenRestoringRichEditor(t *testing.T) {
-	a, _ := pendingBlockEdit(t)
-	a.blockEditor.restoreRich = true
-	a.restoreUnfoldedEditor()
-	if a.blockPending || a.blockEditor != nil || !strings.HasPrefix(a.doc.Text().String(), pendingMarker+"Start") {
-		t.Fatal("restoring the rich editor lost deferred edits")
-	}
-	if !a.save() || !strings.HasPrefix(a.current.Source, pendingMarker+"Start") {
-		t.Fatal("restored edit was not persisted")
 	}
 }
 

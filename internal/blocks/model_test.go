@@ -89,6 +89,43 @@ func TestTableOperations(t *testing.T) {
 	}
 }
 
+func TestMarkdownTableRepresentation(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		rows int
+	}{
+		{"small", 2}, {"below threshold", 199}, {"at threshold", 200}, {"large", 1201},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			source := "| Left | Center | Right |\r\n| :--- | :---: | ---: |\r\n" + strings.Repeat("| 中文 **bold** | escaped \\| pipe | `code` [link](https://example.com) |\r\n", tc.rows-1)
+			doc, err := Parse(source, "markdown")
+			if err != nil {
+				t.Fatal(err)
+			}
+			n := doc.Root.Children[0]
+			table := ReadTable(n)
+			if table.Rows != tc.rows || table.Columns != 3 || doc.Source() != source || n.Clone().Markdown() != n.Markdown() {
+				t.Fatal("table parsing changed geometry or original source")
+			}
+			if tc.rows < 200 {
+				if n.Compact != nil || len(table.Cells) != tc.rows*3 {
+					t.Fatal("ordinary table no longer exposes editable cells")
+				}
+				return
+			}
+			c := table.Compact
+			if c == nil || len(c.Cells) != tc.rows*3 || len(n.Children) != 0 || c.Cells[0] != "Left" || c.Align[1] != "center" || c.Align[2] != "right" {
+				t.Fatal("large table lost its header, alignment or compact representation")
+			}
+			for row := 1; row < tc.rows; row++ {
+				if c.Cells[row*3] != "中文 **bold**" || c.Cells[row*3+1] != "escaped \\| pipe" || c.Cells[row*3+2] != "`code` [link](https://example.com)" {
+					t.Fatalf("row %d lost content or escaped cell separators", row)
+				}
+			}
+		})
+	}
+}
+
 func TestMarkdownAndRichObjects(t *testing.T) {
 	source := "# Title\n\n| A | B |\n| --- | --- |\n| a | b |\n\n$$\n\\frac{1}{2}\n$$\n"
 	d, err := Parse(source, "markdown")
