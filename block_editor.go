@@ -64,6 +64,8 @@ type blockSession struct {
 	lastText               time.Time
 	lastTextVersion        uint64
 	chosen                 ui.Selection[string]
+	selectAllID            string
+	selectAllPending       bool
 	tables                 map[string]tableCache
 	fieldEpoch             uint64
 	sourceRevision         uint64
@@ -476,6 +478,8 @@ func (a *app) blockListView(c *ui.Context, readOnly bool) {
 	s.pruneFields(maxCachedBlockFields)
 	visible := s.visibleBlocks()
 	if !readOnly && len(visible) == 0 {
+		// No body blocks exist to receive a promoted selection.
+		s.selectAllPending = false
 		// An empty document still has a mouse and keyboard target. Merely viewing
 		// it must not insert a paragraph into the source or its undo history.
 		if s.emptyBody == nil {
@@ -524,8 +528,27 @@ func (a *app) blockListView(c *ui.Context, readOnly bool) {
 			a.blockNode(c, visible[i], readOnly, 0)
 		}
 	}).Grow(1).Gap(7).Label("Document blocks")
+	if !readOnly && !s.foldPresentation && s.selectAllPending {
+		s.selectAllPending = false
+		a.selectAllBlocks()
+		list.Focus()
+		s.list.Selection = &s.chosen
+	}
 	if !readOnly && !s.foldPresentation && s.chosen.Len() > 0 && !c.FocusTakesText() {
+		copyCommand, copyControl := list.Shortcut(ui.Cmd, ui.KeyC), list.Shortcut(ui.Ctrl, ui.KeyC)
+		if copyCommand || copyControl {
+			a.copyBlocks(c, false)
+		}
+		cutCommand, cutControl := list.Shortcut(ui.Cmd, ui.KeyX), list.Shortcut(ui.Ctrl, ui.KeyX)
+		if cutCommand || cutControl {
+			a.copyBlocks(c, true)
+		}
+		// Keep repeated Select All inclusive of blocks hidden by heading folds.
+		_ = list.Shortcut(ui.Ctrl, ui.KeyA)
 		list.ObserveInput(func(event ui.InputEvent) {
+			if isSelectAllInput(event) {
+				s.selectAllPending = true
+			}
 			if event.Kind == ui.InputCommand && event.Text == "delete" {
 				a.deleteBlocks()
 			}
@@ -624,10 +647,7 @@ func (a *app) blockNode(c *ui.Context, n *blocks.Node, readOnly bool, depth int)
 			case n.Kind == "hr":
 				ui.Box(c).Height(1).FillWidth().Background(t.Border).Margin(12, 0)
 			case n.Kind == "callout":
-				accent := t.Accent
-				if color := map[string]string{"note": "#708090", "tip": "#2e8555", "info": "#3088bd", "warning": "#b78000", "caution": "#b78000", "danger": "#d12d3f"}[n.Attr("directive")]; color != "" {
-					accent = ui.Hex(color)
-				}
+				accent := ui.Hex(blocks.CalloutColor(n))
 				ui.Row(c).Padding(14).Radius(8).Background(blockColor(n.Attr("background-color"), accent.Alpha(.08))).Border(1, blockColor(n.Attr("border-color"), accent.Alpha(.3))).Gap(12).Children(func() {
 					emoji := n.Attr("emoji")
 					if emoji == "" {
@@ -635,18 +655,27 @@ func (a *app) blockNode(c *ui.Context, n *blocks.Node, readOnly bool, depth int)
 					}
 					ui.Text(c, emoji).FontSize(22)
 					ui.Column(c).Grow(1).Children(func() {
-						if n.Attr("directive") != "" {
-							title := n.Attr("title")
-							if title == "" {
-								title = strings.ToUpper(n.Attr("directive"))
+						ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+							if readOnly {
+								ui.Text(c, strings.ToUpper(blocks.CalloutType(n))).Bold().TextColor(accent)
+							} else {
+								kind := blocks.CalloutType(n)
+								if ui.Select(c, &kind, calloutTypes).Label(a.tr("Callout type")).Width(132).Changed() {
+									a.changeCalloutType(n.ID, kind)
+								}
 							}
-							ui.Text(c, title).Bold()
-						}
+							if title := n.Attr("title"); title != "" {
+								ui.Text(c, title).Bold()
+							}
+						})
 						for _, child := range blocks.Visible(n.Children) {
 							a.blockNode(c, child, readOnly, depth+1)
 						}
 					})
 				})
+				if !readOnly {
+					a.writeBelowBlock(c, n, "Write below callout")
+				}
 			case n.Kind == "blockquote":
 				ui.Column(c).BorderWidth(0, 0, 0, 3).BorderColor(t.Accent.Alpha(.5)).Padding(4, 0, 4, 14).Children(func() {
 					for _, child := range blocks.Visible(n.Children) {
@@ -800,8 +829,13 @@ func (a *app) blockText(c *ui.Context, n *blocks.Node, readOnly bool) {
 		s.focus = ""
 	}
 	if !readOnly {
+		// Ctrl+A is also supported on macOS, where the native binding is Cmd+A.
+		if ed.Shortcut(ui.Ctrl, ui.KeyA) {
+			field.doc.SetSelection(0, field.doc.Text().Len())
+		}
 		ed.OnPaste(func(text string) bool { a.queueInlineCode(field.doc, text); return false })
 		ed.ObserveInput(func(event ui.InputEvent) {
+			a.observeBlockSelectAll(n.ID, event)
 			a.observeCodeFence(field.doc, event)
 			if event.Kind == ui.InputCommand && (event.Text == "undo" || event.Text == "redo") {
 				a.blockUndo(event.Text == "redo")
@@ -812,6 +846,9 @@ func (a *app) blockText(c *ui.Context, n *blocks.Node, readOnly bool) {
 			}
 			anchor, caret := field.doc.Selection()
 			if anchor != caret {
+				return
+			}
+			if a.calloutBoundaryInput(n.ID, field, event) {
 				return
 			}
 			if event.Key == ui.KeyBackspace && caret == 0 && event.Mods == 0 {
@@ -911,11 +948,15 @@ func (a *app) mergeBlock(id string, direction int) {
 func (a *app) blockMenu(m *ui.Menu, n *blocks.Node) {
 	s := a.blockEditor
 	if m.Item(a.tr("Insert paragraph below")).Chosen() {
-		p, index := s.doc.Parent(n.ID)
-		if p != nil {
-			fresh := blocks.Paragraph("")
-			a.fail(s.doc.Splice(p.ID, index+1, 0, fresh))
-			s.focus = fresh.ID
+		if n.Kind == "callout" || n.Kind == "pre" {
+			a.leaveBlock(n.ID, 1, true)
+		} else {
+			p, index := s.doc.Parent(n.ID)
+			if p != nil {
+				fresh := blocks.Paragraph("")
+				a.fail(s.doc.Splice(p.ID, index+1, 0, fresh))
+				s.focus = fresh.ID
+			}
 		}
 	}
 	if m.Item(a.tr("Duplicate block")).Chosen() {
@@ -1007,6 +1048,11 @@ func (a *app) blockCode(c *ui.Context, n *blocks.Node, readOnly bool) {
 		if a.blockEditor != s || readOnly || a.mode != "Write" {
 			return false
 		}
+		a.observeBlockSelectAll(n.ID, event)
+		if event.Kind == ui.InputKeyDown && event.Key == ui.KeyA && event.Mods == ui.Ctrl {
+			f.code.Select(0, len([]rune(f.code.Buffer.String())))
+			return true
+		}
 		if a.codeBoundaryInput(n.ID, f, event) {
 			return true
 		}
@@ -1064,17 +1110,7 @@ func (a *app) blockCode(c *ui.Context, n *blocks.Node, readOnly bool) {
 		s.focus = ""
 	}
 	if !readOnly {
-		// The gap belongs to the page, outside the code editor's scrolling area.
-		below := ui.Row(c.Key("below-code")).FillWidth().Height(24).AlignItems(ui.Center).Focusable().Cursor(ui.CursorText).
-			Label(a.tr("Write below code")).Tooltip(a.tr("Write below code"))
-		if below.Hovered() || below.Focused() {
-			below.Background(c.Theme().Accent.Alpha(.06)).Radius(4).Children(func() {
-				ui.Text(c, a.tr("Write below code")).FontSize(11).TextColor(c.Theme().TextMuted)
-			})
-		}
-		if below.Clicked() {
-			a.leaveCode(n.ID, 1, true)
-		}
+		a.writeBelowBlock(c, n, "Write below code")
 	}
 }
 

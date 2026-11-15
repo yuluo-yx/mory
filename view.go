@@ -61,6 +61,12 @@ func (a *app) theme(c *ui.Context) {
 }
 
 func (a *app) view(c *ui.Context) {
+	// Input outside the block editor also breaks a consecutive Select All pair.
+	c.Root().ObserveInput(func(event ui.InputEvent) {
+		if a.blockEditor != nil && !isSelectAllInput(event) {
+			a.observeBlockSelectAll("", event)
+		}
+	})
 	a.services = c.Services()
 	a.theme(c)
 	a.capture()
@@ -1056,7 +1062,11 @@ func (a *app) editorView(c *ui.Context) {
 	})
 	a.capture()
 	ui.Row(c).Height(30).Shrink(0).Padding(4, 24).Gap(16).BorderWidth(1, 0, 0).BorderColor(t.Border).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, a.statusText(a.status)).FontSize(11).TextColor(t.TextMuted).Grow(1)
+		status := a.status
+		if a.structured() && a.blockEditor.selectAllID != "" {
+			status = selectAllHint
+		}
+		ui.Text(c, a.statusText(status)).FontSize(11).TextColor(t.TextMuted).Grow(1)
 		if a.statsSource != n.Source {
 			text := n.Source
 			if a.structured() {

@@ -45,6 +45,19 @@ def exercise(binary, root):
         stream = channel.makefile("rwb")
 
         def call(method, **params):
+            if method == "input":
+                # Synthetic surface events do not activate an inactive macOS
+                # window. Wait for OS focus without changing the editor caret.
+                def content_focused():
+                    return any(w["kind"] == "content" and w["focused"] for w in call("windows")["windows"])
+
+                if not content_focused():
+                    call("menu", path=["Window", "Bring All to Front"])
+                    deadline = time.monotonic() + 5
+                    while not content_focused():
+                        if time.monotonic() > deadline:
+                            raise AssertionError("Native content window did not activate before input")
+                        time.sleep(0.02)
             stream.write((json.dumps(dict(id=1, method=method, params=params)) + "\n").encode())
             stream.flush()
             result = json.loads(stream.readline())

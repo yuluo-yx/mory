@@ -246,7 +246,30 @@ func render(n *node, depth int) string {
 	case "blockquote", "callout":
 		prefix := ""
 		if n.name == "callout" {
-			prefix = "> [!NOTE]\n"
+			kind := strings.ToUpper(n.attrs["alert"])
+			if directive := strings.ToLower(n.attrs["directive"]); directive != "" || kind == "INFO" || kind == "DANGER" {
+				if directive == "" {
+					directive = strings.ToLower(kind)
+				}
+				switch directive {
+				case "note", "tip", "info", "important", "warning", "caution", "danger":
+				default:
+					directive = "note"
+				}
+				title := n.attrs["title"]
+				if title != "" {
+					title = " " + title
+				}
+				return ":::" + directive + title + "\n\n" + strings.TrimSpace(s) + "\n\n:::\n\n"
+			}
+			switch kind {
+			case "TIP", "IMPORTANT", "WARNING", "CAUTION":
+			case "WARN":
+				kind = "WARNING"
+			default:
+				kind = "NOTE"
+			}
+			prefix = "> [!" + kind + "]\n"
 		}
 		return prefix + "> " + strings.ReplaceAll(strings.TrimSpace(s), "\n", "\n> ") + "\n\n"
 	case "img":

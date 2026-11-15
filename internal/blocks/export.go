@@ -93,6 +93,15 @@ func (d *Document) HTML(opts ExportOptions) (string, error) {
 		case "callout":
 			tag = "aside"
 			attrs += ` class="callout"`
+			accent := CalloutColor(n)
+			if n.Attr("background-color") == "" {
+				style += "background-color:" + accent + "14;"
+			}
+			border := n.Attr("border-color")
+			if border == "" {
+				border = accent + "4d"
+			}
+			style += "border-color:" + cssColor(border) + ";"
 			content = html.EscapeString(n.Attr("emoji")) + content
 			if n.Attr("directive") != "" {
 				title := n.Attr("title")

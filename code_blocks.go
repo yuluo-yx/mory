@@ -8,16 +8,16 @@ import (
 	"github.com/yuluo-yx/mory/internal/blocks"
 )
 
-// leaveCode moves into a neighboring text block. Explicit mouse insertion uses
+// leaveBlock moves into a neighboring text block. Explicit mouse insertion uses
 // an empty paragraph, keeping a following heading or populated paragraph intact.
-func (a *app) leaveCode(id string, direction int, insert bool) bool {
+func (a *app) leaveBlock(id string, direction int, insert bool) bool {
 	s := a.blockEditor
 	if s == nil || a.mode != "Write" {
 		return false
 	}
 	a.captureBlocks()
 	n := s.doc.Find(id)
-	if n == nil || n.Kind != "pre" {
+	if n == nil || n.Kind != "pre" && n.Kind != "callout" {
 		return false
 	}
 	parent, at := s.doc.Parent(id)
@@ -49,12 +49,15 @@ func (a *app) leaveCode(id string, direction int, insert bool) bool {
 		target = blocks.Paragraph("")
 		s.lastTextID = ""
 		nodes := []*blocks.Node{target}
-		// Lossless Markdown stores the newline after a fence as a raw sibling.
-		// Insert after that separator; if none exists, add one in the same undo
-		// transaction so prose cannot become part of the closing fence line.
-		separated := strings.HasSuffix(n.Markdown(), "\n")
+		// Quotes need a blank line to prevent Markdown lazy continuation from
+		// absorbing the new body. Code fences only need a line boundary.
+		ending := n.Markdown()
 		for _, gap := range parent.Children[at+1 : step] {
-			separated = separated || strings.Contains(gap.Text, "\n")
+			ending += gap.Text
+		}
+		separated := strings.HasSuffix(ending, "\n")
+		if n.Kind == "callout" {
+			separated = strings.HasSuffix(ending, "\n\n")
 		}
 		if s.doc.Format == "markdown" && !separated {
 			gap := blocks.New("#raw")
@@ -90,10 +93,10 @@ func (a *app) codeBoundaryInput(id string, field *blockField, event ui.InputEven
 	}
 	length := len([]rune(field.code.Buffer.String()))
 	if selection.Head == length && (event.Key == ui.KeyDown || event.Key == ui.KeyRight) {
-		return a.leaveCode(id, 1, false)
+		return a.leaveBlock(id, 1, false)
 	}
 	if selection.Head == 0 && (event.Key == ui.KeyUp || event.Key == ui.KeyLeft) {
-		return a.leaveCode(id, -1, false)
+		return a.leaveBlock(id, -1, false)
 	}
 	return false
 }

@@ -8,6 +8,62 @@ import (
 	"github.com/yuluo-yx/mory/internal/blocks"
 )
 
+const selectAllHint = "Press Ctrl+A or ⌘A again to select the entire document body"
+
+func isSelectAllInput(event ui.InputEvent) bool {
+	return event.Kind == ui.InputCommand && event.Text == "selectAll" ||
+		event.Kind == ui.InputKeyDown && event.Key == ui.KeyA && (event.Mods == ui.Cmd || event.Mods == ui.Ctrl)
+}
+
+// Select All first belongs to the focused editor. Only a second invocation
+// without intervening input promotes that selection to the document body.
+func (a *app) observeBlockSelectAll(id string, event ui.InputEvent) {
+	s := a.blockEditor
+	if isSelectAllInput(event) {
+		if event.Repeat {
+			return
+		}
+		if s.selectAllID == id {
+			s.selectAllPending = true
+			s.selectAllID = ""
+		} else {
+			s.selectAllID = id
+			a.status = selectAllHint
+		}
+		return
+	}
+	if event.Kind == ui.InputKeyDown {
+		// Releasing and pressing the shortcut's modifier between invocations
+		// must not count as an intervening editing action.
+		switch event.Code {
+		case ui.CodeControlLeft, ui.CodeControlRight, ui.CodeSuperLeft, ui.CodeSuperRight,
+			ui.CodeShiftLeft, ui.CodeShiftRight, ui.CodeAltLeft, ui.CodeAltRight:
+			return
+		}
+	}
+	switch event.Kind {
+	case ui.InputKeyDown, ui.InputText, ui.InputCompose, ui.InputCommand, ui.InputPointerDown, ui.InputSelect:
+		s.selectAllID = ""
+		if a.status == selectAllHint {
+			a.status = ""
+		}
+	}
+}
+
+func (a *app) selectAllBlocks() {
+	s := a.blockEditor
+	a.captureBlocks()
+	s.chosen.Clear()
+	// Include folded and offscreen blocks without instantiating their editors.
+	for _, n := range blocks.Visible(s.doc.Root.Children) {
+		if n.Kind != "title" {
+			s.chosen.Add(n.ID)
+		}
+	}
+	s.focus = ""
+	a.status = "Entire document body selected"
+}
+
 func (a *app) copyBlocks(c *ui.Context, cut bool) {
 	s := a.blockEditor
 	if s == nil {

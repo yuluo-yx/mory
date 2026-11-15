@@ -103,7 +103,7 @@ func extensionBlock(s string, start, end int, frontmatter bool) (*Node, int) {
 			kind = kind[:i]
 		}
 		switch kind {
-		case "note", "tip", "info", "warning", "danger", "caution":
+		case "note", "tip", "info", "important", "warning", "danger", "caution":
 		default:
 			return nil, start
 		}
@@ -130,6 +130,9 @@ func extensionBlock(s string, start, end int, frontmatter bool) (*Node, int) {
 						return nil, start
 					}
 					n := New("callout", children.Children...)
+					if len(Visible(n.Children)) == 0 {
+						n.Children = append(n.Children, New("p"))
+					}
 					n.Set("directive", kind)
 					n.Set("title", title)
 					n.Set("opening", s[start:end])
@@ -261,6 +264,14 @@ func matchingTag(s string, start int, tag string) (int, int) {
 func extensionMarkdown(n *Node) (string, bool) {
 	if n.Kind == "mdx-source" {
 		return n.Plain(), true
+	}
+	if n.Kind == "callout" && n.Attr("directive") != "" && n.Attr("opening") == "" {
+		body := New("root", n.Children...).Markdown()
+		title := n.Attr("title")
+		if title != "" {
+			title = " " + title
+		}
+		return ":::" + CalloutType(n) + title + "\n\n" + strings.TrimRight(body, "\n") + "\n\n:::\n\n", true
 	}
 	if n.Attr("opening") != "" && (n.Kind == "details" || n.Kind == "tabs" || n.Kind == "tab-item" || n.Kind == "callout" && n.Attr("directive") != "") {
 		root := New("root", n.Children...)

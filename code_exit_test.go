@@ -153,7 +153,7 @@ func TestNestedCodeExitStaysInContainerAndReadOnlyHasNoEntry(t *testing.T) {
 		t.Fatal("read-only code offers insertion")
 	}
 	before := a.current.Source
-	if a.leaveCode(code.ID, 1, true) || a.current.Source != before {
+	if a.leaveBlock(code.ID, 1, true) || a.current.Source != before {
 		t.Fatal("read-only exit changed source")
 	}
 }

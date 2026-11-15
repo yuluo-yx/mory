@@ -375,6 +375,9 @@ func (a *app) editBlockProperties(n *blocks.Node) {
 	for k, v := range n.Attrs {
 		s.props[k] = v
 	}
+	if n.Kind == "callout" {
+		s.props["callout-type"] = blocks.CalloutType(n)
+	}
 	s.properties = true
 }
 
@@ -439,6 +442,15 @@ func (a *app) blockOverlays(c *ui.Context) {
 			case "td", "th":
 				keys = []string{"vertical-align", "background-color"}
 			}
+			if n.Kind == "callout" {
+				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, a.tr("Callout type")).Width(180).FontSize(12)
+					kind := s.props["callout-type"]
+					if ui.Select(c, &kind, calloutTypes).Label(a.tr("Property callout type")).Grow(1).Changed() {
+						s.props["callout-type"] = kind
+					}
+				})
+			}
 			if n.Kind == "doc-link" || n.Kind == "cite" {
 				labels := []string{a.tr("Choose document")}
 				ids := map[string]string{}
@@ -495,6 +507,9 @@ func (a *app) blockOverlays(c *ui.Context) {
 						a.fail(s.doc.Transform(n.ID, func(n *blocks.Node) {
 							for _, key := range keys {
 								n.Set(key, s.props[key])
+							}
+							if n.Kind == "callout" {
+								blocks.SetCalloutType(n, s.props["callout-type"])
 							}
 						}))
 						s.properties = false

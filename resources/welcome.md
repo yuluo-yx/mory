@@ -140,6 +140,10 @@ Choose **Insert → Math** for a display equation or **Inline equation** for an 
 
 ## Callouts and Docusaurus {#docusaurus-examples}
 
+In Write mode, use the **Callout type** selector in the callout header or its properties to choose `note`, `info`, `tip`, `important`, `warning`, `caution`, or `danger`. The background and border follow the type unless you have set custom colors. Existing GitHub alerts retain their alert syntax; `info` and `danger` use Docusaurus directives because GitHub does not define those alert types.
+
+At the end of the last paragraph, press **↓** or **→** to continue outside the callout. You can also click the space below it, or choose **Insert paragraph below** from its block actions. An empty body paragraph is created when needed; Enter continues writing inside the callout.
+
 GitHub-style callouts work with quoted markers:
 
 > [!NOTE]
@@ -164,6 +168,7 @@ Use `:::note`, `:::tip`, `:::info`, `:::warning`, `:::danger`, or `:::caution`.
 
 :::tip Nested tip
 Callouts can contain paragraphs, lists, code, and other callouts.
+
 :::
 
 :::
@@ -291,7 +296,9 @@ These are source examples, so reading the guide does not schedule a reminder. Us
 | Task | How to do it |
 | --- | --- |
 | Insert a block | Type `/` in a new paragraph, use **+ Insert**, or press **⌘P** |
+| Navigate the insert menu | Type to filter, use **↑ / ↓** to select an option, **Enter** to insert it, and **Esc** to close. Keyboard selection scrolls into view and wraps at either end. |
 | Select or move blocks | Use a block's handle and block actions |
+| Select all while editing a block | Press **Ctrl+A** or **⌘A** once for the current text, then again for the entire document body. The first press shows a reminder in the status bar. Typing, moving the caret, or clicking starts a new sequence. |
 | Find and replace | **⌘F** for Find; **⌘⌥F** for Replace |
 | Search the library | **⌘J** |
 | Change shortcuts | **Settings → Keyboard shortcuts** |

@@ -73,6 +73,51 @@ def exercise_editor(call, nodes, act, key, root, fixtures):
         finally:
             path.write_bytes(previous)
 
+    # A stationary pointer must not trap the keyboard highlight over Math.
+    def option_selected(node):
+        # The automation protocol exposes the raw checked bit for list options;
+        # platform accessibility and ui.Tester present it as selected.
+        return bool({"checked", "selected"}.intersection(node.get("states", [])))
+
+    title = "Editing insert menu navigation"
+    new_note(title)
+    pointer(control("Insert block"))
+    pointer(control("Insert Math"), "pointerMove")
+    for name in ("Table", "Callout", "Code block", "Quote", "To-do list", "Bullet list", "Heading"):
+        key("Up")
+        option = control("Insert " + name)
+        assert option_selected(option), (name, option)
+    option_names = ("Heading", "Bullet list", "To-do list", "Quote", "Code block", "Callout", "Table", "Math", "Divider",
+                    "Image or attachment…", "Columns", "Countdown", "Inline equation", "Reminder", "Button", "Document link", "Child pages")
+    for name in option_names[1:]:
+        key("Down")
+        option = control(name if name == "Image or attachment…" else "Insert " + name)
+        assert option_selected(option) and "offscreen" not in option.get("states", []), (name, option)
+    key("Down")
+    assert option_selected(control("Insert Heading"))
+    key("Enter")
+    empty = field("")
+    wait("Keyboard insertion did not focus the heading", lambda tree: any(n.get("label") == empty["label"] and focused(n) for n in tree))
+    type_text("Keyboard heading")
+    field("Keyboard heading")
+    assert "## Keyboard heading" in saved(title)["source"]
+    pointer(control("Insert block"))
+    type_text("no-such-block")
+    control("No matching blocks")
+    key("Enter")
+    control("Search blocks")
+    key("Cmd+A")
+    type_text("list")
+    key("Down")
+    assert option_selected(control("Insert To-do list"))
+    key("Cmd+A")
+    # The query and Enter can arrive before a frame publishes the bound text.
+    call("input", events=[dict(type="text", text="callout"), dict(type="key", key="Enter")])
+    type_text("Filtered callout")
+    field("Filtered callout")
+    assert "Filtered callout" in saved(title)["source"]
+    completed.append("insert menu / stationary pointer / every option / scroll / filtering / Enter / caret")
+
     # A slash command must consume '/', create empty content, and leave a live
     # caret. Two separate inputs expose focus loss after the first transaction.
     for kind in ("Heading", "Quote", "Callout", "Code block"):
@@ -95,6 +140,72 @@ def exercise_editor(call, nodes, act, key, root, fixtures):
         field("Authored 世界 🌱" + ("\n" if kind == "Code block" else ""))
         assert saved(title)["source"] == source, "Reopening changed authored content"
         completed.append("slash insertion / empty content / focus / reopen: " + kind)
+
+    # Native edit commands and both keyboard bindings share progressive scope.
+    for shortcut in ("Ctrl+A", "Cmd+A", "menu"):
+        title = "Editing progressive select all " + shortcut
+        imported(title, "> [!NOTE]\n> First\n>\n> Current\n>\n> Last\n\nOutside\n")
+        pointer(field("Current"))
+
+        def select_all():
+            if shortcut == "menu":
+                call("menu", path=["Edit", "Select All"])
+            else:
+                key(shortcut)
+
+        select_all()
+        control("Press Ctrl+A or ⌘A again to select the entire document body")
+        key("Backspace")
+        field("")
+        field("First")
+        field("Outside")
+        key("Cmd+Z")
+        pointer(field("Current"))
+        select_all()
+        select_all()
+        control("Entire document body selected")
+        control("Delete selected blocks")
+        key("Backspace")
+        field("")
+        source = saved(title)["source"]
+        assert "Current" not in source and "Outside" not in source, source
+        key("Cmd+Z")
+        field("Current")
+        field("Outside")
+        completed.append("progressive select all / hint / local deletion / body deletion / undo: " + shortcut)
+
+    for arrow in ("Down", "Right"):
+        title = "Editing callout exit " + arrow
+        imported(title, "> [!NOTE]\n> Inside 世界")
+        pointer(field("Inside 世界"))
+        key("Cmd+End")
+        key(arrow)
+        assert focused(field("")), "Callout boundary did not create a body caret"
+        type_text("Outside")
+        type_text(" body")
+        field("Outside body")
+        field("Inside 世界")
+        source = saved(title)["source"]
+        assert "\n\nOutside body" in source, source
+        key("Cmd+Z")
+        key("Cmd+Z")
+        field("Inside 世界")
+        pointer(control("Write below callout"))
+        type_text("Mouse body")
+        field("Mouse body")
+        pointer(control("Callout type"))
+        act("danger")
+        source = saved(title)["source"]
+        assert ":::danger" in source and "Mouse body" in source, source
+        reopen(title)
+        field("Inside 世界")
+        field("Mouse body")
+        assert saved(title)["source"] == source, "Reopening lost callout type or body"
+        act("Read")
+        labels = {n.get("label") for n in nodes()}
+        assert "Callout type" not in labels and "Write below callout" not in labels, labels
+        act("Write")
+        completed.append("callout arrow / mouse exit / type / undo / reopen / read-only: " + arrow)
 
     for deletion in ("Backspace", "Delete", "toolbar"):
         title = "Editing deletion " + deletion
