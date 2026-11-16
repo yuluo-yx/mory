@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="resources/icon.png" width="96" alt="Mory icon">
+  <img src="resources/icon.png" width="21%" alt="Mory portrait in classic blue">&nbsp;
+  <img src="resources/logos/mory-thinking-coral.png" width="21%" alt="Mory thinking in vibrant coral">&nbsp;
+  <img src="resources/logos/mory-reading-olive.png" width="21%" alt="Mory reading in vintage olive">&nbsp;
+  <img src="resources/logos/mory-waving-mustard.png" width="21%" alt="Mory waving in warm mustard">
 </p>
 
 <h1 align="center">Mory</h1>
