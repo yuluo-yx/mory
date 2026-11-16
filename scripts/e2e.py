@@ -53,6 +53,11 @@ def exercise(binary, root):
 
                 if not content_focused():
                     call("menu", path=["Window", "Bring All to Front"])
+                    # Ordering windows does not activate a background app on
+                    # macOS. Target the test process, not another Mory instance.
+                    subprocess.run(["osascript", "-e", 'tell application "System Events"',
+                                    "-e", f'set testProcess to first application process whose unix id is {process.pid}',
+                                    "-e", 'set frontmost of testProcess to true', "-e", 'end tell'], check=True)
                     deadline = time.monotonic() + 5
                     while not content_focused():
                         if time.monotonic() > deadline:

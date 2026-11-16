@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/richtext"
@@ -108,10 +109,17 @@ func (a *app) headingToggle(c *ui.Context, level int, title string, folded bool)
 func (a *app) richDocumentEditor(c *ui.Context) {
 	font := a.writingFont(".page")
 	doc := a.doc
+	placeholder := ""
+	style := doc.Text().ParagraphStyleAt(0)
+	// The native placeholder ignores paragraph indentation and top spacing.
+	// Once a block format is chosen, its marker and caret provide the prompt.
+	if style.Heading == 0 && style.List == richtext.NoList && !style.Quote && !style.CodeBlock && style.Indent == 0 && style.Align == ui.Start {
+		placeholder = a.tr("Start writing…")
+	}
 	// Borrow the page's left padding for controls, keeping the text stationary.
 	ui.Box(c).Grow(1).MinHeight(0).Margin(0, 0, 0, -headingGutterWidth).Padding(0, 0, 0, headingGutterWidth).Children(func() {
 		ed := richtext.EditorBase(c.Key(a.current.ID), doc, richtext.EditorOptions{
-			Label: a.tr("Document editor"), Placeholder: a.tr("Start writing…"), Font: font,
+			Label: a.tr("Document editor"), Placeholder: placeholder, Font: font,
 			OnLink: a.openLink, OnLinkCommand: func() { a.linkURL = doc.Formatting().Link; a.linkOpen = true },
 			Theme: a.docTheme.Rich(c.Theme(), font),
 		}).Fill()
@@ -139,6 +147,62 @@ func (a *app) richDocumentEditor(c *ui.Context) {
 			}
 		}
 	})
+}
+
+// A numeric prefix inside an existing heading is authored title text, not a
+// request to replace that heading with a list. Keep other inline shortcuts on.
+func headingNumberPrefix(doc *richtext.Document) bool {
+	anchor, caret := doc.Selection()
+	text := doc.Text()
+	if anchor != caret || text.ParagraphStyleAt(caret).Heading == 0 {
+		return false
+	}
+	start, _ := text.ParagraphRange(caret)
+	prefix := text.Slice(start, caret).String()
+	return len(prefix) >= 2 && (strings.HasSuffix(prefix, ".") || strings.HasSuffix(prefix, ")")) && strings.Trim(prefix[:len(prefix)-1], "0123456789") == ""
+}
+
+type headingNumberInput struct {
+	doc     *richtext.Document
+	before  richtext.Text
+	caret   int
+	version uint64
+}
+
+func (a *app) observeHeadingNumberInput(doc *richtext.Document, event ui.InputEvent) {
+	// Flush before the next event as well as before rendering: native events can
+	// arrive in a batch without a frame between the heading and list shortcuts.
+	a.applyHeadingNumberInput()
+	if event.Kind != ui.InputText || event.Text != " " || !headingNumberPrefix(doc) {
+		return
+	}
+	_, caret := doc.Selection()
+	doc.BreakUndoCoalescing()
+	a.headingNumberInput = &headingNumberInput{doc, doc.Text(), caret, doc.Version()}
+}
+
+func (a *app) applyHeadingNumberInput() {
+	p := a.headingNumberInput
+	if p == nil || p.doc.Version() == p.version {
+		return
+	}
+	a.headingNumberInput = nil
+	style := p.doc.Formatting().Paragraph
+	if style.Heading != 0 || style.List != richtext.Numbers {
+		return
+	}
+	// The native editor records the space and its Markdown conversion as two
+	// steps. Replace those with a literal space, so undo/redo cannot resurrect
+	// the unwanted list conversion. Breaking coalescing kept earlier typing out.
+	p.doc.Undo()
+	p.doc.Undo()
+	if !p.doc.Text().Equal(p.before) {
+		p.doc.Redo()
+		p.doc.Redo()
+		return
+	}
+	p.doc.SetSelection(p.caret, p.caret)
+	p.doc.InsertText(" ")
 }
 
 func (a *app) foldRichHeading(start int) {

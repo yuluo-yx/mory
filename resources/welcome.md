@@ -30,6 +30,8 @@ This is the next line in the same paragraph.
 
 Use `#` through `######` followed by a space for Markdown heading levels 1–6. This guide already contains levels 1 and 2.
 
+To write a numbered heading, type `## ` followed by `1. ` and the heading text. The number stays part of the heading; typing `1. ` in a plain body paragraph creates a numbered list instead.
+
 #### Heading level 4
 
 ##### Heading level 5

@@ -73,6 +73,24 @@ def exercise_editor(call, nodes, act, key, root, fixtures):
         finally:
             path.write_bytes(previous)
 
+    # Numeric heading text must survive the same keystrokes that create lists
+    # in ordinary body paragraphs, including a burst of native input events.
+    for rapid in (False, True):
+        title = "Editing numbered heading " + str(rapid)
+        new_note(title)
+        events = [dict(type="text", text=char) for char in "## 1. Overview **bold**"]
+        if rapid:
+            call("input", events=events)
+        else:
+            for event in events:
+                call("input", events=[event])
+        field("1. Overview bold", label="Document editor")
+        source = saved(title)["source"]
+        assert source.startswith("## ") and "Overview **bold**" in source, source
+        reopen(title)
+        field("1. Overview bold", label="Document editor")
+        completed.append("numbered H2 / inline bold / save / reopen / rapid input: " + str(rapid))
+
     # A stationary pointer must not trap the keyboard highlight over Math.
     def option_selected(node):
         # The automation protocol exposes the raw checked bit for list options;

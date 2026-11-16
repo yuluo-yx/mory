@@ -103,6 +103,7 @@ func (a *app) codeBoundaryInput(id string, field *blockField, event ui.InputEven
 
 // Remember the fence before the paragraph editor's Enter handler removes it.
 func (a *app) observeCodeFence(doc *richtext.Document, event ui.InputEvent) {
+	a.observeHeadingNumberInput(doc, event)
 	if event.Kind == ui.InputText {
 		a.queueInlineCode(doc, event.Text)
 	}
