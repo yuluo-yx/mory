@@ -91,6 +91,23 @@ def exercise_editor(call, nodes, act, key, root, fixtures):
         field("1. Overview bold", label="Document editor")
         completed.append("numbered H2 / inline bold / save / reopen / rapid input: " + str(rapid))
 
+    for numbered in (False, True):
+        title = "Editing automatic heading numbers " + str(numbered)
+        new_note(title)
+        events = []
+        for index, text in enumerate(("## " + ("1. " if numbered else "") + "Parent", "### Child", "### Sibling", "## Next")):
+            if index:
+                events.extend([dict(type="key", key="Enter"), dict(type="key", key="Enter")])
+            events.extend(dict(type="text", text=char) for char in text)
+        call("input", events=events)
+        expected = "1. Parent\n\n1.1 Child\n\n1.2 Sibling\n\n2. Next" if numbered else "Parent\n\nChild\n\nSibling\n\nNext"
+        field(expected, label="Document editor")
+        source = saved(title)["source"]
+        assert "### " in source, source
+        reopen(title)
+        field(expected, label="Document editor")
+        completed.append("automatic heading numbers / child / sibling / parent / rapid input / reopen: " + str(numbered))
+
     # A stationary pointer must not trap the keyboard highlight over Math.
     def option_selected(node):
         # The automation protocol exposes the raw checked bit for list options;

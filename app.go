@@ -64,6 +64,7 @@ type app struct {
 	codeFenceInfo                                                                   string
 	inlineCodeInput                                                                 *inlineCodeInput
 	headingNumberInput                                                              *headingNumberInput
+	automaticHeadingInput                                                           *automaticHeadingInput
 	code                                                                            *editor.State
 	richVersion, codeVersion                                                        uint64
 	mode, section, query, folder, order                                             string
@@ -214,6 +215,7 @@ func (a *app) capture() {
 	}
 	a.applyInlineCodeInput()
 	a.applyHeadingNumberInput()
+	a.applyAutomaticHeading()
 	if a.structured() {
 		a.captureBlocks()
 		return
@@ -320,6 +322,7 @@ func (a *app) loadEditors() {
 	a.codeFenceDoc, a.codeFenceInfo = nil, ""
 	a.inlineCodeInput = nil
 	a.headingNumberInput = nil
+	a.automaticHeadingInput = nil
 	a.structuredHeadingVersion = 0
 	a.structuredHeadings = nil
 	a.outlineList = ui.ListState{}

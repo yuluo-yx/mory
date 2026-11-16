@@ -193,5 +193,11 @@ func (a *app) insertEmptyBlock(name string) {
 	a.insertNodes(node)
 	if s := a.blockEditor; s != nil {
 		s.active, s.focus, s.focusAt = text.ID, text.ID, 0
+		if name == "Heading" {
+			doc := a.blockField(text, a.documentColor).doc
+			a.numberEmptyHeading(doc, 2)
+			s.focusAt = doc.Text().Len()
+			a.captureBlocks()
+		}
 	}
 }

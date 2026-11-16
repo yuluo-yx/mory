@@ -32,6 +32,8 @@ Use `#` through `######` followed by a space for Markdown heading levels 1–6. 
 
 To write a numbered heading, type `## ` followed by `1. ` and the heading text. The number stays part of the heading; typing `1. ` in a plain body paragraph creates a numbered list instead.
 
+Once a preceding heading has a number, new empty headings continue its sequence automatically. After `## 1. Overview`, typing `### ` inserts `1.1 `; another `### ` continues with `1.2 `, and `## ` starts `2. `. Selecting a heading level for an empty paragraph works the same way. Unnumbered sections remain unnumbered, and existing headings are never renumbered automatically. Undo removes an automatically inserted prefix.
+
 #### Heading level 4
 
 ##### Heading level 5
