@@ -8,11 +8,11 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// Keep the Latin face first so its spaces and code columns retain their width.
-// Luo then supplies Chinese glyphs before the platform's automatic fallback.
+// Seravek supplies Latin letters, digits, and spaces; Luo supplies Chinese.
+// Code keeps its monospaced Latin face before the Chinese fallback.
 const (
-	Text    = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Luo, sans-serif"
-	Display = "-apple-system, BlinkMacSystemFont, 'SF Pro Display', Luo, sans-serif"
+	Text    = "Seravek, Luo, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif"
+	Display = "Seravek, Luo, -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif"
 	Mono    = "monospace, Luo"
 )
 

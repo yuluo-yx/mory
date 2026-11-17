@@ -485,11 +485,32 @@ func (a *app) blockListView(c *ui.Context, readOnly bool) {
 		if s.emptyBody == nil {
 			s.emptyBody = blocks.Paragraph("")
 		}
+		if a.bodyFocus {
+			a.focusBlock(s.emptyBody.ID, 0)
+		}
 		s.chosen.Clear()
 		ui.Column(c.Key("empty-body")).Grow(1).FillWidth().Children(func() { a.blockText(c, s.emptyBody, false) })
 		return
 	}
 	s.list.Key = func(i int) any { return visible[i].ID }
+	if !readOnly && a.bodyFocus {
+		var target *blocks.Node
+		s.doc.Root.Walk(func(n *blocks.Node) {
+			if target == nil && n.Kind != "title" && (blocks.IsText(n) || n.Kind == "pre") {
+				target = n
+			}
+		})
+		// Documents made only of non-text blocks still need a typing target.
+		if target == nil {
+			target = blocks.Paragraph("")
+			if a.fail(s.doc.Splice(s.doc.Root.ID, 0, 0, target)) {
+				a.bodyFocus = false
+				return
+			}
+		}
+		a.focusBlock(target.ID, 0)
+		visible = s.visibleBlocks()
+	}
 	s.list.Selection = &s.chosen
 	if s.foldPresentation {
 		s.list.Selection = nil
@@ -826,6 +847,12 @@ func (a *app) blockText(c *ui.Context, n *blocks.Node, readOnly bool) {
 		ed.Focus()
 		s.list.Selection = nil
 		field.doc.SetSelection(min(s.focusAt, field.doc.Text().Len()), min(s.focusAt, field.doc.Text().Len()))
+		if a.bodyFocus {
+			if a.bodyInput != "" {
+				field.doc.InsertText(a.bodyInput)
+			}
+			a.bodyFocus, a.bodyInput = false, ""
+		}
 		s.focus = ""
 	}
 	if !readOnly {
@@ -1107,6 +1134,12 @@ func (a *app) blockCode(c *ui.Context, n *blocks.Node, readOnly bool) {
 		s.list.Selection = nil
 		at := min(s.focusAt, len([]rune(f.code.Buffer.String())))
 		f.code.Select(at, at)
+		if a.bodyFocus {
+			if a.bodyInput != "" {
+				f.code.Insert(a.bodyInput)
+			}
+			a.bodyFocus, a.bodyInput = false, ""
+		}
 		s.focus = ""
 	}
 	if !readOnly {
@@ -1203,7 +1236,7 @@ func (a *app) blockCountdown(c *ui.Context, n *blocks.Node, readOnly bool) {
 		c.After(time.Second)
 	}
 	ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
-		ui.Textf(c, a.tr("%02d:%02d"), remaining/60, remaining%60).FontSize(30).Font("Menlo")
+		ui.Textf(c, a.tr("%02d:%02d"), remaining/60, remaining%60).FontSize(30)
 		if !readOnly {
 			if ghostButton(c, a.tr("Start / reset")).Clicked() {
 				a.fail(a.blockEditor.doc.Transform(n.ID, func(n *blocks.Node) { n.Set("start-time", fmt.Sprint(time.Now().UnixMilli())) }))

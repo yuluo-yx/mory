@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
-	"github.com/egoist/mygo/ui/editor"
 	"github.com/egoist/mygo/ui/markdown"
 	"github.com/egoist/mygo/ui/richtext"
 	"github.com/yuluo-yx/mory/internal/blocks"
@@ -1037,12 +1036,12 @@ func (a *app) editorView(c *ui.Context) {
 					}
 					a.richDocumentEditor(c)
 				case "Source":
-					editor.View(c.Key(n.ID), a.code).Label(a.tr("Source editor")).Grow(1).FillWidth().MinHeight(0)
+					a.sourceEditor(c).Grow(1).FillWidth().MinHeight(0)
 				case "Split":
 					// Both panes must use the remaining height below the document header.
 					// A centered row leaves the source editor at zero height and lets the preview overflow.
 					ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Gap(22).Children(func() {
-						editor.View(c.Key(n.ID), a.code).Label(a.tr("Source editor")).Grow(1).MinWidth(0).MinHeight(0)
+						a.sourceEditor(c).Grow(1).MinWidth(0).MinHeight(0)
 						ui.Box(c).Width(1).Shrink(0).Background(t.Border)
 						ui.Column(c).Grow(1).MinWidth(0).MinHeight(0).Clip().Children(func() { a.splitPreview(c) })
 					})

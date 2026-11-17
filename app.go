@@ -49,6 +49,9 @@ type app struct {
 	cssText, cssName                                                                string
 	services                                                                        ui.Services
 	textFocused                                                                     bool
+	bodyFocus                                                                       bool
+	bodyInput                                                                       string
+	submittedTitle                                                                  string
 	reminderSources                                                                 map[string]string
 	reminders                                                                       map[string][]reminder
 	notified                                                                        map[string]bool
@@ -319,6 +322,9 @@ func (a *app) loadEditors() {
 	}
 	n := a.current
 	a.blockEditor = nil
+	a.bodyFocus = false
+	a.bodyInput = ""
+	a.submittedTitle = ""
 	a.codeFenceDoc, a.codeFenceInfo = nil, ""
 	a.inlineCodeInput = nil
 	a.headingNumberInput = nil

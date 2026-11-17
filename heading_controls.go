@@ -123,6 +123,15 @@ func (a *app) richDocumentEditor(c *ui.Context) {
 			OnLink: a.openLink, OnLinkCommand: func() { a.linkURL = doc.Formatting().Link; a.linkOpen = true },
 			Theme: a.docTheme.Rich(c.Theme(), font),
 		}).Fill()
+		if a.bodyFocus {
+			doc.SetSelection(0, 0)
+			if a.bodyInput != "" {
+				doc.InsertText(a.bodyInput)
+			}
+			ed.Focus()
+			a.bodyFocus = false
+			a.bodyInput = ""
+		}
 		ed.ObserveInput(func(event ui.InputEvent) { a.observeCodeFence(doc, event) })
 		ed.OnPaste(func(text string) bool { a.queueInlineCode(doc, text); return false })
 		a.textFocused = ed.Focused()
