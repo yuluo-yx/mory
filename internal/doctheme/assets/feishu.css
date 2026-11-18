@@ -123,7 +123,7 @@
 .page {
   background-color: #ffffff;
   color: #1f2329;
-  font-family: "Helvetica Neue", "Luo";
+  font-family: "Seravek", "Luo", "Helvetica Neue";
   font-size: 16px;
   line-height: 26px;
   max-width: 820px;
@@ -139,7 +139,7 @@ p {
 }
 
 .title {
-  font-family: "Helvetica Neue", "Luo";
+  font-family: "Seravek", "Luo", "Helvetica Neue";
   font-size: 34px;
   line-height: 55.25px;
   font-weight: 500;

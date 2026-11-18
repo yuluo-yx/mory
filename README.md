@@ -31,6 +31,8 @@ Mory is a native macOS writing app for Markdown, MDX, and Feishu/Lark DocxXML do
 
 The editable feature tour is available from **Help → Open welcome guide**. A new library starts with both English and Chinese welcome documents. The complete source is also available as [the English guide](resources/welcome.md) and [the Chinese guide](resources/welcome.zh-CN.md).
 
+Press Enter in a document's title to move the caret to the start of its body in Write, Source, or Split mode. Existing body text is preserved.
+
 ## Get started
 
 Download **Mory 0.0.1 Alpha** for your Mac:
@@ -44,7 +46,7 @@ Download **Mory 0.0.1 Alpha** for your Mac:
 
 Open Mory to create a local library, then use the English or Chinese welcome guide as the starting point. The complete editor tour and syntax reference live in [`resources/welcome.md`](resources/welcome.md) and [`resources/welcome.zh-CN.md`](resources/welcome.zh-CN.md).
 
-Mory bundles [Luo Regular](https://github.com/tw93/Luo) for Chinese text in its native interface and built-in writing styles. The font works offline without a system installation. Latin text and code retain their native fonts, while Chinese characters outside Luo's coverage and emoji use macOS fallback fonts. Custom CSS keeps its authored font cascade; add `"Luo"` after a Latin family to opt in, for example `font-family: "Helvetica Neue", "Luo", sans-serif`. Native macOS menus and HTML/PDF export retain their existing typography. Font provenance and the SIL OFL 1.1 notice are recorded in [`THIRD_PARTY.md`](THIRD_PARTY.md).
+Mory bundles [Luo Regular](https://github.com/tw93/Luo) for Chinese text in its native interface and built-in writing styles. The font works offline without a system installation. English letters and digits use the system-provided Seravek font, while code retains its monospaced font. Seravek is not bundled; unavailable glyphs and emoji use macOS fallback fonts. Custom CSS keeps its authored font cascade; use `font-family: "Seravek", "Luo", sans-serif` to opt in. Native macOS menus and HTML/PDF export retain their existing typography. Font provenance and the SIL OFL 1.1 notice are recorded in [`THIRD_PARTY.md`](THIRD_PARTY.md).
 
 ## Library and recovery
 

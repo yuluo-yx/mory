@@ -412,6 +412,8 @@ func (t *Theme) Rich(base *ui.Theme, font ui.Font) *richtext.Theme {
 	}
 	if base.Dark {
 		r.Text = base.Text
+		// Light stylesheets can specify a dark caret that disappears on dark pages.
+		r.Caret = base.Text
 		r.Marker = base.Text
 		r.Link = ui.Hex("#8db2ff")
 		r.QuoteText = base.TextMuted

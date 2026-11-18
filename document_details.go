@@ -9,6 +9,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
 	"github.com/yuluo-yx/mory/internal/blocks"
 	"github.com/yuluo-yx/mory/internal/document"
 	"github.com/yuluo-yx/mory/internal/typography"
@@ -74,6 +75,20 @@ func (a *app) syncMetadata() {
 }
 
 const documentCoverHeight, documentCoverBottomGap float32 = 180, 16
+
+func (a *app) sourceEditor(c *ui.Context) ui.Element {
+	ed := editor.View(c.Key(a.current.ID), a.code).Label(a.tr("Source editor"))
+	if a.bodyFocus {
+		a.code.Select(0, 0)
+		if a.bodyInput != "" {
+			a.code.Insert(a.bodyInput)
+		}
+		ed.Focus()
+		a.bodyFocus = false
+		a.bodyInput = ""
+	}
+	return ed
+}
 
 func (a *app) documentHeader(c *ui.Context) {
 	t := c.Theme()
@@ -210,7 +225,31 @@ func (a *app) documentHeader(c *ui.Context) {
 				})
 			})
 		}
-		if ui.TextInput(c, &n.Title).Label(a.tr("Document title")).Placeholder(a.tr("Untitled")).PlaceholderColor(t.TextMuted).Font(typography.Display).FontSize(32).Bold().LetterSpacing(-0.5).Grow(1).Background(ui.Transparent).Border(0, ui.Transparent).Changed() {
+		title := ui.TextInput(c, &n.Title).Label(a.tr("Document title")).Placeholder(a.tr("Untitled")).PlaceholderColor(t.TextMuted).Font(typography.Display).FontSize(32).Bold().LetterSpacing(-0.5).Grow(1).Background(ui.Transparent).Border(0, ui.Transparent)
+		title.OnTextKey(func(k ui.TextKey) bool {
+			if k.Key != ui.KeyEnter || k.Mods != 0 || a.mode == "Read" {
+				return false
+			}
+			// Handle Enter as it arrives; Submitted is read only after the entire
+			// native event batch, when more text may already have reached the title.
+			if !a.bodyFocus {
+				a.submittedTitle = k.Text()
+				a.bodyFocus = true
+			}
+			return true
+		})
+		title.ObserveInput(func(event ui.InputEvent) {
+			if a.bodyFocus && event.Kind == ui.InputText {
+				// Native text clients bypass HandleInput. Preserve the submitted
+				// title and move text received before the focus frame into the body.
+				a.bodyInput += event.Text
+			}
+		})
+		changed := title.Changed()
+		if a.bodyFocus {
+			n.Title = a.submittedTitle
+		}
+		if changed {
 			a.syncMetadata()
 		}
 	})

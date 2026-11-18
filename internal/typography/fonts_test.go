@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/yuluo-yx/mory/internal/doctheme"
 )
 
 func TestBundledFontAndFallback(t *testing.T) {
@@ -44,11 +45,12 @@ func TestBundledFontAndFallback(t *testing.T) {
 			}
 		}
 		for _, sample := range []struct{ text, family, fallback string }{
-			{"Mory 0123 iW", Text, "-apple-system"},
-			{"Mory 0123 iW", Display, "-apple-system"},
+			{"Mory ABC xyz 0123456789 iW", Text, "Seravek"},
+			{"Mory ABC xyz 0123456789 iW", Display, "Seravek"},
 			{"func main() 0123", Mono, "monospace"},
-			{"🌱", Text, "-apple-system"},
-			{"體龍𠮷", Text, "-apple-system"},
+			// Core Text chooses fallback metrics from the leading Latin face.
+			{"🌱", Text, "Seravek"},
+			{"體龍𠮷", Text, "Seravek"},
 		} {
 			got := render(sample.text, sample.family, weight)
 			want := render(sample.text, sample.fallback, weight)
@@ -56,8 +58,26 @@ func TestBundledFontAndFallback(t *testing.T) {
 				t.Fatalf("fallback changed for %q: family=%q weight=%d", sample.text, sample.family, weight)
 			}
 		}
+		for _, name := range doctheme.Names("") {
+			theme := doctheme.Parse(doctheme.Builtin(name))
+			body := theme.Font(".page", ui.Font{Family: Text})
+			for _, selector := range []string{".page", ".title", "h1", "h2", "h3", "h4", "h5", "h6"} {
+				family := theme.Font(selector, body).Family
+				for _, sample := range []struct{ text, family string }{
+					{"Mory 0123456789", "Seravek"},
+					{"中文落文", "Luo"},
+				} {
+					if !bytes.Equal(render(sample.text, family, weight).Pix, render(sample.text, sample.family, weight).Pix) {
+						t.Fatalf("unexpected theme glyphs: theme=%q selector=%q text=%q weight=%d", name, selector, sample.text, weight)
+					}
+				}
+			}
+		}
 	}
 	if bytes.Equal(render("中文落文", Text, 400).Pix, render("中文落文", "-apple-system", 400).Pix) {
 		t.Fatal("Luo silently fell back to the system Chinese font")
+	}
+	if bytes.Equal(render("Mory 0123456789", Text, 400).Pix, render("Mory 0123456789", "-apple-system", 400).Pix) {
+		t.Fatal("Seravek silently fell back to the system Latin font")
 	}
 }

@@ -412,4 +412,32 @@ def exercise_editor(call, nodes, act, key, root, fixtures):
         assert not (root / "library" / "notes" / (note["id"] + ".json")).exists()
         completed.append("trash actions / restore content / permanent removal: " + layout)
 
+    # Enter in the document title must hand typing to the body without a click.
+    for source in ("", "Existing body", "```text\nExisting body\n```\n"):
+        for rapid in (False, True):
+            title = "Editing title Enter " + str(len(source)) + " " + str(rapid)
+            if source:
+                imported(title, source)
+            else:
+                new_note(title)
+            pointer(control("Document title"))
+            key("Cmd+End")
+            events = [dict(type="key", key="Enter"), dict(type="text", text="Body probe "),
+                      dict(type="text", text="continued ")]
+            if rapid:
+                call("input", events=events)
+            else:
+                for event in events:
+                    call("input", events=[event])
+            expected = "Body probe continued " + ("Existing body" if source else "")
+            wait("Title Enter did not hand typing to the body", lambda tree: any(
+                n.get("label") != "Document title" and n.get("value", "").rstrip("\n") == expected
+                and focused(n) for n in tree))
+            note = saved(title)
+            assert note["title"] == title and expected in note["source"], note
+            reopen(title)
+            wait("Title Enter body did not persist", lambda tree: any(
+                n.get("label") != "Document title" and expected.strip() in n.get("value", "") for n in tree))
+            completed.append("title Enter / body focus / typing / save / reopen / rapid: " + str(rapid))
+
     print("Native editing regressions passed:\n" + "\n".join("  - " + case for case in completed), flush=True)
