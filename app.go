@@ -68,6 +68,7 @@ type app struct {
 	inlineCodeInput                                                                 *inlineCodeInput
 	headingNumberInput                                                              *headingNumberInput
 	automaticHeadingInput                                                           *automaticHeadingInput
+	richHeadingLevels                                                               []int
 	code                                                                            *editor.State
 	richVersion, codeVersion                                                        uint64
 	mode, section, query, folder, order                                             string
@@ -149,6 +150,7 @@ func (a *app) ensureRichDocument() {
 		return
 	}
 	a.doc = richtext.NewDocument(a.richText(a.current.Source))
+	a.richHeadingLevels = richHeadingLevels(a.doc.Text())
 	a.richPending = false
 	a.richSource = a.current.Source
 	a.richVersion = a.doc.Version()
@@ -224,6 +226,7 @@ func (a *app) capture() {
 		return
 	}
 	if a.mode == "Write" && a.doc != nil && a.doc.Version() != a.richVersion {
+		a.renumberRichHeadings()
 		a.richVersion = a.doc.Version()
 		if a.promoteRichCode() {
 			return
@@ -679,7 +682,9 @@ func (a *app) flushSource() {
 	if a.blockPending {
 		a.setCurrentSource(a.blockEditor.doc.Source())
 		a.blockEditor.sourceRevision = a.sourceRevision
-		a.richSource = a.current.Source
+		// a.doc is an individual block field, not a rich snapshot of this source.
+		// Reopening a rich-safe note must rebuild the whole document.
+		a.richSource = "\x00"
 		a.blockPending = false
 	}
 	if a.richPending {

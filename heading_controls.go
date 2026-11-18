@@ -178,11 +178,18 @@ type headingNumberInput struct {
 	version uint64
 }
 
+func headingSpaceEvent(event ui.InputEvent) bool {
+	return event.Kind == ui.InputText && event.Text == " " ||
+		event.Kind == ui.InputKeyDown && event.Key == ui.KeySpace && event.Mods&^ui.Shift == 0
+}
+
 func (a *app) observeHeadingNumberInput(doc *richtext.Document, event ui.InputEvent) {
 	// Flush before the next event as well as before rendering: native events can
 	// arrive in a batch without a frame between the heading and list shortcuts.
 	a.applyHeadingNumberInput()
-	if event.Kind != ui.InputText || event.Text != " " || !headingNumberPrefix(doc) {
+	// macOS can send committed text directly to the native text client without
+	// an InputText event. Capture the prefix on keydown before that conversion.
+	if !headingSpaceEvent(event) || !headingNumberPrefix(doc) {
 		return
 	}
 	_, caret := doc.Selection()
@@ -282,6 +289,7 @@ func (a *app) restoreUnfoldedEditor() {
 		return
 	}
 	a.doc = richtext.NewDocument(a.richText(a.current.Source))
+	a.richHeadingLevels = richHeadingLevels(a.doc.Text())
 	a.richSource, a.richVersion = a.current.Source, a.doc.Version()
 	a.blockEditor = nil
 	ordinal := 0

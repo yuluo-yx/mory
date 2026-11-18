@@ -73,6 +73,8 @@ type blockSession struct {
 	visibleCacheVersion    uint64
 	visibleCacheFold       uint64
 	foldVersion            uint64
+	numberingReplay        bool
+	headingPositions       []headingPosition
 }
 
 const maxCachedBlockFields = 256
@@ -90,7 +92,7 @@ func newBlockSession(source, format string, sourceRevision uint64) (*blockSessio
 	if err != nil {
 		return nil, err
 	}
-	return &blockSession{doc: doc, fields: map[string]*blockField{}, version: doc.Version, sourceRevision: sourceRevision, selection: map[string]bool{}, images: map[string]*ui.Bitmap{}, imagePending: map[string]bool{}, imageErrors: map[string]bool{}, tables: map[string]tableCache{}}, nil
+	return &blockSession{doc: doc, fields: map[string]*blockField{}, version: doc.Version, sourceRevision: sourceRevision, selection: map[string]bool{}, images: map[string]*ui.Bitmap{}, imagePending: map[string]bool{}, imageErrors: map[string]bool{}, tables: map[string]tableCache{}, headingPositions: blockHeadingPositions(doc)}, nil
 }
 
 func (s *blockSession) insideTable(id string) bool {
@@ -159,6 +161,9 @@ func (a *app) captureBlocks() {
 	if s == nil {
 		return
 	}
+	// Ordinary typing cannot change heading order. Inspect the whole outline
+	// only after structural commands or a field changes its paragraph shape.
+	headingStructureChanged := s.doc.Version != s.version
 	for id, f := range s.fields {
 		docChanged := f.doc != nil && f.doc.Version() != f.version
 		codeChanged := f.code != nil && f.code.Buffer.Version() != f.version
@@ -177,6 +182,9 @@ func (a *app) captureBlocks() {
 		if f.doc != nil && f.doc.Version() != f.version {
 			f.version = f.doc.Version()
 			replacement := blocks.FromRich(f.doc.Text(), n)
+			if len(replacement) != 1 || headingLevel(replacement[0]) != headingLevel(n) {
+				headingStructureChanged = true
+			}
 			for _, node := range replacement {
 				if node.Kind == "pre" {
 					a.applyCodeFence(f.doc, node)
@@ -232,6 +240,9 @@ func (a *app) captureBlocks() {
 		}
 	}
 	if s.doc.Version != s.version {
+		if headingStructureChanged {
+			a.renumberBlockHeadings()
+		}
 		s.version = s.doc.Version
 		// Match the large rich/source editors: the block tree is authoritative
 		// until autosave or a source-consuming command flushes it. Ordinary
@@ -270,7 +281,9 @@ func (a *app) blockUndo(redo bool) {
 	if node := s.doc.Find(active); node != nil && (blocks.IsText(node) || node.Kind == "pre") {
 		a.focusBlock(active, caret)
 	}
+	s.numberingReplay = true
 	a.captureBlocks()
+	s.numberingReplay = false
 }
 
 func (a *app) blockField(n *blocks.Node, color ui.Color) *blockField {

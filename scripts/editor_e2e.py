@@ -7,7 +7,7 @@ import json
 import time
 
 
-def exercise_editor(call, nodes, act, key, root, fixtures):
+def exercise_editor(call, nodes, act, key, root, fixtures, native_space):
     completed = []
 
     def wait(description, predicate):
@@ -43,6 +43,11 @@ def exercise_editor(call, nodes, act, key, root, fixtures):
     def focused(node):
         return call("tree").get("focus") == node["id"]
 
+    def focused_field(value=None, label=None):
+        target = field(value, label)
+        return wait("Editor did not receive focus: " + target["label"], lambda tree: next((n for n in tree
+                    if n.get("label") == target["label"] and focused(n)), None))
+
     def saved(title):
         call("menu", path=["File", "Save"])
         nodes()
@@ -75,6 +80,55 @@ def exercise_editor(call, nodes, act, key, root, fixtures):
 
     # Numeric heading text must survive the same keystrokes that create lists
     # in ordinary body paragraphs, including a burst of native input events.
+    for structured in (False, True):
+        for prefix in ("1.", "12)"):
+            title = "Editing native heading space " + str(structured) + " " + prefix
+            source = "## " + prefix
+            if structured:
+                source += "\n\n| A | B |\n| --- | --- |\n| one | two |\n"
+            imported(title, source)
+            pointer(field(prefix))
+            key("Cmd+End")
+            native_space()
+            field(prefix + " ")
+            source = saved(title)["source"]
+            # Block serialization can trim an otherwise empty heading's trailing space.
+            assert source.replace("\\.", ".").replace("\\)", ")").startswith("## " + prefix), source
+            key("Cmd+Z")
+            field(prefix)
+            key("Cmd+Shift+Z")
+            field(prefix + " ")
+            key("Cmd+End")
+            type_text("Overview")
+            field(prefix + " Overview")
+            note = saved(title)
+            source = note["source"].replace("\\.", ".").replace("\\)", ")")
+            assert source.startswith("## " + prefix + " Overview"), note
+            reopen(title)
+            field(prefix + " Overview")
+            completed.append("native text-client space / heading / undo / redo / save / reopen: " + title)
+
+    for structured in (False, True):
+        title = "Editing native heading continuation " + str(structured)
+        source = "## 1. Parent\n\nDraft"
+        if structured:
+            source += "\n\n| A | B |\n| --- | --- |\n| one | two |\n"
+        imported(title, source)
+        pointer(field("Draft") if structured else field(label="Document editor"))
+        key("Ctrl+End")
+        for _ in range(5):
+            key("Backspace")
+        type_text("###")
+        native_space()
+        field("1.1 " if structured else "1. Parent\n1.1 ")
+        type_text("Child")
+        field("1.1 Child" if structured else "1. Parent\n1.1 Child")
+        source = saved(title)["source"].replace("\\.", ".")
+        assert "### 1.1 Child" in source, source
+        reopen(title)
+        field("1.1 Child" if structured else "1. Parent\n1.1 Child")
+        completed.append("native text-client space / new child heading / continuation / reopen: " + str(structured))
+
     for rapid in (False, True):
         title = "Editing numbered heading " + str(rapid)
         new_note(title)
@@ -107,6 +161,57 @@ def exercise_editor(call, nodes, act, key, root, fixtures):
         reopen(title)
         field(expected, label="Document editor")
         completed.append("automatic heading numbers / child / sibling / parent / rapid input / reopen: " + str(numbered))
+
+    for structured in (False, True):
+        title = "Editing heading reordering " + str(structured)
+        source = "## 1. First\n\n## 2. Second\n\n## 3. Third"
+        if structured:
+            source += "\n\n| A | B |\n| --- | --- |\n| one | two |\n"
+        imported(title, source)
+
+        def numbered_fields(titles):
+            if structured:
+                for text in titles:
+                    field(text)
+            else:
+                field("\n".join(titles), label="Document editor")
+
+        original = ["1. First", "2. Second", "3. Third"]
+        numbered_fields(original)
+        pointer(field("2. Second") if structured else field(label="Document editor"))
+        if not structured:
+            key("Ctrl+Home")
+            key("Down")
+        key("Cmd+Ctrl+3")
+        demoted = ["1. First", "1.1 Second", "2. Third"]
+        numbered_fields(demoted)
+        key("Cmd+Z")
+        numbered_fields(original)
+        key("Cmd+Shift+Z")
+        numbered_fields(demoted)
+        source = saved(title)["source"].replace("\\.", ".")
+        assert "### 1.1 Second" in source, source
+        reopen(title)
+        numbered_fields(demoted)
+
+        pointer(field("1.1 Second") if structured else field(label="Document editor"))
+        if not structured:
+            key("Ctrl+Home")
+            key("Down")
+        key("Cmd+Ctrl+2")
+        numbered_fields(original)
+
+        # Removing a heading from the sequence must renumber later siblings.
+        pointer(field("1. First") if structured else field(label="Document editor"))
+        key("Ctrl+Home")
+        key("Cmd+Ctrl+0")
+        numbered_fields(["1. First", "1. Second", "2. Third"])
+        source = saved(title)["source"].replace("\\.", ".")
+        assert not source.startswith("## "), source
+        assert "## 1. Second" in source and "## 2. Third" in source, source
+        key("Cmd+Z")
+        numbered_fields(original)
+        completed.append("heading level / renumber / undo / redo / save / reopen: " + str(structured))
 
     # A stationary pointer must not trap the keyboard highlight over Math.
     def option_selected(node):
@@ -198,12 +303,17 @@ def exercise_editor(call, nodes, act, key, root, fixtures):
         pointer(field("Current"))
         select_all()
         select_all()
-        control("Entire document body selected")
+        # Autosave can replace the transient status message. Verify the actual
+        # selection, then deletion and undo, rather than a timing-sensitive toast.
+        wait("Select All did not include both body blocks", lambda tree: len([
+            n for n in tree if n.get("label", "").startswith("Block actions ")
+            and "checked" in n.get("states", [])]) == 2)
         control("Delete selected blocks")
         key("Backspace")
-        field("")
+        focused_field("")
         source = saved(title)["source"]
         assert "Current" not in source and "Outside" not in source, source
+        focused_field("")
         key("Cmd+Z")
         field("Current")
         field("Outside")
@@ -297,14 +407,13 @@ def exercise_editor(call, nodes, act, key, root, fixtures):
         key("Cmd+End")
         key("Down")
         if following:
-            next_field = field("Following heading")
-            assert focused(next_field), "Boundary did not enter following heading"
+            focused_field("Following heading")
         else:
-            assert focused(field("")), "Boundary did not create a writable paragraph"
+            focused_field("")
             key("Backspace")
-            assert focused(field(label="Code editor")), "Empty paragraph could not return to code"
+            focused_field(label="Code editor")
             key("Down")
-            assert focused(field("")), "Repeated exit lost the writable paragraph"
+            focused_field("")
         pointer(control("Write below code"))
         type_text("Outside")
         field("Outside")
