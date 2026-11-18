@@ -57,11 +57,16 @@ def exercise(binary, root):
                     # macOS. Target the test process, not another Mory instance.
                     subprocess.run(["osascript", "-e", 'tell application "System Events"',
                                     "-e", f'set testProcess to first application process whose unix id is {process.pid}',
-                                    "-e", 'set frontmost of testProcess to true', "-e", 'end tell'], check=True)
+                                    "-e", 'set frontmost of testProcess to true',
+                                    # An active process can still have no key window after
+                                    # native menus. Raise the window without changing its
+                                    # focused editor or caret under test.
+                                    "-e", 'perform action "AXRaise" of first window of testProcess',
+                                    "-e", 'end tell'], check=True)
                     deadline = time.monotonic() + 5
                     while not content_focused():
                         if time.monotonic() > deadline:
-                            raise AssertionError("Native content window did not activate before input")
+                            raise AssertionError(f"Native content window did not activate before input: {call('windows')}")
                         time.sleep(0.02)
             stream.write((json.dumps(dict(id=1, method=method, params=params)) + "\n").encode())
             stream.flush()
@@ -72,6 +77,10 @@ def exercise(binary, root):
             # when the window is occluded before the next command reads or saves.
             if method in {"act", "input"}:
                 call("capture")
+            if method == "input":
+                # Input can schedule another frame to transfer focus. Wait for
+                # the native surface to settle before sending dependent input.
+                call("idle", timeout=5000)
             return result.get("result", {})
 
         def nodes():
@@ -97,6 +106,15 @@ def exercise(binary, root):
         def key(name):
             call("input", events=[dict(type="key", key=name)])
             time.sleep(0.04)
+
+        def native_space():
+            # Match macOS: keydown followed by TextInputClient.ReplaceText,
+            # bypassing InputText observers. Target only the already focused
+            # field, avoiding global keyboard focus and modifier interference.
+            focused = call("tree")["focus"]
+            key("Space")
+            assert call("tree")["focus"] == focused, "Space moved editor focus"
+            call("act", id=focused, action="insertText", text=" ")
 
         def wait_editor_text(label, text):
             # Input events are queued by the native surface. A capture alone can
@@ -251,7 +269,7 @@ def exercise(binary, root):
                          if json.loads(p.read_text())["title"] == "Native code undo")
         fenced_parts = code_note["source"].split("```")
         assert len(fenced_parts) == 3 and "package main" in fenced_parts[1] and "Mouse paragraph" in fenced_parts[2] and "Outside code" in fenced_parts[2], code_note["source"]
-        exercise_editor(call, nodes, act, key, root, fixtures)
+        exercise_editor(call, nodes, act, key, root, fixtures, native_space)
         act("All notes")
         act("Grid view")
         act("Note Native code undo")

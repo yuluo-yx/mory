@@ -195,7 +195,7 @@ func (a *app) insertEmptyBlock(name string) {
 		s.active, s.focus, s.focusAt = text.ID, text.ID, 0
 		if name == "Heading" {
 			doc := a.blockField(text, a.documentColor).doc
-			a.numberEmptyHeading(doc, 2)
+			a.numberHeading(doc, 2)
 			s.focusAt = doc.Text().Len()
 			a.captureBlocks()
 		}

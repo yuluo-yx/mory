@@ -228,11 +228,11 @@ func (a *app) setHeading(level int) {
 		}))
 		delete(s.fields, n.ID)
 		a.doc = a.blockField(s.doc.Find(n.ID), a.documentColor).doc
-		a.numberEmptyHeading(a.doc, level)
+		a.numberHeading(a.doc, level)
 		a.captureBlocks()
 	} else {
 		a.doc.SetHeading(level)
-		a.numberEmptyHeading(a.doc, level)
+		a.numberHeading(a.doc, level)
 		a.capture()
 	}
 }
