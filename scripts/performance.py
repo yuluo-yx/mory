@@ -64,21 +64,22 @@ class NativeRun:
         self.monitor.start()
         self.channel = socket.socket(socket.AF_UNIX)
         self.channel.settimeout(timeout)
-        while True:
-            if self.process.poll() is not None or time.perf_counter() - begin > 30:
-                self.close()
-                raise RuntimeError("Native benchmark did not start")
-            try:
-                self.channel.connect(str(self.sock_path))
-                break
-            except (FileNotFoundError, ConnectionRefusedError):
-                # A Unix socket path exists after bind, before listen accepts
-                # connections. Wait for actual readiness, not just the file.
-                time.sleep(.01)
-        self.stream = self.channel.makefile("rwb")
         try:
+            while True:
+                if self.process.poll() is not None or time.perf_counter() - begin > 30:
+                    raise RuntimeError("Native benchmark did not start")
+                try:
+                    self.channel.connect(str(self.sock_path))
+                    break
+                except (FileNotFoundError, ConnectionRefusedError):
+                    # A Unix socket path exists after bind, before listen accepts
+                    # connections. Wait for actual readiness, not just the file.
+                    time.sleep(.01)
+            self.stream = self.channel.makefile("rwb")
             self.call("capture")
         except Exception:
+            # Constructor failures never reach the caller's finally block.
+            # Join the child before temporary fixtures are removed.
             self.close()
             raise
         self.startup_ms = (time.perf_counter() - begin) * 1000

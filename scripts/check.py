@@ -12,6 +12,7 @@ def run(*args, env=None):
 
 root = Path(__file__).resolve().parent.parent
 os.chdir(root)
+run("python3", "-m", "unittest", "discover", "-s", "scripts", "-p", "*_test.py")
 output = root / ".test-output"
 output.mkdir(exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="check-", dir=output) as temp:
