@@ -16,7 +16,7 @@ import (
 // sizing formula. The same text must stay reachable after resize and restyling.
 func TestBlockTextFitsRenderedContent(t *testing.T) {
 	for _, theme := range []string{"Craft", "Notion", "Feishu"} {
-		for _, width := range []int{1000, 1440} {
+		for _, width := range []int{800, 1000, 1440} {
 			t.Run(fmt.Sprintf("%s/%d", theme, width), func(t *testing.T) {
 				a, tt := xmlApp(t, `<h1>万卡集群从开始到运行起来模型需要什么？</h1><p>Follow-up paragraph.</p>`)
 				a.docTheme = doctheme.Parse(doctheme.Builtin(theme))
@@ -53,6 +53,36 @@ func TestBlockTextFitsRenderedContent(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestCaretContrastAcrossAppearanceChanges(t *testing.T) {
+	luminance := func(c ui.Color) float64 {
+		linear := func(channel uint8) float64 {
+			value := float64(channel) / 255
+			if value <= 0.04045 {
+				return value / 12.92
+			}
+			return math.Pow((value+0.055)/1.055, 2.4)
+		}
+		return 0.2126*linear(c.R) + 0.7152*linear(c.G) + 0.0722*linear(c.B)
+	}
+	for _, name := range []string{"Craft", "Notion", "Feishu", "Obsidian", "Docusaurus"} {
+		t.Run(name, func(t *testing.T) {
+			a := testApp(t)
+			a.docTheme = doctheme.Parse(doctheme.Builtin(name))
+			// Switching back must reconstruct the light colors, not reuse dark
+			// state. Exercise the page and editor themes together.
+			for _, base := range []*ui.Theme{ui.LightTheme(), ui.DarkTheme(), ui.LightTheme()} {
+				page := a.pageTheme(base)
+				rich := a.docTheme.Rich(page, ui.Font{Size: 17})
+				foreground, background := luminance(rich.Caret), luminance(page.Background)
+				contrast := (max(foreground, background) + 0.05) / (min(foreground, background) + 0.05)
+				if rich.Caret.A != 255 || contrast < 3 {
+					t.Fatalf("dark=%t: caret=%v background=%v contrast=%.2f", base.Dark, rich.Caret, page.Background, contrast)
+				}
+			}
+		})
 	}
 }
 

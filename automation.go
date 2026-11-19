@@ -3,14 +3,29 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
+	"strconv"
+
 	"github.com/egoist/mygo"
 	_ "github.com/egoist/mygo/plugins/automation"
 	"github.com/yuluo-yx/mory/internal/document"
-	"os"
-	"path/filepath"
 )
 
+// Native tests must neither inherit nor overwrite the user's window geometry.
+type e2eWindowStore struct{ states map[string]mygo.WindowState }
+
+func (s *e2eWindowStore) LoadWindowStates() (map[string]mygo.WindowState, error) {
+	return s.states, nil
+}
+
+func (s *e2eWindowStore) SaveWindowStates(states map[string]mygo.WindowState) error {
+	s.states = states
+	return nil
+}
+
 func init() {
+	mygo.App.SetWindowStateStore(&e2eWindowStore{})
 	if dir := os.Getenv("MORY_E2E_FIXTURES"); dir != "" {
 		// Exercise the native print renderer without leaving an interactive
 		// printer-selection sheet open on the CI desktop.
@@ -40,6 +55,11 @@ func init() {
 		}
 	}
 	nativeReadyHook = func(a *app) {
+		width, _ := strconv.Atoi(os.Getenv("MORY_E2E_WIDTH"))
+		height, _ := strconv.Atoi(os.Getenv("MORY_E2E_HEIGHT"))
+		if width > 0 && height > 0 {
+			a.win.SetContentSize(width, height)
+		}
 		if path := os.Getenv("MORY_E2E_PDF"); path != "" {
 			a.exportPDF(path, document.HTML("Native PDF 世界", "# Export verification\n\nHello 世界.\n\n| A | B |\n| --- | --- |\n| one | two |\n"))
 		}

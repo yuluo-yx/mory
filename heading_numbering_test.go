@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math/rand/v2"
 	"slices"
 	"strings"
 	"testing"
@@ -276,6 +277,154 @@ func TestExistingParagraphBecomesNumberedHeading(t *testing.T) {
 		if got := currentHeadingTitles(a); !slices.Equal(got, []string{"1. Parent", "1.1 Draft continued"}) {
 			t.Fatalf("caret: %v", got)
 		}
+	}
+}
+
+func TestHeadingConversionPreservesCaretAndSingleUndo(t *testing.T) {
+	for _, structured := range []bool{false, true} {
+		t.Run(fmt.Sprint(structured), func(t *testing.T) {
+			a := testApp(t)
+			a.createNote("## 1. Parent\n\nDraft 世界", "Heading history")
+			label := "Document editor"
+			if structured {
+				if !a.enableBlocks() {
+					t.Fatal(a.problem)
+				}
+				children := a.blockEditor.doc.Root.Children
+				label = "Block text " + children[len(children)-1].ID
+			}
+			tt := ui.NewTester(a.view, 1280, 900)
+			click(t, tt, label)
+			doc := a.doc
+			start := strings.Index(doc.Text().String(), "Draft")
+			doc.SetSelection(start+2, start+2)
+			a.setHeading(3)
+			tt.Frame()
+			anchor, caret := a.doc.Selection()
+			if anchor != start+6 || caret != start+6 {
+				t.Errorf("conversion moved caret: %d,%d; want %d", anchor, caret, start+6)
+			}
+			tt.Key(ui.Cmd, ui.KeyZ)
+			a.capture()
+			if got := currentHeadingTitles(a); !slices.Equal(got, []string{"1. Parent"}) {
+				t.Fatalf("one undo did not restore paragraph: %v", got)
+			}
+			if !strings.Contains(a.current.Source, "Draft 世界") || strings.Contains(a.current.Source, "1.1 Draft") {
+				t.Fatal("undo changed paragraph content", a.current.Source)
+			}
+			tt.Key(ui.Cmd|ui.Shift, ui.KeyZ)
+			a.capture()
+			if got := currentHeadingTitles(a); !slices.Equal(got, []string{"1. Parent", "1.1 Draft 世界"}) {
+				t.Fatalf("redo did not restore numbered heading: %v", got)
+			}
+		})
+	}
+}
+
+func TestDeepHeadingContinuationUsesModelLevel(t *testing.T) {
+	for _, loaded := range []bool{false, true} {
+		for _, level := range []int{7, 8, 9} {
+			t.Run(fmt.Sprintf("%t/H%d", loaded, level), func(t *testing.T) {
+				a := testApp(t)
+				note, err := a.lib.Create("Deep headings", "<h7>1. Parent</h7><p>Draft</p>", "xml")
+				if err != nil {
+					t.Fatal(err)
+				}
+				a.openNote(note)
+				s := a.blockEditor
+				parent, target := s.doc.Root.Children[0], s.doc.Root.Children[1]
+				if loaded {
+					a.blockField(parent, a.documentColor)
+				}
+				doc := a.blockField(target, a.documentColor).doc
+				got := nextHeadingNumber(a.precedingHeadings(doc, 0), level)
+				want := map[int]string{7: "2. ", 8: "1.1 ", 9: "1.1.1 "}[level]
+				if got != want {
+					t.Fatalf("continuation = %q, want %q", got, want)
+				}
+			})
+		}
+	}
+}
+
+func TestHeadingStructuralHistorySequence(t *testing.T) {
+	// Mix commands across one live session: isolated tests miss accidental
+	// coalescing with a previous command and stale numbering after redo.
+	a := testApp(t)
+	a.createNote("## 1. First\n\n### 1.1 Child\n\n## 2. Second", "History stress")
+	if !a.enableBlocks() {
+		t.Fatal(a.problem)
+	}
+	s := a.blockEditor
+	rng := rand.New(rand.NewPCG(19, 2026))
+	for step := range 120 {
+		before := s.doc.Root.XML()
+		nodes := headingNodes(s.doc)
+		operation := rng.IntN(4)
+		if len(nodes) < 2 {
+			operation = 0
+		}
+		var err error
+		switch operation {
+		case 0:
+			at := rng.IntN(len(s.doc.Root.Children) + 1)
+			err = s.doc.Splice(s.doc.Root.ID, at, 0, blocks.New("h2", blocks.Text(fmt.Sprintf("99. Added %d 世界", step))))
+		case 1:
+			err = s.doc.Remove(nodes[rng.IntN(len(nodes))].ID)
+		case 2:
+			err = s.doc.Move(nodes[len(nodes)-1].ID, s.doc.Root.ID, 0)
+		case 3:
+			n := nodes[rng.IntN(len(nodes))]
+			level := 2
+			if n.Kind == "h2" {
+				level = 3
+			}
+			err = s.doc.Transform(n.ID, func(n *blocks.Node) { n.Kind = fmt.Sprintf("h%d", level) })
+			delete(s.fields, n.ID)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		a.capture()
+		after := s.doc.Root.XML()
+		if before == after {
+			t.Fatalf("step %d made no edit", step)
+		}
+		a.blockUndo(false)
+		if got := s.doc.Root.XML(); got != before {
+			t.Fatalf("step %d undo lost content\ngot %s\nwant %s", step, got, before)
+		}
+		a.blockUndo(true)
+		if got := s.doc.Root.XML(); got != after {
+			t.Fatalf("step %d redo lost content\ngot %s\nwant %s", step, got, after)
+		}
+	}
+	want := currentHeadingTitles(a)
+	if !a.save() {
+		t.Fatal(a.problem)
+	}
+	a.loadEditors()
+	if got := currentHeadingTitles(a); !slices.Equal(got, want) {
+		t.Fatalf("reopen: %v, want %v", got, want)
+	}
+}
+
+func TestInsertedNumberedHeadingSingleUndo(t *testing.T) {
+	a := testApp(t)
+	a.createNote("## 1. First", "Insert history")
+	tt := ui.NewTester(a.view, 1280, 900)
+	click(t, tt, "Document editor")
+	tt.Key(ui.Cmd, ui.KeyEnd)
+	click(t, tt, "Insert block")
+	click(t, tt, "Insert Heading")
+	tt.Frame()
+	if got := currentHeadingTitles(a); len(got) != 2 {
+		t.Fatal(got)
+	}
+	tt.Key(ui.Cmd, ui.KeyZ)
+	a.capture()
+	if got := currentHeadingTitles(a); !slices.Equal(got, []string{"1. First"}) {
+		t.Fatalf("undo left inserted heading: %v", got)
 	}
 }
 

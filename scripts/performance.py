@@ -11,7 +11,6 @@ import json
 import os
 from pathlib import Path
 import platform
-import re
 import socket
 import statistics
 import subprocess
@@ -210,6 +209,8 @@ def main():
         metadata["source_diff_sha256"] = hashlib.sha256(subprocess.check_output(
             ["git", "diff", "HEAD", "--", "*.go", "go.mod", "go.sum"], cwd=repo)).hexdigest()
         print(json.dumps(dict(environment=metadata)), flush=True)
+        case_index = 0
+        failure_count = 0
         for kind, fixture_path, fixture_data in fixture_cases:
             case_sizes = [len(fixture_data)] if fixture_data is not None else sizes
             for size in case_sizes:
@@ -220,8 +221,10 @@ def main():
                 for mode in args.modes.split(","):
                     results, failures = [], []
                     for repeat in range(args.runs):
-                        safe_kind = re.sub(r"[^A-Za-z0-9_.-]+", "_", kind)
-                        case = work / f"{safe_kind}-{size}-{mode}-{repeat}"
+                        # Darwin limits Unix socket paths to 103 bytes. Keep
+                        # directory names short; JSON retains the case identity.
+                        case = work / f"c{case_index}"
+                        case_index += 1
                         case.mkdir()
                         path = case / "document.md"
                         data = fixture_data if fixture_data is not None else fixture(kind, size)
@@ -253,6 +256,7 @@ def main():
                             results.append(record)
                         except (OSError, RuntimeError, AssertionError) as error:
                             failures.append(str(error))
+                            failure_count += 1
                         finally:
                             if native:
                                 native.close()
@@ -260,6 +264,8 @@ def main():
                     print(json.dumps(dict(kind=kind, fixture=fixture_path, bytes=len(data),
                         sha256=hashlib.sha256(data).hexdigest(), lines=data.count(b"\n")+1,
                         mode=mode, runs=results, failures=failures)), flush=True)
+        if failure_count:
+            raise SystemExit(f"{failure_count} native performance run(s) failed")
 
 
 if __name__ == "__main__":

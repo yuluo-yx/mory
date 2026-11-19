@@ -195,9 +195,16 @@ func (a *app) insertEmptyBlock(name string) {
 		s.active, s.focus, s.focusAt = text.ID, text.ID, 0
 		if name == "Heading" {
 			doc := a.blockField(text, a.documentColor).doc
+			version := doc.Version()
+			s.lastTextID = ""
 			a.numberHeading(doc, 2)
+			numbered := doc.Version() != version
 			s.focusAt = doc.Text().Len()
 			a.captureBlocks()
+			if numbered {
+				// Insertion and its generated prefix are one user command.
+				s.doc.Coalesce()
+			}
 		}
 	}
 }
