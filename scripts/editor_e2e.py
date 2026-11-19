@@ -213,6 +213,36 @@ def exercise_editor(call, nodes, act, key, root, fixtures, native_space):
         numbered_fields(original)
         completed.append("heading level / renumber / undo / redo / save / reopen: " + str(structured))
 
+    for structured in (False, True):
+        title = "Editing heading conversion history " + str(structured)
+        source = "## 1. Parent\n\nDraft 世界"
+        if structured:
+            source += "\n\n| A | B |\n| --- | --- |\n| one | two |\n"
+        imported(title, source)
+        pointer(field("Draft 世界") if structured else field(label="Document editor"))
+        key("Ctrl+End")
+        key("Cmd+Home")
+        key("Right")
+        key("Right")
+        key("Cmd+Ctrl+3")
+        converted = "1.1 Draft 世界" if structured else "1. Parent\n1.1 Draft 世界"
+        target = field(converted)
+        offset = 0 if structured else len("1. Parent\n")
+        assert target["selection"] == [offset + 6, offset + 6], target
+        key("Cmd+Z")
+        original = "Draft 世界" if structured else "1. Parent\nDraft 世界"
+        field(original)
+        undone = saved(title)["source"].replace("\\.", ".")
+        assert "### " not in undone and "1.1 Draft" not in undone, undone
+        key("Cmd+Shift+Z")
+        field(converted)
+        type_text("X")
+        field(converted.replace("Draft", "DrXaft"))
+        saved(title)
+        reopen(title)
+        field(converted.replace("Draft", "DrXaft"))
+        completed.append("paragraph to heading / caret / single undo / redo / continued typing / reopen: " + str(structured))
+
     # A stationary pointer must not trap the keyboard highlight over Math.
     def option_selected(node):
         # The automation protocol exposes the raw checked bit for list options;
@@ -473,7 +503,19 @@ def exercise_editor(call, nodes, act, key, root, fixtures, native_space):
     title = "Editing heading geometry"
     imported(title, "# 万卡集群从开始到运行起来模型需要什么？\n\nBody stays here.\n\n```go\nx\n```\n")
     heading = field("万卡集群从开始到运行起来模型需要什么？")
-    assert heading["bounds"]["height"] < 100, heading
+    # The native CI desktop can wrap CJK headings onto two lines. Verify
+    # adjacency and reflow instead of assuming a fixed single-line height.
+    body = field("Body stays here.")
+    gap = body["bounds"]["y"] - heading["bounds"]["y"] - heading["bounds"]["height"]
+    assert -1 <= gap <= 12, (heading, body)
+    original_height = heading["bounds"]["height"]
+    pointer(heading)
+    key("Cmd+A")
+    type_text("Short")
+    short = field("Short")
+    assert 0 < short["bounds"]["height"] <= original_height, (heading, short)
+    key("Cmd+Z")
+    heading = field("万卡集群从开始到运行起来模型需要什么？")
     pointer(heading, "pointerMove")
     handle, fold = control("Block actions h1"), control("Collapse section 万卡集群从开始到运行起来模型需要什么？")
     h, f = handle["bounds"], fold["bounds"]

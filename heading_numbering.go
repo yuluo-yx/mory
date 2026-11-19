@@ -74,13 +74,19 @@ func nextHeadingNumber(previous []numberedHeading, level int) string {
 // Read live editor fields as well as unopened blocks, including folded sections.
 func (a *app) precedingHeadings(doc *richtext.Document, start int) []numberedHeading {
 	var headings []numberedHeading
-	appendText := func(text richtext.Text, stop int) {
+	appendText := func(text richtext.Text, stop, modelLevel int) {
 		for at, p := range text.Paragraphs() {
 			if at >= stop {
 				break
 			}
 			if p.Style.Heading > 0 {
-				headings = append(headings, numberedHeading{p.Style.Heading, pText(p)})
+				level := p.Style.Heading
+				// Rich text renders H7-H9 using H6 metrics; numbering must
+				// still use the original level retained by the block model.
+				if level == 6 && modelLevel > 6 {
+					level = modelLevel
+				}
+				headings = append(headings, numberedHeading{level, pText(p)})
 			}
 		}
 	}
@@ -95,13 +101,13 @@ func (a *app) precedingHeadings(doc *richtext.Document, start int) []numberedHea
 					found = true
 					return
 				}
-				appendText(f.doc.Text(), f.doc.Text().Len()+1)
+				appendText(f.doc.Text(), f.doc.Text().Len()+1, headingLevel(n))
 			} else if level := headingLevel(n); level > 0 {
 				headings = append(headings, numberedHeading{level, n.Plain()})
 			}
 		})
 	}
-	appendText(doc.Text(), start)
+	appendText(doc.Text(), start, 0)
 	return headings
 }
 

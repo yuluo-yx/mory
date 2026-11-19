@@ -220,19 +220,50 @@ func (a *app) setHeading(level int) {
 			return
 		}
 		a.captureBlocks()
+		anchor, caret := a.doc.Selection()
+		before := s.doc.Version
+		// Formatting is a separate user command, not part of preceding typing.
+		s.lastTextID = ""
 		a.fail(s.doc.Transform(n.ID, func(n *blocks.Node) {
 			n.Kind = "p"
 			if level > 0 {
 				n.Kind = fmt.Sprintf("h%d", level)
 			}
 		}))
+		formatted := s.doc.Version != before
 		delete(s.fields, n.ID)
 		a.doc = a.blockField(s.doc.Find(n.ID), a.documentColor).doc
+		a.doc.SetSelection(anchor, caret)
+		version := a.doc.Version()
 		a.numberHeading(a.doc, level)
+		numbered := a.doc.Version() != version
 		a.captureBlocks()
+		if formatted && numbered {
+			// The prefix and heading style belong to the same undo step.
+			s.doc.Coalesce()
+		}
 	} else {
-		a.doc.SetHeading(level)
-		a.numberHeading(a.doc, level)
+		doc := a.doc
+		anchor, caret := doc.Selection()
+		start, end := doc.Text().ParagraphRange(caret)
+		prefix := ""
+		if level > 0 && anchor == caret && len(headingNumbers(doc.Text().Slice(start, end).String())) == 0 {
+			prefix = nextHeadingNumber(a.precedingHeadings(doc, start), level)
+		}
+		// Apply the style and derived prefix atomically so one Undo restores
+		// both the original paragraph and its selection.
+		doc.Edit(func(e *richtext.Edit) {
+			e.FormatParagraphs(min(anchor, caret), max(anchor, caret), func(p *richtext.ParagraphStyle) {
+				p.Heading = max(0, min(level, 6))
+				if p.Heading > 0 {
+					p.List, p.Checked, p.CodeBlock = richtext.NoList, false, false
+				}
+			})
+			if prefix != "" {
+				e.ReplaceString(start, start, prefix, e.Text().AttributesAt(start))
+				e.Select(anchor+len(prefix), caret+len(prefix))
+			}
+		})
 		a.capture()
 	}
 }
