@@ -44,19 +44,27 @@ func (a *app) attachFile(path string) {
 }
 
 func (a *app) insertAsset(data []byte, name string) {
+	if n := a.storeAsset(data, name); n != nil {
+		a.insertNodes(n)
+	}
+}
+
+// Store attachments before editing the document, so a multi-file paste can
+// insert all its blocks together and remain a single undoable operation.
+func (a *app) storeAsset(data []byte, name string) *blocks.Node {
 	if a.current == nil {
-		return
+		return nil
 	}
 	if len(data) > 32<<20 {
 		a.fail(fmt.Errorf("attachment exceeds 32 MiB"))
-		return
+		return nil
 	}
 	sum := sha256.Sum256(data)
 	ext := strings.ToLower(filepath.Ext(name))
 	dest := fmt.Sprintf("%x%s", sum[:12], ext)
 	dir := filepath.Join(a.assetRoot(), "assets")
 	if a.fail(os.MkdirAll(dir, 0o755)) || a.fail(library.AtomicWrite(filepath.Join(dir, dest), data)) {
-		return
+		return nil
 	}
 	n := blocks.New("source")
 	n.Set("name", name)
@@ -68,7 +76,7 @@ func (a *app) insertAsset(data []byte, name string) {
 	case ".mp4", ".mov", ".webm":
 		n.Kind = "video"
 	}
-	a.insertNodes(n)
+	return n
 }
 
 func (a *app) pasteStructured() {
@@ -100,9 +108,19 @@ func (a *app) pasteObjects(data transfer.Data) bool {
 		return true
 	}
 	if files, err := data.Files(); err == nil && len(files) > 0 {
+		var nodes []*blocks.Node
 		for _, file := range files {
-			a.attachFile(file)
+			data, err := os.ReadFile(file)
+			if a.fail(err) {
+				return true
+			}
+			n := a.storeAsset(data, filepath.Base(file))
+			if n == nil {
+				return true
+			}
+			nodes = append(nodes, n)
 		}
+		a.insertNodes(nodes...)
 		return true
 	}
 	if png, err := data.Read(transfer.PNG); err == nil && len(png) > 0 {

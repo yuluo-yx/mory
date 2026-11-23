@@ -92,6 +92,16 @@ func TestImagePasteEntrypoints(t *testing.T) {
 					if images != wantImages || !strings.HasPrefix(a.current.Source, "Before\n") || !strings.Contains(a.current.Source, "after") || strings.Contains(a.current.Source, "invalid.example") {
 						t.Fatalf("paste changed content or lost images: %d, %s", images, a.current.Source)
 					}
+					if kind == "files" {
+						a.blockUndo(false)
+						if strings.Contains(a.current.Source, "![") {
+							t.Fatal("one undo did not remove the complete file paste", a.current.Source)
+						}
+						a.blockUndo(true)
+						if strings.Count(a.current.Source, "![") != wantImages {
+							t.Fatal("redo lost pasted files")
+						}
+					}
 					if !a.save() {
 						t.Fatal(a.problem)
 					}

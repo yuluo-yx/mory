@@ -2,6 +2,7 @@
 import json
 import re
 import subprocess
+import time
 
 from library_records import note_paths, read_note
 
@@ -14,7 +15,7 @@ def exercise_clipboard(call, nodes, act, key, root, fixtures):
     second.write_bytes((fixtures / "image.png").read_bytes())
 
     def clipboard(script):
-        subprocess.run(["osascript", "-e", script], check=True, capture_output=True)
+        return subprocess.run(["osascript", "-e", script], check=True, capture_output=True, text=True).stdout.strip()
 
     def saved(title):
         call("menu", path=["File", "Save"])
@@ -32,18 +33,28 @@ def exercise_clipboard(call, nodes, act, key, root, fixtures):
             paths = [fixtures / "image.png", second]
             # Finder offers NSURL objects. AppleScript's plain alias list uses
             # its private serialized list format, which is not a file pasteboard.
-            clipboard('\n'.join([
+            count = clipboard('\n'.join([
                 'use framework "AppKit"',
                 "set board to current application's NSPasteboard's generalPasteboard()",
                 "set urls to current application's NSMutableArray's array()",
                 *["urls's addObject:(current application's NSURL's fileURLWithPath:" + json.dumps(str(p)) + ")" for p in paths],
                 "board's clearContents()",
                 "board's writeObjects:urls",
+                "return (board's pasteboardItems()'s |count|()) as integer",
             ]))
+            assert count == str(len(paths)), ("Incomplete native file clipboard", count)
         else:
             path, native_type = (screenshot, "TIFF") if kind == "TIFF" else (fixtures / "image.png", "PNGf")
             clipboard("set the clipboard to (read POSIX file " + json.dumps(str(path)) + " as «class " + native_type + "»)")
         call("menu", path=["Edit", "Paste"])
+        # Observe the completed native edit before saving; queued window updates
+        # and image layout can span more than one frame on a busy CI desktop.
+        expected_captions = {p.name for p in paths} if kind == "files" else {"Clipboard.png"}
+        deadline = time.monotonic() + 5
+        while not expected_captions.issubset({n.get("label") for n in nodes()}):
+            if time.monotonic() >= deadline:
+                raise AssertionError(("Native paste did not insert every image", kind, saved(title)["source"]))
+            time.sleep(0.05)
         note = saved(title)
         images = re.findall(r"!\[[^\]]*\]\((assets/[^)]+)\)", note["source"])
         assert len(images) == (2 if kind == "files" else 1), (kind, note["source"])
