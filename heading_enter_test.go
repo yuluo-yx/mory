@@ -177,3 +177,35 @@ func TestHeadingEnterOtherPositions(t *testing.T) {
 		})
 	}
 }
+
+func TestEmptyHeadingsDoNotOccupyOutline(t *testing.T) {
+	for _, structured := range []bool{false, true} {
+		a := testApp(t)
+		const source = "##\n\n## \n\n##\n\n##\n\n## 1. Section\n\nBody\n\n## 2. Next"
+		a.createNote(source, "Existing empty headings")
+		if structured {
+			a.enableBlocks()
+		}
+		a.outline = true
+		tt := ui.NewTester(a.view, 1280, 1000)
+		for _, mode := range []string{"Write", "Read", "Source"} {
+			a.changeMode(mode)
+			tt.Frame()
+			count := len(a.headings)
+			if a.structured() {
+				count = len(a.structuredHeadings)
+			}
+			if count != 2 {
+				t.Fatalf("empty headings occupy the outline in %s: %d entries", mode, count)
+			}
+			heading, ok := tt.Find("Heading 1. Section")
+			caption, _ := tt.Find("ON THIS PAGE")
+			if !ok || heading.Y-caption.Y > 40 {
+				t.Fatalf("empty outline gap remains: heading=%+v caption=%+v", heading, caption)
+			}
+			if !a.save() || a.current.Source != source {
+				t.Fatal("hiding empty outline items rewrote the source")
+			}
+		}
+	}
+}

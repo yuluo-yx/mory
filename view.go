@@ -1192,7 +1192,7 @@ func (a *app) outlineView(c *ui.Context) {
 			if a.structuredHeadingVersion != s.doc.Version {
 				a.structuredHeadings = a.structuredHeadings[:0]
 				s.doc.Root.Walk(func(n *blocks.Node) {
-					if len(n.Kind) == 2 && n.Kind[0] == 'h' && n.Kind[1] >= '1' && n.Kind[1] <= '9' {
+					if headingLevel(n) > 0 && strings.TrimSpace(n.Plain()) != "" {
 						a.structuredHeadings = append(a.structuredHeadings, structuredHeading{id: n.ID, title: n.Plain(), level: int(n.Kind[1] - '0')})
 					}
 				})
@@ -1212,7 +1212,14 @@ func (a *app) outlineView(c *ui.Context) {
 		if a.headingSource != source || a.headingDraftLine != draftLine {
 			a.headingSource = source
 			a.headingDraftLine = draftLine
-			a.headings = document.HeadingsWithDraftList(source, draftLine)
+			// Legacy edits can contain empty headings. Keep their source intact,
+			// but do not let invisible navigation entries displace named sections.
+			a.headings = a.headings[:0]
+			for _, h := range document.HeadingsWithDraftList(source, draftLine) {
+				if strings.TrimSpace(h.Text) != "" {
+					a.headings = append(a.headings, h)
+				}
+			}
 		}
 		a.outlineList.Key = func(i int) any { return a.headings[i].Offset }
 		ui.List(c, &a.outlineList, len(a.headings), func(i int) {

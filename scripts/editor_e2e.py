@@ -225,7 +225,11 @@ def exercise_editor(call, nodes, act, key, root, fixtures, native_space):
         source = saved(title)["source"]
         assert "### " in source, source
         reopen(title)
-        field(expected, label="Document editor")
+        # Explicit empty paragraphs round-trip through the block editor.
+        # Verify every heading and gap instead of relying on the editor type.
+        for heading in expected.split("\n\n"):
+            field(heading)
+        assert saved(title)["source"].count("<p/>") == 3
         completed.append("automatic heading numbers / child / sibling / parent / rapid input / reopen: " + str(numbered))
 
     for structured in (False, True):
