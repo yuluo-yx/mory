@@ -75,6 +75,7 @@ type blockSession struct {
 	foldVersion            uint64
 	numberingReplay        bool
 	headingPositions       []headingPosition
+	blankDeletionInput     *blankDeletionInput
 }
 
 const maxCachedBlockFields = 256
@@ -161,6 +162,7 @@ func (a *app) captureBlocks() {
 	if s == nil {
 		return
 	}
+	a.applyBlankDeletionInput()
 	// Ordinary typing cannot change heading order. Inspect the whole outline
 	// only after structural commands or a field changes its paragraph shape.
 	headingStructureChanged := s.doc.Version != s.version
@@ -877,6 +879,9 @@ func (a *app) blockText(c *ui.Context, n *blocks.Node, readOnly bool) {
 		}
 		ed.OnPaste(func(text string) bool { a.queueInlineCode(field.doc, text); return false })
 		ed.ObserveInput(func(event ui.InputEvent) {
+			if s.blankDeletionInput != nil {
+				a.captureBlocks()
+			}
 			a.observeBlockSelectAll(n.ID, event)
 			a.observeCodeFence(field.doc, event)
 			if event.Kind == ui.InputCommand && (event.Text == "undo" || event.Text == "redo") {
@@ -894,8 +899,14 @@ func (a *app) blockText(c *ui.Context, n *blocks.Node, readOnly bool) {
 				return
 			}
 			if event.Key == ui.KeyBackspace && caret == 0 && event.Mods == 0 {
+				if a.queueBlankDeletion(n.ID, field, -1) {
+					return
+				}
 				a.mergeBlock(n.ID, -1)
 			} else if event.Key == ui.KeyDelete && caret == field.doc.Text().Len() && event.Mods == 0 {
+				if a.queueBlankDeletion(n.ID, field, 1) {
+					return
+				}
 				a.mergeBlock(n.ID, 1)
 			} else if (event.Key == ui.KeyUp || event.Key == ui.KeyLeft) && caret == 0 && event.Mods == 0 {
 				a.focusAdjacent(n.ID, -1)

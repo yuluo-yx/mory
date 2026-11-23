@@ -120,6 +120,42 @@ def exercise_editor(call, nodes, act, key, root, fixtures, native_space):
     assert saved(title)["source"].count("<p/>") == 3
     completed.append("heading leading Enter / body position / stable outline / undo / redo / reopen")
 
+    # Previously empty headings left invisible raw markers that blocked joins.
+    # Delete through both old headings and saved empty paragraphs at a list edge.
+    title = "Editing blank blocks before list"
+    imported(title, "<p/>\n\n##\n\n<p/>\n\n##\n\n1. Keep item\n2. Second item\n\n## Next\n\nBody")
+    original = saved(title)["source"]
+    pointer(field("Keep item"))
+    key("Ctrl+Home")
+    previous_y = field("Keep item")["bounds"]["y"]
+    for _ in range(4):
+        key("Backspace")
+        item = focused_field("Keep item")
+        assert item["bounds"]["y"] < previous_y, item
+        previous_y = item["bounds"]["y"]
+        field("Second item")
+    clean = saved(title)["source"]
+    assert "<p/>" not in clean and clean.count("##") == 1, clean
+    for _ in range(4):
+        key("Cmd+Z")
+    assert saved(title)["source"] == original
+    for _ in range(4):
+        key("Cmd+Shift+Z")
+    assert saved(title)["source"] == clean
+    reopen(title)
+    assert saved(title)["source"] == clean
+    completed.append("blank headings and paragraphs / list boundary deletion / geometry / undo / redo / reopen")
+
+    title = "Editing blank before heading"
+    imported(title, "<p/>\n\n## Section\n\nBody")
+    pointer(field("Section"))
+    call("input", events=[dict(type="key", key="Ctrl+Home"), dict(type="key", key="Backspace")])
+    focused_field("Section")
+    control("Heading Section")
+    source = saved(title)["source"]
+    assert "<p/>" not in source and "## Section" in source, source
+    completed.append("blank deletion preserves heading style and outline")
+
     # Tab must keep native focus in the body reached by Enter from the title.
     for structured in (False, True):
         title = "Editing body indentation " + str(structured)

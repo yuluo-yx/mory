@@ -28,6 +28,11 @@ func parseCommonMarkdown(source string) (*Node, error) {
 		block := p.Block(index)
 		start := block.Start
 		end := block.End
+		// Empty ATX headings can end before their marker line does. Include the
+		// complete line so its remaining markers never become an opaque separator.
+		if block.Kind == parser.Heading && start >= 0 && start < len(source) {
+			end = max(end, lineEnd(source, start))
+		}
 		if start < 0 || end < start || end > len(source) {
 			return nil, fmt.Errorf("invalid Markdown source range")
 		}
