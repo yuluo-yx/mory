@@ -3,7 +3,7 @@
 Accessibility locates targets and reads results; it must not repair focus after
 an insertion, deletion, undo or boundary transition under test.
 """
-import json
+from library_records import note_paths, read_note
 import time
 
 
@@ -51,8 +51,8 @@ def exercise_editor(call, nodes, act, key, root, fixtures, native_space):
     def saved(title):
         call("menu", path=["File", "Save"])
         nodes()
-        return next(json.loads(p.read_text()) for p in (root / "library" / "notes").glob("*.json")
-                    if json.loads(p.read_text())["title"] == title)
+        return next(read_note(p) for p in note_paths(root / "library" / "notes")
+                    if read_note(p)["title"] == title)
 
     def reopen(title):
         pointer(control("Back to library"))
@@ -77,6 +77,72 @@ def exercise_editor(call, nodes, act, key, root, fixtures, native_space):
             act("Document title", "setValue", text=title)
         finally:
             path.write_bytes(previous)
+
+    # A lone dash below a paragraph is ambiguous while a list is being typed.
+    # Check every intermediate state, not only the completed list's outline.
+    title = "Editing source list outline"
+    new_note(title)
+    pointer(control("Source"))
+    pointer(control("Source editor"))
+    type_text("## Stable heading\n\nParagraph\n")
+    for text in ("-", " ", "List item"):
+        type_text(text)
+        tree = nodes()
+        headings = {n["label"] for n in tree if n.get("label", "").startswith("Heading ")}
+        assert headings == {"Heading Stable heading"}, headings
+    note = saved(title)
+    assert note["source"] == "## Stable heading\n\nParagraph\n- List item", note
+    completed.append("source list prefix / stable outline / unchanged Markdown / save")
+
+    # Enter at a heading's start adds body space, without shifting its outline.
+    title = "Editing heading leading Enter"
+    imported(title, "## 1. Section\n\n<p>Body</p>\n\n## 2. Next\n\n" + "More text.\n\n" * 40)
+    heading = field("1. Section")
+    pointer(heading)
+    key("Ctrl+Home")
+    before_y = heading["bounds"]["y"]
+    outline_y = control("Heading 1. Section")["bounds"]["y"]
+    for _ in range(3):
+        key("Enter")
+        heading = focused_field("1. Section")
+        assert heading["bounds"]["y"] > before_y + 20, heading
+        before_y = heading["bounds"]["y"]
+        assert control("Heading 1. Section")["bounds"]["y"] == outline_y
+        assert {n.get("label") for n in nodes() if n.get("label", "").startswith("Heading ")} == {
+            "Heading 1. Section", "Heading 2. Next"}
+    for _ in range(3):
+        key("Cmd+Z")
+    for _ in range(3):
+        key("Cmd+Shift+Z")
+    assert saved(title)["source"].count("<p/>") == 3
+    reopen(title)
+    field("1. Section")
+    assert saved(title)["source"].count("<p/>") == 3
+    completed.append("heading leading Enter / body position / stable outline / undo / redo / reopen")
+
+    # Tab must keep native focus in the body reached by Enter from the title.
+    for structured in (False, True):
+        title = "Editing body indentation " + str(structured)
+        imported(title, "<p>Body</p>" if structured else "Body")
+        pointer(control("Document title"))
+        key("Enter")
+        focused_field("Body")
+        key("Tab")
+        focused_field("Body")
+        key("Cmd+Z")
+        key("Cmd+Shift+Z")
+        type_text("Indented ")
+        focused_field("Indented Body")
+        note = saved(title)
+        assert note["title"] == title and 'indent="1"' in note["source"], note
+        reopen(title)
+        pointer(field("Indented Body"))
+        key("Shift+Tab")
+        key("Shift+Tab")
+        focused_field("Indented Body")
+        note = saved(title)
+        assert "indent=" not in note["source"] and "Indented Body" in note["source"], note
+        completed.append("body Tab / focus / undo / redo / save / reopen / outdent: " + str(structured))
 
     # Numeric heading text must survive the same keystrokes that create lists
     # in ordinary body paragraphs, including a burst of native input events.
@@ -559,8 +625,8 @@ def exercise_editor(call, nodes, act, key, root, fixtures, native_space):
         act("Trash")
         pointer(control("Note " + title))
         act("Delete permanently")
-        assert not (root / "library" / "trash" / (note["id"] + ".json")).exists()
-        assert not (root / "library" / "notes" / (note["id"] + ".json")).exists()
+        assert not (root / "library" / "trash" / (note["id"] + ".md")).exists()
+        assert not (root / "library" / "notes" / (note["id"] + ".md")).exists()
         completed.append("trash actions / restore content / permanent removal: " + layout)
 
     # Enter in the document title must hand typing to the body without a click.

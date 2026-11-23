@@ -55,6 +55,12 @@ func init() {
 		}
 	}
 	nativeReadyHook = func(a *app) {
+		if os.Getenv("MORY_E2E_FIXTURES") != "" {
+			// Native clipboard tests replace the system pasteboard temporarily.
+			if data, err := mygo.Clipboard.Read(); err == nil {
+				mygo.App.OnWillQuit(func(*mygo.QuitEvent) { _ = mygo.Clipboard.Write(data) })
+			}
+		}
 		width, _ := strconv.Atoi(os.Getenv("MORY_E2E_WIDTH"))
 		height, _ := strconv.Atoi(os.Getenv("MORY_E2E_HEIGHT"))
 		if width > 0 && height > 0 {

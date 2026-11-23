@@ -1008,7 +1008,7 @@ func (a *app) editorView(c *ui.Context) {
 	ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Justify(a.pageAlignment()).Children(func() {
 		// Move the outline with the page so wide windows keep navigation nearby.
 		group := ui.Row(c).Grow(1).MinWidth(0).MinHeight(0).AlignItems(ui.Stretch)
-		if width := documentPageWidth(n); width > 0 && a.mode != "Split" {
+		if width := a.documentPageWidth(); width > 0 && a.mode != "Split" {
 			if a.outline && !a.focus {
 				width += a.outlineWidth()
 			}
@@ -1019,7 +1019,7 @@ func (a *app) editorView(c *ui.Context) {
 				a.outlineView(c)
 			}
 			column := ui.Column(c).Grow(1).MinWidth(0).Padding(32, 40, 16)
-			if width := documentPageWidth(n); width > 0 && a.mode != "Split" {
+			if width := a.documentPageWidth(); width > 0 && a.mode != "Split" {
 				column.MaxWidth(width)
 			}
 			column.Children(func() {
@@ -1208,9 +1208,11 @@ func (a *app) outlineView(c *ui.Context) {
 			return
 		}
 		source := a.markdownSource()
-		if a.headingSource != source {
+		draftLine := a.outlineDraftLine()
+		if a.headingSource != source || a.headingDraftLine != draftLine {
 			a.headingSource = source
-			a.headings = document.Headings(source)
+			a.headingDraftLine = draftLine
+			a.headings = document.HeadingsWithDraftList(source, draftLine)
 		}
 		a.outlineList.Key = func(i int) any { return a.headings[i].Offset }
 		ui.List(c, &a.outlineList, len(a.headings), func(i int) {

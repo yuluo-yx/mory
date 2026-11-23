@@ -1,4 +1,4 @@
-// Package library persists local notes as individually atomic, readable JSON files.
+// Package library persists local notes as atomic Markdown and XML documents.
 package library
 
 import (
@@ -20,32 +20,32 @@ var ErrConflict = errors.New("file changed on disk; reload or save a copy before
 
 // Note contains both the exact source and library metadata in one commit unit.
 type Note struct {
-	Icon           string    `json:"icon,omitempty"`
-	Cover          string    `json:"cover,omitempty"`
-	CoverX         float32   `json:"coverX,omitempty"`
-	CoverY         float32   `json:"coverY,omitempty"`
-	Width          string    `json:"width,omitempty"`
-	PageWidth      int       `json:"pageWidth,omitempty"` // Preferred logical pixels when Width is Custom.
-	HideInfo       bool      `json:"hideInfo,omitempty"`
-	ShowCreated    bool      `json:"showCreated,omitempty"`
-	HideReferences bool      `json:"hideReferences,omitempty"`
-	Order          int64     `json:"order,omitempty"`
-	External       string    `json:"external,omitempty"`
-	ExternalHash   string    `json:"externalHash,omitempty"`
-	TrashRoot      string    `json:"trashRoot,omitempty"`
-	DeletedAt      time.Time `json:"deletedAt,omitzero"`
-	ID             string    `json:"id"`
-	Title          string    `json:"title"`
-	Source         string    `json:"source"`
-	Format         string    `json:"format"`
-	Folder         string    `json:"folder,omitempty"`
-	Parent         string    `json:"parent,omitempty"`
-	Pinned         bool      `json:"pinned,omitempty"`
-	Starred        bool      `json:"starred,omitempty"`
-	Deleted        bool      `json:"deleted,omitempty"`
-	Created        time.Time `json:"created"`
-	Updated        time.Time `json:"updated"`
-	Opened         time.Time `json:"opened"`
+	Icon           string    `json:"icon,omitempty" xml:"icon,omitempty"`
+	Cover          string    `json:"cover,omitempty" xml:"cover,omitempty"`
+	CoverX         float32   `json:"coverX,omitempty" xml:"coverX,omitempty"`
+	CoverY         float32   `json:"coverY,omitempty" xml:"coverY,omitempty"`
+	Width          string    `json:"width,omitempty" xml:"width,omitempty"`         // Legacy per-note width, retained for compatibility.
+	PageWidth      int       `json:"pageWidth,omitempty" xml:"pageWidth,omitempty"` // Legacy custom width; layout now uses Settings.
+	HideInfo       bool      `json:"hideInfo,omitempty" xml:"hideInfo,omitempty"`
+	ShowCreated    bool      `json:"showCreated,omitempty" xml:"showCreated,omitempty"`
+	HideReferences bool      `json:"hideReferences,omitempty" xml:"hideReferences,omitempty"`
+	Order          int64     `json:"order,omitempty" xml:"order,omitempty"`
+	External       string    `json:"external,omitempty" xml:"external,omitempty"`
+	ExternalHash   string    `json:"externalHash,omitempty" xml:"externalHash,omitempty"`
+	TrashRoot      string    `json:"trashRoot,omitempty" xml:"trashRoot,omitempty"`
+	DeletedAt      time.Time `json:"deletedAt,omitzero" xml:"deletedAt,omitempty"`
+	ID             string    `json:"id" xml:"id"`
+	Title          string    `json:"title" xml:"title"`
+	Source         string    `json:"source" xml:"-"`
+	Format         string    `json:"format" xml:"format"`
+	Folder         string    `json:"folder,omitempty" xml:"folder,omitempty"`
+	Parent         string    `json:"parent,omitempty" xml:"parent,omitempty"`
+	Pinned         bool      `json:"pinned,omitempty" xml:"pinned,omitempty"`
+	Starred        bool      `json:"starred,omitempty" xml:"starred,omitempty"`
+	Deleted        bool      `json:"deleted,omitempty" xml:"deleted,omitempty"`
+	Created        time.Time `json:"created" xml:"created"`
+	Updated        time.Time `json:"updated" xml:"updated"`
+	Opened         time.Time `json:"opened" xml:"opened"`
 }
 
 type Settings struct {
@@ -54,6 +54,8 @@ type Settings struct {
 	OutlineSide     string            `json:"outlineSide,omitempty"`
 	OutlineFontSize float32           `json:"outlineFontSize,omitempty"`
 	PagePosition    string            `json:"pagePosition,omitempty"`
+	PageWidthMode   string            `json:"pageWidthMode,omitempty"`
+	PageWidth       int               `json:"pageWidth,omitempty"`
 	Folders         []string          `json:"folders,omitempty"`
 	Keys            map[string]string `json:"keys,omitempty"`
 	QuickNote       string            `json:"quickNote,omitempty"`
@@ -161,20 +163,41 @@ func (l *Library) save(n *Note, forceHistory bool, now time.Time) error {
 	}
 	defer unlock()
 	path := l.notePath(n)
-	if err := checkVersion(path, l.versions[n.ID]); err != nil {
+	from := l.savedNotePath(n)
+	if err := checkVersion(from, l.versions[n.ID]); err != nil {
 		return err
 	}
-	if err := l.beforeSave(n, path, forceHistory, now); err != nil {
+	if from != path {
+		if _, err := os.Lstat(path); !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("format destination already exists: %w", ErrConflict)
+		}
+	}
+	if err := l.beforeSave(n, from, forceHistory, now); err != nil {
 		return err
 	}
-	b, err := json.MarshalIndent(n, "", "  ")
+	b, err := marshalNote(n)
 	if err != nil {
 		return err
 	}
-	if err = AtomicWrite(path, b); err != nil {
+	// Persist the new format in the old location first, just like trash moves.
+	// loadNotes can finish the rename after a crash between these operations.
+	var original []byte
+	if from != path {
+		original, err = os.ReadFile(from)
+		if err != nil {
+			return err
+		}
+	}
+	if err = AtomicWrite(from, b); err != nil {
 		return err
 	}
+	if from != path {
+		if err := moveNoteFile(from, path); err != nil {
+			return errors.Join(err, AtomicWrite(from, original))
+		}
+	}
 	l.versions[n.ID] = sha256.Sum256(b)
+	_ = os.Remove(filepath.Join(l.Dir, "recovery", n.ID+noteExtension(n)))
 	_ = os.Remove(filepath.Join(l.Dir, "recovery", n.ID+".json"))
 	_ = os.Remove(l.recoveryPath(n))
 	return nil

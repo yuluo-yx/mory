@@ -133,6 +133,8 @@ func (a *app) richDocumentEditor(c *ui.Context) {
 			a.bodyInput = ""
 		}
 		ed.ObserveInput(func(event ui.InputEvent) { a.observeCodeFence(doc, event) })
+		a.bodyIndentShortcuts(ed, doc)
+		a.headingStartEnter(ed, doc)
 		ed.OnPaste(func(text string) bool { a.queueInlineCode(doc, text); return false })
 		a.textFocused = ed.Focused()
 		_, y, over := ed.PointerPosition()

@@ -3,7 +3,6 @@ package library
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -20,7 +19,7 @@ func (l *Library) notePath(n *Note) string {
 	if n.Deleted {
 		dir = "trash"
 	}
-	return filepath.Join(l.Dir, dir, n.ID+".json")
+	return filepath.Join(l.Dir, dir, n.ID+noteExtension(n))
 }
 
 // loadNotes also completes interrupted moves. Each file carries its own state,
@@ -44,7 +43,7 @@ func (l *Library) loadNotes() error {
 			return err
 		}
 		for _, entry := range entries {
-			if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			if entry.IsDir() || !recordFile(entry.Name()) {
 				continue
 			}
 			path := filepath.Join(l.Dir, dir, entry.Name())
@@ -53,26 +52,41 @@ func (l *Library) loadNotes() error {
 				return err
 			}
 			var n Note
-			if err := json.Unmarshal(b, &n); err != nil {
+			if err := unmarshalNote(b, &n); err != nil {
 				return fmt.Errorf("read %s: %w", path, err)
 			}
-			if !validID(n.ID) || entry.Name() != n.ID+".json" {
+			if entry.Name() != n.ID+filepath.Ext(entry.Name()) {
 				return fmt.Errorf("invalid note ID in %s", path)
-			}
-			if n.Format != "markdown" && n.Format != "xml" {
-				return fmt.Errorf("unsupported note format in %s", path)
 			}
 			records = append(records, record{&n, path, b})
 		}
 	}
-	// Validate duplicates before changing any file. Only byte-identical copies
-	// left between link and unlink can be reconciled automatically.
+	// Validate duplicates before changing any file. Equivalent legacy/native
+	// copies left by an interrupted migration can be reconciled automatically.
 	seen := map[string][]byte{}
 	for _, r := range records {
-		if previous, ok := seen[r.note.ID]; ok && !bytes.Equal(previous, r.data) {
+		canonical, err := marshalNote(r.note)
+		if err != nil {
+			return err
+		}
+		if previous, ok := seen[r.note.ID]; ok && !bytes.Equal(previous, canonical) {
 			return fmt.Errorf("conflicting copies of note %s: %w", r.note.ID, ErrConflict)
 		}
-		seen[r.note.ID] = r.data
+		seen[r.note.ID] = canonical
+	}
+	for i := range records {
+		r := &records[i]
+		r.path, r.data, err = migrateRecord(r.path, r.data, r.note)
+		if err != nil {
+			return err
+		}
+	}
+	paths := make(map[string][]string, len(seen))
+	for _, r := range records {
+		paths[r.note.ID] = append(paths[r.note.ID], r.path)
+	}
+	if err := l.migrateSnapshots(); err != nil {
+		return err
 	}
 	now := time.Now()
 	for _, r := range records {
@@ -86,17 +100,23 @@ func (l *Library) loadNotes() error {
 				return err
 			}
 		}
-		// An interrupted move may have left the same file in both directories.
-		other := *n
-		other.Deleted = !n.Deleted
-		if b, err := os.ReadFile(l.notePath(&other)); err == nil && bytes.Equal(b, r.data) {
-			if err := os.Remove(l.notePath(&other)); err != nil {
+		// Interrupted format and trash moves can leave equivalent files at more
+		// than one path. Remove only copies validated in the locked scan above.
+		for _, copyPath := range paths[n.ID] {
+			if copyPath == target {
+				continue
+			}
+			if err := os.Remove(copyPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
 				return err
 			}
 		}
+		r.data, err = os.ReadFile(target)
+		if err != nil {
+			return err
+		}
 		if n.Deleted && n.DeletedAt.IsZero() {
 			n.DeletedAt = now
-			r.data, err = json.MarshalIndent(n, "", "  ")
+			r.data, err = marshalNote(n)
 			if err != nil {
 				return err
 			}
@@ -167,7 +187,7 @@ func (l *Library) setDeleted(n *Note, next Note, deleted bool, now time.Time) er
 	if err != nil {
 		return err
 	}
-	data, err := json.MarshalIndent(&next, "", "  ")
+	data, err := marshalNote(&next)
 	if err != nil {
 		return err
 	}

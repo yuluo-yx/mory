@@ -3,7 +3,6 @@ package library
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -39,10 +38,10 @@ func (l *Library) beforeSave(n *Note, path string, forceHistory bool, now time.T
 	}
 	var old Note
 	if len(b) != 0 {
-		if err := json.Unmarshal(b, &old); err != nil {
+		if err := unmarshalNote(b, &old); err != nil {
 			return err
 		}
-		if old.Source != n.Source {
+		if old.Source != n.Source || old.Format != n.Format {
 			if err := l.checkpoint(n.ID, b, forceHistory, now); err != nil {
 				return err
 			}
@@ -75,6 +74,10 @@ func (l *Library) OpenExternal(path string) (*Note, error) {
 		return nil, err
 	}
 	for _, n := range l.Notes {
+		// Opening a library document through Finder must reuse its existing note.
+		if native, err := filepath.EvalSymlinks(l.notePath(n)); err == nil && native == path {
+			return n, l.Reload(n.ID)
+		}
 		if n.External == path {
 			return n, l.Reload(n.ID)
 		}
@@ -100,7 +103,7 @@ func (l *Library) Reload(id string) error {
 	if n == nil {
 		return fmt.Errorf("note no longer exists")
 	}
-	b, err := os.ReadFile(l.notePath(n))
+	b, err := os.ReadFile(l.savedNotePath(n))
 	if errors.Is(err, fs.ErrNotExist) {
 		other := *n
 		other.Deleted = !n.Deleted
@@ -110,8 +113,11 @@ func (l *Library) Reload(id string) error {
 		return err
 	}
 	var fresh Note
-	if err := json.Unmarshal(b, &fresh); err != nil {
+	if err := unmarshalNote(b, &fresh); err != nil {
 		return err
+	}
+	if fresh.ID != id {
+		return fmt.Errorf("note ID changed on disk")
 	}
 	if fresh.External != "" && !fresh.Deleted {
 		data, err := os.ReadFile(fresh.External)
@@ -126,7 +132,7 @@ func (l *Library) Reload(id string) error {
 }
 
 func (l *Library) Changed(n *Note) bool {
-	if checkVersion(l.notePath(n), l.versions[n.ID]) != nil {
+	if checkVersion(l.savedNotePath(n), l.versions[n.ID]) != nil {
 		return true
 	}
 	if n.External != "" && !n.Deleted {
@@ -141,7 +147,7 @@ func (l *Library) Recover(n *Note) error {
 	if !validID(n.ID) {
 		return fmt.Errorf("invalid note ID")
 	}
-	b, err := json.MarshalIndent(n, "", "  ")
+	b, err := marshalNote(n)
 	if err != nil {
 		return err
 	}
@@ -149,7 +155,7 @@ func (l *Library) Recover(n *Note) error {
 }
 
 func (l *Library) recoveryPath(n *Note) string {
-	return filepath.Join(l.Dir, "recovery", n.ID+"-"+sourceHash([]byte(n.Source))[:16]+".json")
+	return filepath.Join(l.Dir, "recovery", n.ID+"-"+sourceHash([]byte(n.Source))[:16]+noteExtension(n))
 }
 
 type Revision struct {
@@ -176,7 +182,7 @@ func (l *Library) History(id string) ([]Revision, error) {
 	}
 	var out []Revision
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+		if e.IsDir() || !recordFile(e.Name()) {
 			continue
 		}
 		b, err := os.ReadFile(filepath.Join(dir, e.Name()))
@@ -184,8 +190,11 @@ func (l *Library) History(id string) ([]Revision, error) {
 			return nil, err
 		}
 		var n Note
-		if err := json.Unmarshal(b, &n); err != nil {
+		if err := unmarshalNote(b, &n); err != nil {
 			return nil, err
+		}
+		if n.ID != id {
+			return nil, fmt.Errorf("invalid history note ID")
 		}
 		out = append(out, Revision{Name: e.Name(), Note: n})
 	}
@@ -200,7 +209,7 @@ func (l *Library) Recoveries() ([]Revision, error) {
 	}
 	var out []Revision
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+		if e.IsDir() || !recordFile(e.Name()) {
 			continue
 		}
 		b, err := os.ReadFile(filepath.Join(l.Dir, "recovery", e.Name()))
@@ -208,7 +217,7 @@ func (l *Library) Recoveries() ([]Revision, error) {
 			return nil, err
 		}
 		var n Note
-		if err := json.Unmarshal(b, &n); err != nil {
+		if err := unmarshalNote(b, &n); err != nil {
 			return nil, err
 		}
 		out = append(out, Revision{Name: e.Name(), Note: n})

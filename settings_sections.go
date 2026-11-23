@@ -94,9 +94,7 @@ func (a *app) editorSettings(c *ui.Context) {
 			}
 		})
 		ui.Text(c, a.tr("Position the cover, title and body together within the writing area.")).FontSize(12).TextColor(c.Theme().TextMuted)
-		if a.current != nil {
-			a.pageWidthControls(c, a.current)
-		}
+		a.pageWidthControls(c)
 	})
 	settingsCard(c, a.tr("Document outline"), func() {
 		ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {

@@ -36,8 +36,8 @@ func TestDocumentPagePlacement(t *testing.T) {
 		for _, mode := range []string{"Write", "Source", "Read"} {
 			a.changeMode(mode)
 			for _, width := range []string{"Standard", "Wide", "Full", "Custom"} {
-				a.current.Width = width
-				a.current.PageWidth = 1600
+				a.lib.Settings.PageWidthMode = width
+				a.lib.Settings.PageWidth = 1600
 				pageWidth := float32(820)
 				if width == "Wide" {
 					pageWidth = 1020

@@ -810,9 +810,9 @@ func (a *app) blockText(c *ui.Context, n *blocks.Node, readOnly bool) {
 			if text == "" {
 				text = " "
 			}
-			inset := float32(0)
+			inset := float32(p.Style.Indent) * richTheme.Indent * font.Size
 			if p.Style.List != richtext.NoList {
-				inset = richTheme.Indent * font.Size
+				inset += richTheme.Indent * font.Size
 			}
 			_, h := ui.ShapeText(text, f, max(40, width-inset)).Size()
 			for _, run := range p.Runs {
@@ -869,6 +869,8 @@ func (a *app) blockText(c *ui.Context, n *blocks.Node, readOnly bool) {
 		s.focus = ""
 	}
 	if !readOnly {
+		a.bodyIndentShortcuts(ed, field.doc)
+		a.headingStartEnter(ed, field.doc)
 		// Ctrl+A is also supported on macOS, where the native binding is Cmd+A.
 		if ed.Shortcut(ui.Ctrl, ui.KeyA) {
 			field.doc.SetSelection(0, field.doc.Text().Len())

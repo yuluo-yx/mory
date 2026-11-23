@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 )
@@ -170,7 +169,7 @@ func TestHistoryIOErrors(t *testing.T) {
 	if _, err := l.OpenExternal(filepath.Join(l.Dir, "missing")); err == nil {
 		t.Fatal("missing external file")
 	}
-	path := filepath.Join(l.Dir, "notes", n.ID+".json")
+	path := filepath.Join(l.Dir, "notes", n.ID+".md")
 	mustWrite(t, path, []byte("bad json"))
 	if err := l.Reload(n.ID); err == nil {
 		t.Fatal("corrupt note accepted")
@@ -201,7 +200,7 @@ func TestHistoryIOErrors(t *testing.T) {
 	c.Parent = p.ID
 	third.Save(c)
 	b, _ := json.Marshal(map[string]string{"changed": "outside"})
-	mustWrite(t, filepath.Join(third.Dir, "notes", c.ID+".json"), b)
+	mustWrite(t, filepath.Join(third.Dir, "notes", c.ID+".md"), b)
 	if err := third.Move(c, "folder", ""); err == nil || c.Parent != p.ID {
 		t.Fatal("failed move did not rollback")
 	}
@@ -307,7 +306,7 @@ func TestLegacyHistoryRetentionAndIsolation(t *testing.T) {
 	if err != nil || len(h) != 2 || h[0].Note.Source != "legacy 0" || h[1].Note.Source != "legacy 300" {
 		t.Fatalf("legacy coalescing: %+v, %v", h, err)
 	}
-	for _, path := range []string{otherPath, unknown, l.recoveryPath(n), filepath.Join(l.Dir, "notes", n.ID+".json")} {
+	for _, path := range []string{otherPath, unknown, l.recoveryPath(n), filepath.Join(l.Dir, "notes", n.ID+".md")} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatal("retention touched unrelated data", path, err)
 		}
@@ -464,6 +463,8 @@ func TestPurgeRemovesOnlyOwnedCopies(t *testing.T) {
 	mustWrite(t, filepath.Join(l.Dir, "recovery", n.ID+".json"), []byte("legacy recovery"))
 	asset := filepath.Join(l.Dir, "assets", "shared.txt")
 	mustWrite(t, asset, []byte("shared asset"))
+	unrelated := filepath.Join(l.Dir, "recovery", n.ID+".txt")
+	mustWrite(t, unrelated, []byte("unrelated file"))
 	otherHistory := historyFixture(t, l, other, time.Now(), "other version", false)
 	if err := l.SetDeleted(n, true); err != nil {
 		t.Fatal(err)
@@ -475,10 +476,10 @@ func TestPurgeRemovesOnlyOwnedCopies(t *testing.T) {
 		t.Fatal("purge retained the history directory", err)
 	}
 	entries, _ := os.ReadDir(filepath.Join(l.Dir, "recovery"))
-	if len(entries) != 1 || !strings.HasPrefix(entries[0].Name(), other.ID) {
+	if len(entries) != 2 {
 		t.Fatal("purge retained owned recoveries or removed another note's recovery")
 	}
-	for _, path := range []string{asset, otherHistory} {
+	for _, path := range []string{asset, otherHistory, unrelated, l.recoveryPath(other)} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatal("purge removed shared or unrelated data", err)
 		}

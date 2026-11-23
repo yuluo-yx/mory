@@ -85,6 +85,8 @@ type app struct {
 	statsSource                                                                     string
 	words, characters                                                               int
 	headingSource                                                                   string
+	headingDraftLine                                                                int
+	sourceListDraft                                                                 *sourceListDraft
 	headings                                                                        []document.Heading
 	structuredHeadingVersion                                                        uint64
 	structuredHeadings                                                              []structuredHeading
@@ -237,7 +239,7 @@ func (a *app) capture() {
 			a.markDirty()
 			return
 		}
-		a.setCurrentSource(a.doc.Text().Markdown())
+		a.setCurrentSource(blocks.RichMarkdown(a.doc.Text()))
 		a.richSource = a.current.Source
 		a.markDirty()
 		anchor, caret := a.doc.Selection()
@@ -252,6 +254,7 @@ func (a *app) capture() {
 		}
 	} else if (a.mode == "Source" || a.mode == "Split") && a.code != nil && a.code.Buffer.Version() != a.codeVersion {
 		a.codeVersion = a.code.Buffer.Version()
+		a.trackSourceListDraft()
 		if a.mode == "Source" && a.code.Buffer.Snapshot().Len() > 200000 {
 			a.codePending = true
 			a.markDirty()
@@ -328,6 +331,7 @@ func (a *app) loadEditors() {
 	a.bodyFocus = false
 	a.bodyInput = ""
 	a.submittedTitle = ""
+	a.sourceListDraft = nil
 	a.codeFenceDoc, a.codeFenceInfo = nil, ""
 	a.inlineCodeInput = nil
 	a.headingNumberInput = nil
@@ -415,6 +419,7 @@ func (a *app) changeMode(mode string) {
 		}
 	}
 	a.mode = mode
+	a.sourceListDraft = nil
 }
 
 func (a *app) markdownSource() string {
@@ -688,7 +693,7 @@ func (a *app) flushSource() {
 		a.blockPending = false
 	}
 	if a.richPending {
-		a.setCurrentSource(a.doc.Text().Markdown())
+		a.setCurrentSource(blocks.RichMarkdown(a.doc.Text()))
 		a.richSource = a.current.Source
 		a.richPending = false
 	}

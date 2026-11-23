@@ -361,7 +361,7 @@ func TestSafeWindowRefreshKeepsNewLibraryEntries(t *testing.T) {
 		t.Fatal("missing recovery")
 	}
 	data, _ := json.Marshal(map[string]string{"invalid": "data"})
-	if err = os.WriteFile(filepath.Join(a.lib.Dir, "notes", id+".json"), data, 0o644); err != nil {
+	if err = os.WriteFile(filepath.Join(a.lib.Dir, "notes", id+".md"), data, 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -380,9 +380,9 @@ func TestBatchSelectionToggleAndCancel(t *testing.T) {
 			}
 			a.home(section)
 			a.lib.Settings.List = list
-			path := filepath.Join(a.lib.Dir, "notes", one.ID+".json")
+			path := filepath.Join(a.lib.Dir, "notes", one.ID+".md")
 			if section == "Trash" {
-				path = filepath.Join(a.lib.Dir, "trash", one.ID+".json")
+				path = filepath.Join(a.lib.Dir, "trash", one.ID+".md")
 			}
 			before, err := os.ReadFile(path)
 			if err != nil {

@@ -62,6 +62,21 @@ func RichSafe(source string) bool {
 }
 
 func Headings(source string) []Heading {
+	return HeadingsWithDraftList(source, -1)
+}
+
+// HeadingsWithDraftList omits a Setext heading ending on an actively edited
+// lone-dash line. Pass -1 for normal Markdown, including existing Setext titles.
+// All offsets refer to the original source, including any front matter.
+func HeadingsWithDraftList(source string, draftLine int) []Heading {
+	if draftLine >= 0 && draftLine < len(source) {
+		line, _, _ := strings.Cut(source[draftLine:], "\n")
+		if (draftLine > 0 && source[draftLine-1] != '\n') || strings.Trim(line, " \t\r") != "-" {
+			draftLine = -1
+		}
+	} else {
+		draftLine = -1
+	}
 	base := 0
 	if strings.HasPrefix(source, "---\n") || strings.HasPrefix(source, "---\r\n") {
 		for offset := strings.IndexByte(source, '\n') + 1; offset < len(source); {
@@ -83,6 +98,16 @@ func Headings(source string) []Heading {
 	for i := 1; i < d.Len(); i++ {
 		b := d.Block(i)
 		if b.Kind == parser.Heading {
+			// The parser's heading range ends before a Setext underline. Do not
+			// confuse an ATX heading followed by an empty list with that case.
+			if b.Level == 2 && b.End+base < draftLine && strings.Trim(source[b.End:draftLine-base], "\r\n") == "" {
+				firstLine, _, _ := strings.Cut(source[b.Start:], "\n")
+				firstLine = strings.TrimRight(firstLine, "\r")
+				atx := firstLine == "##" || strings.HasPrefix(firstLine, "## ") || strings.HasPrefix(firstLine, "##\t")
+				if !atx {
+					continue
+				}
+			}
 			// Use rendered inline text so escapes, links and emphasis match the page.
 			text := strings.TrimSpace(parser.PlainText(d.Inlines(i)))
 			text = headingID.ReplaceAllString(text, "")

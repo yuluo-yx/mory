@@ -12,6 +12,8 @@ import struct
 import zlib
 
 from editor_e2e import exercise_editor
+from clipboard_e2e import exercise_clipboard
+from library_records import note_paths, read_note
 
 
 def exercise(binary, root):
@@ -144,8 +146,8 @@ def exercise(binary, root):
             if time.monotonic() > welcome_deadline:
                 raise AssertionError("Welcome guide did not finish opening")
             time.sleep(0.05)
-        guide = next(json.loads(p.read_text()) for p in (root / "library" / "notes").glob("*.json")
-                     if json.loads(p.read_text())["title"] == "Welcome to Mory")
+        guide = next(read_note(p) for p in note_paths(root / "library" / "notes")
+                     if read_note(p)["title"] == "Welcome to Mory")
         assert guide["source"] == (Path(__file__).resolve().parent.parent / "resources" / "welcome.md").read_text()
         assert (root / "library" / "assets" / "mory-welcome.png").read_bytes().startswith(b"\x89PNG")
         call("menu", path=["File", "New note"])
@@ -159,7 +161,7 @@ def exercise(binary, root):
         act("Bold")
         call("menu", path=["File", "Save"])
         time.sleep(0.1)
-        notes = [json.loads(p.read_text()) for p in (root / "library" / "notes").glob("*.json")]
+        notes = [read_note(p) for p in note_paths(root / "library" / "notes")]
         note = next(n for n in notes if n["title"] == title)
         assert "**Hello 世界 — native editing**" in note["source"], note
         act("Source")
@@ -173,10 +175,10 @@ def exercise(binary, root):
         act("Toggle focus mode")
         act("Document actions")
         act("Move to Trash")
-        active_path = root / "library" / "notes" / (note["id"] + ".json")
-        trash_path = root / "library" / "trash" / (note["id"] + ".json")
+        active_path = root / "library" / "notes" / (note["id"] + ".md")
+        trash_path = root / "library" / "trash" / (note["id"] + ".md")
         assert not active_path.exists() and trash_path.exists(), "Delete did not move the library record"
-        assert json.loads(trash_path.read_text()).get("deletedAt"), "Deletion time is missing"
+        assert read_note(trash_path).get("deletedAt"), "Deletion time is missing"
         act("Trash")
         act("Actions " + title)
         assert not any(n.get("label") in {"Note name", "Rename", "Move to Trash"} for n in nodes()), "Trash exposed ordinary document details"
@@ -190,9 +192,9 @@ def exercise(binary, root):
         act("Insert block")
         act("Insert Quote")
         call("menu", path=["File", "Save"])
-        quote_path = next(p for p in (root / "library" / "notes").glob("*.json")
-                          if json.loads(p.read_text())["title"] == "Native empty quote")
-        assert json.loads(quote_path.read_text())["source"].strip() == ">", "Quote contains sample text"
+        quote_path = next(p for p in note_paths(root / "library" / "notes")
+                          if read_note(p)["title"] == "Native empty quote")
+        assert read_note(quote_path)["source"].strip() == ">", "Quote contains sample text"
         field = next(n for n in nodes() if n.get("label", "").startswith("Block text "))
         assert not field.get("value"), "Empty quote exposes authored content"
         box = field["bounds"]
@@ -201,7 +203,7 @@ def exercise(binary, root):
         wait_editor_text(field["label"], "My quotation 世界")
         call("menu", path=["File", "Save"])
         nodes()
-        assert "> My quotation 世界" in json.loads(quote_path.read_text())["source"]
+        assert "> My quotation 世界" in read_note(quote_path)["source"]
         # Deleting the last slash-inserted callout must leave a live caret.
         call("menu", path=["File", "New note"])
         act("Document title", "setValue", text="Native block deletion")
@@ -221,8 +223,8 @@ def exercise(binary, root):
         wait_editor_text(empty_field["label"], "Continue after deletion 世界")
         call("menu", path=["File", "Save"])
         nodes()
-        after_delete = next(json.loads(p.read_text()) for p in (root / "library" / "notes").glob("*.json")
-                            if json.loads(p.read_text())["title"] == "Native block deletion")
+        after_delete = next(read_note(p) for p in note_paths(root / "library" / "notes")
+                            if read_note(p)["title"] == "Native block deletion")
         assert "Continue after deletion 世界" in after_delete["source"] and "[!NOTE]" not in after_delete["source"], after_delete["source"]
         # Code editing and structural edits use one undo history, including
         # when keyboard shortcuts and the native Edit menu are mixed.
@@ -265,10 +267,11 @@ def exercise(binary, root):
         wait_editor_text(fresh_prose["label"], "Mouse paragraph")
         call("menu", path=["File", "Save"])
         nodes()
-        code_note = next(json.loads(p.read_text()) for p in (root / "library" / "notes").glob("*.json")
-                         if json.loads(p.read_text())["title"] == "Native code undo")
+        code_note = next(read_note(p) for p in note_paths(root / "library" / "notes")
+                         if read_note(p)["title"] == "Native code undo")
         fenced_parts = code_note["source"].split("```")
         assert len(fenced_parts) == 3 and "package main" in fenced_parts[1] and "Mouse paragraph" in fenced_parts[2] and "Outside code" in fenced_parts[2], code_note["source"]
+        exercise_clipboard(call, nodes, act, key, root, fixtures)
         exercise_editor(call, nodes, act, key, root, fixtures, native_space)
         act("All notes")
         act("Grid view")
@@ -349,7 +352,7 @@ def exercise(binary, root):
         act("Document actions")
         act("Remove from list")
         assert (fixtures / "Fixture import.md").read_bytes() == original_bytes, "Remove from list changed original"
-        assert not any(json.loads(p.read_text()).get("external") for p in (root / "library" / "trash").glob("*.json"))
+        assert not any(read_note(p).get("external") for p in note_paths(root / "library" / "trash"))
         act("▱   Import folder")
         act("Document title", "setValue", text="Structured import")
         deadline = time.monotonic() + 15
@@ -388,8 +391,8 @@ def exercise(binary, root):
         act("Tab Second")
         assert any(n.get("value", "").strip() == "Second body." for n in nodes())
         call("menu", path=["File", "Save"])
-        native_guide = next(json.loads(p.read_text()) for p in (root / "library" / "notes").glob("*.json")
-                            if json.loads(p.read_text())["title"] == "Native Docusaurus")
+        native_guide = next(read_note(p) for p in note_paths(root / "library" / "notes")
+                            if read_note(p)["title"] == "Native Docusaurus")
         assert native_guide["source"] == docusaurus, "Docusaurus preview changed source"
         # Independent windows keep separate edit buffers and version stamps.
         call("menu", path=["File", "Open in new window"])
@@ -404,10 +407,18 @@ def exercise(binary, root):
         call("menu", path=["Mory", "Quit Mory"])
         process.wait(timeout=10)
         assert process.returncode == 0, process.communicate()[1].decode()
-        saved = json.loads((root / "library" / "notes" / (note["id"] + ".json")).read_text())
+        saved = read_note(root / "library" / "notes" / (note["id"] + ".md"))
         assert not saved.get("deleted", False) and saved["starred"]
         print("Native E2E passed: launch, Unicode editing, formatting, save, modes, plugin, favorite, trash file moves, restore, empty quote editing, external removal, settings, native PDF, quit.")
     finally:
+        if channel and process.poll() is None:
+            try:
+                # Let the app restore the original clipboard even if an
+                # assertion fails; terminate only when graceful quit fails.
+                call("menu", path=["Mory", "Quit Mory"])
+                process.wait(timeout=10)
+            except (OSError, RuntimeError, ValueError, subprocess.TimeoutExpired):
+                pass
         if channel:
             channel.close()
         if process.poll() is None:

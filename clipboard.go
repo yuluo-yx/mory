@@ -12,6 +12,29 @@ import (
 	"github.com/yuluo-yx/mory/internal/library"
 )
 
+// macOS supplies a responder-chain fallback for ordinary text fields. Keeping
+// it separate lets the app own attachment paste without replacing text editing.
+var nativePaste func()
+
+func (a *app) pasteFromMenu() {
+	if a.current != nil && a.mode == "Write" && a.textFocused && !a.settingsOpen && !a.renameOpen && !a.linkOpen {
+		// Code blocks retain their text editor's paste behavior.
+		code := false
+		if a.blockEditor != nil {
+			n := a.blockEditor.doc.Find(a.blockEditor.active)
+			code = n != nil && n.Kind == "pre"
+		}
+		if !code {
+			if a.pasteObjects(a.services.ReadClipboardData()) {
+				return
+			}
+		}
+	}
+	if nativePaste != nil {
+		nativePaste()
+	}
+}
+
 func (a *app) attachFile(path string) {
 	data, err := os.ReadFile(path)
 	if a.fail(err) {
@@ -53,31 +76,40 @@ func (a *app) pasteStructured() {
 		return
 	}
 	data := a.services.ReadClipboardData()
-	if source, err := data.Read(transfer.Format("application/vnd.mory.docxml")); err == nil && len(source) > 0 {
-		d, err := blocks.ParseXML(string(source))
-		if !a.fail(err) {
-			a.insertNodes(d.Children...)
-		}
+	if a.pasteObjects(data) {
 		return
 	}
 	if source, err := data.Read(transfer.HTML); err == nil && len(source) > 0 {
 		a.pasteHTML(string(source))
 		return
 	}
-	if png, err := data.Read(transfer.PNG); err == nil && len(png) > 0 {
-		a.insertAsset(png, "Clipboard.png")
-		return
+	if text := a.services.ReadClipboard(); text != "" && a.doc != nil {
+		a.doc.InsertText(text)
+		a.capture()
+	}
+}
+
+// Prefer original files over thumbnail representations, and image bytes over
+// HTML wrappers, so copied images become portable local assets.
+func (a *app) pasteObjects(data transfer.Data) bool {
+	if source, err := data.Read(transfer.Format("application/vnd.mory.docxml")); err == nil && len(source) > 0 {
+		d, err := blocks.ParseXML(string(source))
+		if !a.fail(err) {
+			a.insertNodes(d.Children...)
+		}
+		return true
 	}
 	if files, err := data.Files(); err == nil && len(files) > 0 {
 		for _, file := range files {
 			a.attachFile(file)
 		}
-		return
+		return true
 	}
-	if text := a.services.ReadClipboard(); text != "" && a.doc != nil {
-		a.doc.InsertText(text)
-		a.capture()
+	if png, err := data.Read(transfer.PNG); err == nil && len(png) > 0 {
+		a.insertAsset(png, "Clipboard.png")
+		return true
 	}
+	return false
 }
 
 func (a *app) pasteHTML(source string) {

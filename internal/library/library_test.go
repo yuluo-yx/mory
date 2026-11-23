@@ -115,7 +115,7 @@ func TestConflictAndDeletionRecovery(t *testing.T) {
 	if copy.Source != "Local edit" {
 		t.Fatal("recovery lost local edits")
 	}
-	if err = os.Remove(filepath.Join(l.Dir, "notes", copy.ID+".json")); err != nil {
+	if err = os.Remove(filepath.Join(l.Dir, "notes", copy.ID+".md")); err != nil {
 		t.Fatal(err)
 	}
 	if err = l.Save(copy); !errors.Is(err, ErrConflict) {

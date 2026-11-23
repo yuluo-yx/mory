@@ -63,10 +63,10 @@ func (l *Library) historyFiles(id string) ([]historyFile, error) {
 	}
 	var files []historyFile
 	for _, e := range entries {
-		if !strings.HasSuffix(e.Name(), ".json") || !e.Type().IsRegular() {
+		if !recordFile(e.Name()) || !e.Type().IsRegular() {
 			continue
 		}
-		name := strings.TrimSuffix(e.Name(), ".json")
+		name := strings.TrimSuffix(e.Name(), filepath.Ext(e.Name()))
 		restore := strings.HasSuffix(name, "-restore")
 		at, err := time.Parse(historyTimeForm, strings.TrimSuffix(name, "-restore"))
 		if err != nil {
@@ -115,10 +115,15 @@ func (l *Library) checkpoint(id string, previous []byte, force bool, now time.Ti
 		if force {
 			name += "-restore"
 		}
-		if err := AtomicWrite(filepath.Join(dir, name+".json"), previous); err != nil {
+		var note Note
+		if err := unmarshalNote(previous, &note); err != nil {
 			return err
 		}
-		files = append([]historyFile{{name: name + ".json", at: stamp, size: int64(len(previous)), restore: force}}, files...)
+		ext := noteExtension(&note)
+		if err := AtomicWrite(filepath.Join(dir, name+ext), previous); err != nil {
+			return err
+		}
+		files = append([]historyFile{{name: name + ext, at: stamp, size: int64(len(previous)), restore: force}}, files...)
 	}
 	// Reuse the locked directory snapshot instead of scanning every file twice.
 	return l.pruneHistoryFiles(id, files, policy, now)
@@ -171,7 +176,7 @@ func (l *Library) removeNoteCopies(id string) error {
 		return err
 	}
 	for _, e := range entries {
-		if e.Type().IsRegular() && strings.HasSuffix(e.Name(), ".json") {
+		if e.Type().IsRegular() && recordFile(e.Name()) {
 			if err := os.Remove(filepath.Join(dir, e.Name())); err != nil {
 				return err
 			}
@@ -185,7 +190,7 @@ func (l *Library) removeNoteCopies(id string) error {
 		return err
 	}
 	for _, e := range entries {
-		if e.Type().IsRegular() && (e.Name() == id+".json" || strings.HasPrefix(e.Name(), id+"-") && strings.HasSuffix(e.Name(), ".json")) {
+		if e.Type().IsRegular() && recordFile(e.Name()) && (strings.TrimSuffix(e.Name(), filepath.Ext(e.Name())) == id || strings.HasPrefix(e.Name(), id+"-")) {
 			if err := os.Remove(filepath.Join(l.Dir, "recovery", e.Name())); err != nil {
 				return err
 			}

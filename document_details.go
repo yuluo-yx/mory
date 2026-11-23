@@ -78,6 +78,10 @@ const documentCoverHeight, documentCoverBottomGap float32 = 180, 16
 
 func (a *app) sourceEditor(c *ui.Context) ui.Element {
 	ed := editor.View(c.Key(a.current.ID), a.code).Label(a.tr("Source editor"))
+	if a.sourceListDraft != nil && !ed.Focused() {
+		a.sourceListDraft = nil
+		c.AnimationFrame()
+	}
 	if a.bodyFocus {
 		a.code.Select(0, 0)
 		if a.bodyInput != "" {
@@ -306,7 +310,7 @@ func (a *app) documentControls(c *ui.Context) {
 				}
 			}
 		})
-		a.pageWidthControls(c, n)
+		a.pageWidthControls(c)
 	})
 
 	// 2. Metadata & Attributes Card

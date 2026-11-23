@@ -181,6 +181,17 @@ func (a *app) buildMenu(updateItem *mygo.MenuItem) *mygo.Menu {
 	roles := map[*mygo.MenuItem]string{}
 	role := func(name string, r mygo.MenuRole) *mygo.MenuItem {
 		item := &mygo.MenuItem{Role: r, Accelerator: a.keyFor(name, actions[name].Key)}
+		if r == mygo.RolePaste && nativePaste != nil {
+			// A native Paste role goes straight to the text editor on macOS,
+			// bypassing the application's image/file clipboard handling.
+			item.Role, item.Label = "", a.tr("Paste")
+			item.Click = func(_ *mygo.MenuItem, _ *mygo.Window) {
+				a.pasteFromMenu()
+				if a.win != nil {
+					a.win.Update(func() {})
+				}
+			}
+		}
 		roles[item] = item.Accelerator
 		return item
 	}

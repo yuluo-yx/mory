@@ -150,7 +150,7 @@ func (a *app) promoteRichCode() bool {
 	if start < 0 {
 		return false
 	}
-	s, err := newBlockSession(doc.Text().Markdown(), a.current.Format, a.sourceRevision)
+	s, err := newBlockSession(blocks.RichMarkdown(doc.Text()), a.current.Format, a.sourceRevision)
 	if a.fail(err) {
 		return false
 	}

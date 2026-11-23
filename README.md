@@ -52,17 +52,22 @@ Mory bundles [Luo Regular](https://github.com/tw93/Luo) for Chinese text in its 
 
 The default library is `~/Documents/Mory`. Set `MORY_LIBRARY` to use another directory.
 
+**Settings → Editor → Page width** sets one width for every document in the library, including new documents and other open windows. The document actions menu controls the same preference. Existing per-document widths are retained for compatibility but no longer affect layout; libraries without a global preference start at Standard width. Split view fills the available space, and narrow windows fit the page automatically.
+
 | Path | Contents |
 | --- | --- |
-| `notes/` | One JSON record per Mory document, including its source and metadata |
+| `notes/` | Markdown (`.md`) and DocxXML (`.xml`) documents |
+| `trash/` | Deleted documents in their original format |
 | `assets/` | Local images and attachments |
-| `history/` | Saved document revisions |
-| `recovery/` | Recoverable content from failed or interrupted saves |
+| `history/` | Saved document revisions in `.md` or `.xml` format |
+| `recovery/` | Recoverable `.md` or `.xml` documents from failed or interrupted saves |
 | `themes/` | Custom document themes and CSS |
 | `plugins/` | Local JavaScript transforms |
 | `settings.json` | Preferences and keyboard shortcuts |
 
 Local asset files use the SHA-256 digest of their content as the filename prefix, so the document stores a stable relative reference such as `assets/6cbb4a435a30b8abe4bb23b1.png`. A single inserted or imported asset may be up to 32 MiB.
+
+In Write mode, focus the document body and press **⌘V** or choose **Edit → Paste** to insert a clipboard image, screenshot, or image files copied in Finder. Images are copied into the library's `assets/` directory and referenced by the document, so they remain available after reopening. Text fields and code editors retain ordinary text paste.
 
 Autosave starts after editing begins and writes changed content about every 750 ms using atomic replacement. If saving fails, Mory keeps the edit buffer and writes recovery content when possible; recovery is offered on the next launch.
 
@@ -70,7 +75,9 @@ Autosave starts after editing begins and writes changed content about every 750 
 
 Importing a document copies local assets into the destination library and rewrites their relative paths. Markdown and DocxXML exports copy local assets into an `assets/` directory. HTML and PDF exports embed local images. Remote URLs remain remote and are not fetched for export.
 
-Existing libraries require no migration. Back up the library before maintenance or manual cleanup; replacing the application cannot recover revisions that have already been pruned.
+Document source is stored verbatim, followed by a hidden `mory:metadata:v1` comment containing XML metadata for titles, IDs, hierarchy, favorites, and page settings. This preserves existing front matter and XML declarations while keeping each save atomic. External originals and Markdown, MDX, DocxXML, HTML, and PDF import/export behavior remain supported; `settings.json` still stores application preferences.
+
+On opening an old library, Mory automatically converts JSON notes, trash, history, and recovery records to native documents. Each original is removed only after its replacement is durably written; interrupted migrations can resume, and conflicting copies produce an error without overwriting either version. Back up the library before upgrading: older Mory versions cannot read the new storage format, so downgrading requires restoring that backup. Replacing the application cannot recover revisions that have already been pruned.
 
 ## Plugins
 

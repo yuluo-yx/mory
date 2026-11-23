@@ -19,6 +19,7 @@ type RichOptions struct {
 
 func ToRich(n *Node, options RichOptions) richtext.Text {
 	p := richtext.Paragraph{Style: richtext.ParagraphStyle{ID: n.ID}}
+	p.Style.Indent = n.Int("indent", 0)
 	if len(n.Kind) == 2 && n.Kind[0] == 'h' {
 		p.Style.Heading = min(6, int(n.Kind[1]-'0'))
 	}
@@ -141,6 +142,11 @@ func FromRich(text richtext.Text, original *Node) []*Node {
 			n.Set("align", "right")
 		default:
 			n.Set("align", "")
+		}
+		if p.Style.Indent > 0 {
+			n.Set("indent", strconv.Itoa(p.Style.Indent))
+		} else {
+			n.Set("indent", "")
 		}
 		for _, run := range p.Runs {
 			a := run.Attributes

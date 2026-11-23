@@ -27,7 +27,7 @@ func TestTrashMovesAndRestoresDeletionGroups(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, n := range []*Note{parent, child, independent} {
-		if _, err := os.Stat(filepath.Join(l.Dir, "notes", n.ID+".json")); !os.IsNotExist(err) {
+		if _, err := os.Stat(filepath.Join(l.Dir, "notes", n.ID+".md")); !os.IsNotExist(err) {
 			t.Fatal("active copy remains", err)
 		}
 		if _, err := os.Stat(l.notePath(n)); err != nil {
@@ -73,6 +73,9 @@ func TestTrashRetentionAndMigration(t *testing.T) {
 	n.Deleted = true
 	n.Updated = time.Now().Add(-365 * 24 * time.Hour)
 	b, _ := json.Marshal(n)
+	if err := os.Remove(filepath.Join(l.Dir, "notes", n.ID+".md")); err != nil {
+		t.Fatal(err)
+	}
 	mustWrite(t, filepath.Join(l.Dir, "notes", n.ID+".json"), b)
 	start := time.Now()
 	l, err := Open(l.Dir)
@@ -96,8 +99,8 @@ func TestInterruptedTrashMoves(t *testing.T) {
 		for _, both := range []bool{false, true} {
 			l := mustLibrary(t)
 			n := mustNote(t, l, "Interrupted")
-			from := filepath.Join(l.Dir, "notes", n.ID+".json")
-			to := filepath.Join(l.Dir, "trash", n.ID+".json")
+			from := filepath.Join(l.Dir, "notes", n.ID+".md")
+			to := filepath.Join(l.Dir, "trash", n.ID+".md")
 			if !deleted {
 				from, to = to, from
 				if err := os.Rename(to, from); err != nil {
@@ -108,7 +111,7 @@ func TestInterruptedTrashMoves(t *testing.T) {
 			if deleted {
 				n.DeletedAt = time.Now()
 			}
-			b, _ := json.MarshalIndent(n, "", "  ")
+			b, _ := marshalNote(n)
 			mustWrite(t, from, b)
 			if both {
 				if err := os.Link(from, to); err != nil {
@@ -137,7 +140,7 @@ func TestTrashConflictsNeverOverwrite(t *testing.T) {
 	l := mustLibrary(t)
 	n := mustNote(t, l, "Conflict")
 	original, _ := os.ReadFile(l.notePath(n))
-	target := filepath.Join(l.Dir, "trash", n.ID+".json")
+	target := filepath.Join(l.Dir, "trash", n.ID+".md")
 	mustWrite(t, target, []byte("occupied"))
 	if err := l.TrashTree(n, true); !errors.Is(err, ErrConflict) || n.Deleted {
 		t.Fatal("target conflict ignored", err)
@@ -149,7 +152,7 @@ func TestTrashConflictsNeverOverwrite(t *testing.T) {
 	other := *n
 	other.Deleted = true
 	other.Source = "conflicting duplicate"
-	b, _ := json.Marshal(other)
+	b, _ := marshalNote(&other)
 	mustWrite(t, target, b)
 	if _, err := Open(l.Dir); !errors.Is(err, ErrConflict) {
 		t.Fatal("conflicting copies accepted", err)

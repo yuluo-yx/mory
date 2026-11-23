@@ -171,6 +171,10 @@ func (n *Node) Markdown() string {
 	if n.Kind == "#raw" {
 		return n.Text
 	}
+	// Markdown whitespace separates blocks but cannot preserve an empty one.
+	if n.Kind == "p" && len(n.Children) == 0 {
+		return n.XML() + "\n\n"
+	}
 	if n.Kind == "pre" && n.Attr("code-meta") != "" {
 		fence := "```"
 		for strings.Contains(n.Plain(), fence) {
@@ -203,7 +207,7 @@ func (n *Node) Markdown() string {
 		}
 		for key := range c.Attrs {
 			switch key {
-			case "background-color", "text-color", "align", "image.crop", "folded", "width", "height":
+			case "background-color", "text-color", "align", "indent", "image.crop", "folded", "width", "height":
 				styled = true
 			}
 		}
