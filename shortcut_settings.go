@@ -151,10 +151,10 @@ func (a *app) shortcutSettings(c *ui.Context) {
 		if ui.Checkbox(c, &a.lib.Settings.ShowShortcuts, a.tr("Show shortcut hints beside buttons")).Changed() {
 			a.savePreferences()
 		}
-		ui.Text(c, a.tr("Use Cmd, Ctrl, Alt and Shift separated by +. Leave a field empty to disable it.")).FontSize(12)
+		ui.Text(c, a.tr("Use Cmd, Ctrl, Alt and Shift separated by +. Leave a field empty to disable it.")).FontSize(c.Theme().FontSize - 1)
 		ui.Column(c).Padding(14).Radius(8).Background(c.Theme().Surface).Gap(8).Children(func() {
 			ui.Text(c, a.tr("Global quick note")).Bold()
-			ui.Text(c, a.tr("Works outside Mory. Disabled by default to avoid launcher conflicts.")).FontSize(12)
+			ui.Text(c, a.tr("Works outside Mory. Disabled by default to avoid launcher conflicts.")).FontSize(c.Theme().FontSize - 1)
 			ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
 				enabled := strings.TrimSpace(a.quickDraft) != ""
 				if ui.Checkbox(c, &enabled, a.tr("Enable global quick note")).Changed() {

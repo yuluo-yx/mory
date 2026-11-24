@@ -57,7 +57,7 @@ func (a *app) pageWidthControls(c *ui.Context) {
 			a.setPageWidth(mode, width)
 		}
 	})
-	ui.Text(c, a.tr("Applies to all documents.")).FontSize(12).TextColor(c.Theme().TextMuted).FillWidth()
+	ui.Text(c, a.tr("Applies to all documents.")).FontSize(c.Theme().FontSize - 1).TextColor(c.Theme().TextMuted).FillWidth()
 	if a.pageWidthMode() != "Custom" {
 		return
 	}
@@ -65,10 +65,10 @@ func (a *app) pageWidthControls(c *ui.Context) {
 		value := float64(a.documentPageWidth())
 		slider := ui.StepSlider(c, &value, minPageWidth, maxPageWidth, 20).Label(a.tr("Custom page width")).Grow(1).MinWidth(0)
 		input := ui.NumberInput(c, &value, minPageWidth, maxPageWidth, 20).Label(a.tr("Page width in pixels")).Width(160)
-		ui.Text(c, "px").FontSize(12).TextColor(c.Theme().TextMuted)
+		ui.Text(c, "px").FontSize(c.Theme().FontSize - 1).TextColor(c.Theme().TextMuted)
 		if slider.Changed() || input.Changed() {
 			a.setPageWidth("Custom", max(minPageWidth, min(maxPageWidth, int(value))))
 		}
 	})
-	ui.Text(c, a.tr("Drag to resize the page. Narrow windows fit it automatically.")).FontSize(12).TextColor(c.Theme().TextMuted).FillWidth()
+	ui.Text(c, a.tr("Drag to resize the page. Narrow windows fit it automatically.")).FontSize(c.Theme().FontSize - 1).TextColor(c.Theme().TextMuted).FillWidth()
 }

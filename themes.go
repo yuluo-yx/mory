@@ -124,7 +124,7 @@ func (a *app) themeControls(c *ui.Context) {
 		}
 	})
 	if a.docTheme != nil && len(a.docTheme.Warnings) > 0 {
-		ui.Textf(c, a.tr("%d unsupported or invalid declarations"), len(a.docTheme.Warnings)).FontSize(11).TextColor(c.Theme().TextMuted)
+		ui.Textf(c, a.tr("%d unsupported or invalid declarations"), len(a.docTheme.Warnings)).FontSize(c.Theme().FontSize - 2).TextColor(c.Theme().TextMuted)
 	}
 }
 

@@ -23,7 +23,7 @@ func (a *app) historySettings(c *ui.Context) {
 			policy.Disabled = !enabled
 			a.setHistorySettings(policy)
 		}
-		ui.Text(c, a.tr("Automatic saving stays on. Turning history off keeps existing versions and recovery copies.")).FontSize(12).TextColor(c.Theme().TextMuted).FillWidth()
+		ui.Text(c, a.tr("Automatic saving stays on. Turning history off keeps existing versions and recovery copies.")).FontSize(c.Theme().FontSize - 1).TextColor(c.Theme().TextMuted).FillWidth()
 		for _, setting := range []struct {
 			label   string
 			control string
@@ -44,7 +44,7 @@ func (a *app) historySettings(c *ui.Context) {
 				}
 			})
 		}
-		ui.Text(c, a.tr("Older versions are removed on the next document save or history view according to these limits. The latest version is always kept, even if it exceeds the limits.")).FontSize(12).TextColor(c.Theme().TextMuted).FillWidth()
+		ui.Text(c, a.tr("Older versions are removed on the next document save or history view according to these limits. The latest version is always kept, even if it exceeds the limits.")).FontSize(c.Theme().FontSize - 1).TextColor(c.Theme().TextMuted).FillWidth()
 		if ghostButton(c, a.tr("Reset history settings")).AlignSelf(ui.Start).Disabled(policy == library.DefaultHistorySettings()).Clicked() {
 			a.setHistorySettings(library.DefaultHistorySettings())
 		}

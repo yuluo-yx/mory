@@ -792,7 +792,13 @@ func (a *app) blockText(c *ui.Context, n *blocks.Node, readOnly bool) {
 	if len(n.Kind) == 2 && n.Kind[0] == 'h' && n.Kind[1] > '6' {
 		richTheme.Headings[5].Size = a.docTheme.Length(n.Kind, "font-size", font.Size, font.Size, font.Size) / font.Size
 	}
-	ed := richtext.EditorBase(c.Key("text"), field.doc, richtext.EditorOptions{Label: "Block text " + n.ID, ReadOnly: readOnly, Font: font, Theme: richTheme, OnLink: a.openLink, OnLinkCommand: func() { a.doc = field.doc; a.linkURL = field.doc.Formatting().Link; a.linkOpen = true }}).FillWidth()
+	ed := richtext.EditorBase(c.Key("text"), field.doc, richtext.EditorOptions{
+		Label: "Block text " + n.ID, ReadOnly: readOnly, Font: font, Theme: richTheme,
+		OnLink: a.openLink, OnLinkCommand: func() { a.doc = field.doc; a.linkURL = field.doc.Formatting().Link; a.linkOpen = true },
+		OnKey: func(key ui.Key, mods ui.Modifiers) bool {
+			return !readOnly && key == ui.KeyEnter && mods == 0 && a.exitEmptyList(n.ID)
+		},
+	}).FillWidth()
 	width := ed.LayoutBounds().W
 	if width < 80 {
 		width = 600

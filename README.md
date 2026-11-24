@@ -33,6 +33,8 @@ The editable feature tour is available from **Help → Open welcome guide**. A n
 
 Press Enter in a document's title to move the caret to the start of its body in Write, Source, or Split mode. Existing body text is preserved.
 
+Sidebar rows keep a fixed height and reserve space for their actions, so hovering does not move surrounding rows or change title truncation. Actions appear on hover, keyboard focus, or selection; hover over a title to see its full name. Sidebar labels and settings controls use 15-point text, independently of document and outline font preferences.
+
 ## Get started
 
 Download **Mory 0.0.1 Alpha** for your Mac:
@@ -118,7 +120,19 @@ mise exec -- make build ARCH=arm64  # Apple Silicon app, DMG, and checksum
 mise exec -- make build ARCH=amd64  # Intel app, DMG, and checksum
 ```
 
-Build output is written to `build/darwin-arm64/` or `build/darwin-amd64/`; omitting `ARCH` selects the current Go architecture. GitHub Actions builds and tests both architectures on matching macOS runners, then publishes tagged releases with both DMGs and checksums. Local packages are ad-hoc signed. Native E2E tests and real-window performance measurements require a logged-in macOS desktop session:
+Build output is written to `build/darwin-arm64/` or `build/darwin-amd64/`; omitting `ARCH` selects the current Go architecture. GitHub Actions builds and tests both architectures on matching macOS runners, then publishes tagged releases with both DMGs and checksums. Local packages are ad-hoc signed. Native E2E tests and real-window performance measurements require a logged-in macOS desktop session.
+
+`make check` includes native workspace and everyday writing journeys. The workspace suite covers unsaved document switching, folder navigation and rename, search, six shortcut-draft cancellation routes, hover geometry, canceled batch moves, parent/child trash restoration, and a language round trip. The writing suite covers Unicode selection replacement, composed emoji deletion, formatting boundaries, mode switches, atomic replace-all undo/redo, settings interruptions, empty-list exit, and source editing. Assertions check actual input focus, rendered text and persisted records; fixtures use a temporary library and are removed when the run ends.
+
+To run one group while debugging:
+
+```sh
+mise exec -- go build -tags=e2e -o .test-output/mory-e2e .
+mise exec -- python3 scripts/e2e.py .test-output/mory-e2e --suite workspace
+mise exec -- python3 scripts/e2e.py .test-output/mory-e2e --suite writing
+```
+
+These Unicode tests send committed text and native key events. They do not automate a macOS input method's candidate window or marked-text composition. Real-window performance measurements remain separate:
 
 ```sh
 mise exec -- python3 scripts/performance.py

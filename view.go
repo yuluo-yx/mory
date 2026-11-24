@@ -114,6 +114,8 @@ func ghostButton(c *ui.Context, label string) ui.Element {
 	return btn
 }
 
+const sidebarFontSize float32 = 15
+
 func (a *app) sidebar(c *ui.Context) {
 	t := c.Theme()
 	vibrant := c.Vibrancy()
@@ -159,7 +161,7 @@ func (a *app) sidebar(c *ui.Context) {
 					iconColor = t.Accent
 				}
 				ui.Icon(c, iconHome()).Width(16).Height(16).TextColor(iconColor)
-				txt := ui.Text(c, a.tr("Home")).FontSize(13).Grow(1)
+				txt := ui.Text(c, a.tr("Home")).FontSize(sidebarFontSize).Grow(1)
 				if isHome {
 					txt.Bold().TextColor(t.Accent)
 				}
@@ -173,7 +175,7 @@ func (a *app) sidebar(c *ui.Context) {
 
 		// Section: My documents Header
 		ui.Row(c).Padding(6, 8, 4).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, a.tr("My documents")).FontSize(12).TextColor(t.TextMuted).Bold().Grow(1).LetterSpacing(-0.1)
+			ui.Text(c, a.tr("My documents")).FontSize(sidebarFontSize - 1).TextColor(t.TextMuted).Bold().Grow(1).LetterSpacing(-0.1)
 			ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
 				btnFolder := ghostButton(c, "").Tooltip(a.tr("New folder")).Label(a.tr("New folder")).Padding(3, 5).Radius(4)
 				btnFolder.Children(func() {
@@ -225,11 +227,15 @@ func (a *app) sidebar(c *ui.Context) {
 			settingsBtn.Children(func() {
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 					ui.Icon(c, iconSettings()).Width(16).Height(16).TextColor(t.TextMuted)
-					ui.Text(c, a.tr("Settings")).FontSize(13)
+					ui.Text(c, a.tr("Settings")).FontSize(sidebarFontSize)
 				})
 			})
 			if settingsBtn.Clicked() {
 				a.settingsOpen = !a.settingsOpen
+				if !a.settingsOpen {
+					a.helpOpen = false
+					a.shortcutDraft = nil
+				}
 			}
 		})
 
@@ -262,7 +268,8 @@ func (a *app) treeFolder(c *ui.Context, folder string, depth int, seen map[strin
 	isActiveFolder := a.folder == folder
 	leftPad := float32(4 + depth*16)
 
-	btnFolder := ghostButton(c.Key("folder-"+folder), "").Label(a.tr("Folder ")+folder).FillWidth().Radius(6).Padding(4, 6, 4, leftPad)
+	btnFolder := ghostButton(c.Key("folder-"+folder), "").Label(a.tr("Folder ")+folder).Tooltip(folder).FillWidth().Height(30).Shrink(0).Scale(1, 1).Radius(6).Padding(4, 6, 4, leftPad)
+	showControls := btnFolder.Hovered() || btnFolder.FocusWithin() || isActiveFolder
 	if isActiveFolder {
 		btnFolder.Background(t.Accent.Alpha(0.12))
 	} else if btnFolder.Hovered() {
@@ -272,36 +279,38 @@ func (a *app) treeFolder(c *ui.Context, folder string, depth int, seen map[strin
 	btnFolder.Children(func() {
 		// Fill the button so trailing actions stay at the sidebar's right edge.
 		ui.Row(c).FillWidth().Gap(5).AlignItems(ui.Center).Children(func() {
-			// Expand / Collapse Chevron Button (Only visible on hover or when collapsed)
-			showChevron := btnFolder.Hovered() || isCollapsed
-			if showChevron {
-				chevronIcon := iconChevronDown()
-				if isCollapsed {
-					chevronIcon = iconChevronRight()
-				}
-				btnChevron := ghostButton(c.Key("chev-"+folder), "").Padding(1, 2).Radius(3)
-				btnChevron.Children(func() {
-					ui.Icon(c, chevronIcon).Width(11).Height(11).TextColor(t.TextMuted)
-				})
-				if btnChevron.Clicked() {
-					a.collapsedFolders[folder] = !isCollapsed
-				}
-			} else {
-				ui.Box(c).Width(15)
+			// Invisible controls retain their layout slots without taking input.
+			chevronIcon := iconChevronDown()
+			if isCollapsed {
+				chevronIcon = iconChevronRight()
+			}
+			btnChevron := ghostButton(c.Key("chev-"+folder), "").Width(15).Shrink(0).Padding(1, 2).Radius(3)
+			if !showControls && !isCollapsed {
+				btnChevron.Invisible()
+			}
+			btnChevron.Children(func() {
+				ui.Icon(c, chevronIcon).Width(11).Height(11).TextColor(t.TextMuted)
+			})
+			if btnChevron.Clicked() {
+				a.collapsedFolders[folder] = !isCollapsed
 			}
 
-			ui.Icon(c, iconFolder()).Width(14).Height(14).TextColor(t.Accent)
+			ui.Icon(c, iconFolder()).Width(14).Height(14).Shrink(0).TextColor(t.Accent)
 			displayName := folder
 			if idx := strings.LastIndex(folder, "/"); idx >= 0 {
 				displayName = folder[idx+1:]
 			}
-			txt := ui.Text(c, displayName).FontSize(13).Grow(1).MinWidth(0).SingleLine()
+			txt := ui.Text(c, displayName).FontSize(sidebarFontSize).Grow(1).MinWidth(0).SingleLine()
 			if isActiveFolder {
 				txt.Bold().TextColor(t.Accent)
 			}
 
-			// Pinned Action Buttons on the Right on Hover: [New Folder] [+ New Note] [··· More]
-			if btnFolder.Hovered() || isActiveFolder {
+			// Reserve action width so hover never changes title truncation.
+			actions := ui.Row(c).Gap(5).Shrink(0).AlignItems(ui.Center)
+			if !showControls {
+				actions.Invisible()
+			}
+			actions.Children(func() {
 				btnAddSubFolder := ghostButton(c.Key("add-sf-"+folder), "").Tooltip(a.tr("New folder")).Padding(2, 3).Radius(4)
 				btnAddSubFolder.Children(func() {
 					ui.Icon(c, iconFolderPlus()).Width(13).Height(13).TextColor(t.TextMuted)
@@ -341,7 +350,7 @@ func (a *app) treeFolder(c *ui.Context, folder string, depth int, seen map[strin
 						a.folderOpen = true
 					}
 				})
-			}
+			})
 		})
 	})
 
@@ -363,9 +372,8 @@ func (a *app) treeFolder(c *ui.Context, folder string, depth int, seen map[strin
 		}
 	}
 	if btnFolder.Clicked() {
-		if a.save() {
-			a.current = nil
-			a.section = "All notes"
+		a.home("All notes")
+		if a.current == nil {
 			a.folder = folder
 		}
 	}
@@ -398,8 +406,9 @@ func (a *app) treeNote(c *ui.Context, n *library.Note, depth int, seen map[strin
 	isCollapsed := a.collapsedNotes[n.ID]
 
 	leftPad := float32(4 + depth*16)
-	b := ghostButton(c.Key("tree-"+n.ID), "").Label(a.tr("Open ")+a.displayTitle(n.Title)).FillWidth().Padding(4, 6, 4, leftPad).MaxHeight(32).Radius(6).Drag(noteDrag{n.ID})
+	b := ghostButton(c.Key("tree-"+n.ID), "").Label(a.tr("Open ")+a.displayTitle(n.Title)).Tooltip(a.displayTitle(n.Title)).FillWidth().Height(30).Shrink(0).Scale(1, 1).Padding(4, 6, 4, leftPad).Radius(6).Drag(noteDrag{n.ID})
 	isActive := a.current == n
+	showControls := b.Hovered() || b.FocusWithin() || isActive
 	if isActive {
 		b.Background(c.Theme().Accent.Alpha(0.12))
 	} else if b.Hovered() {
@@ -408,38 +417,38 @@ func (a *app) treeNote(c *ui.Context, n *library.Note, depth int, seen map[strin
 	b.Children(func() {
 		// Keep parent and child actions aligned regardless of title or indentation.
 		ui.Row(c).FillWidth().Gap(5).AlignItems(ui.Center).Children(func() {
-			// Leading slot (15px): Chevron button if has children (visible on hover or when collapsed), otherwise spacer
-			showChevron := hasChildren && (b.Hovered() || isCollapsed)
-			if showChevron {
-				chevronIcon := iconChevronDown()
-				if isCollapsed {
-					chevronIcon = iconChevronRight()
-				}
-				btnChevron := ghostButton(c.Key("chev-n-"+n.ID), "").Padding(1, 2).Radius(3)
-				btnChevron.Children(func() {
-					ui.Icon(c, chevronIcon).Width(11).Height(11).TextColor(c.Theme().TextMuted)
-				})
-				if btnChevron.Clicked() {
-					a.collapsedNotes[n.ID] = !isCollapsed
-				}
-			} else {
-				ui.Box(c).Width(15)
+			chevronIcon := iconChevronDown()
+			if isCollapsed {
+				chevronIcon = iconChevronRight()
+			}
+			btnChevron := ghostButton(c.Key("chev-n-"+n.ID), "").Width(15).Shrink(0).Padding(1, 2).Radius(3)
+			if !hasChildren || (!showControls && !isCollapsed) {
+				btnChevron.Invisible()
+			}
+			btnChevron.Children(func() {
+				ui.Icon(c, chevronIcon).Width(11).Height(11).TextColor(c.Theme().TextMuted)
+			})
+			if btnChevron.Clicked() {
+				a.collapsedNotes[n.ID] = !isCollapsed
 			}
 
-			ui.Icon(c, iconFileText()).Width(14).Height(14).TextColor(c.Theme().TextMuted)
-			txt := ui.Text(c, a.displayTitle(n.Title)).FontSize(13).Grow(1).MinWidth(0).SingleLine()
+			ui.Icon(c, iconFileText()).Width(14).Height(14).Shrink(0).TextColor(c.Theme().TextMuted)
+			txt := ui.Text(c, a.displayTitle(n.Title)).FontSize(sidebarFontSize).Grow(1).MinWidth(0).SingleLine()
 			if isActive {
 				txt.Bold().TextColor(c.Theme().Accent)
 			}
 			if n.Pinned {
-				ui.Icon(c, iconPin()).Width(11).Height(11).TextColor(c.Theme().TextMuted)
+				ui.Icon(c, iconPin()).Width(11).Height(11).Shrink(0).TextColor(c.Theme().TextMuted)
 			}
 			if n.Starred {
-				ui.Icon(c, iconStar()).Width(11).Height(11).TextColor(ui.Hex("#ff9500"))
+				ui.Icon(c, iconStar()).Width(11).Height(11).Shrink(0).TextColor(ui.Hex("#ff9500"))
 			}
 
-			// Pinned Action Buttons on the Right on Hover: [+ New Sub-note] and [··· More Actions]
-			if b.Hovered() || isActive {
+			actions := ui.Row(c).Gap(5).Shrink(0).AlignItems(ui.Center)
+			if !showControls {
+				actions.Invisible()
+			}
+			actions.Children(func() {
 				btnAddSub := ghostButton(c.Key("add-sub-"+n.ID), "").Label(a.tr("New sub-note")).Tooltip(a.tr("New sub-note")).Padding(2, 3).Radius(4)
 				btnAddSub.Children(func() {
 					ui.Icon(c, iconPlus()).Width(11).Height(11).TextColor(c.Theme().TextMuted)
@@ -455,7 +464,7 @@ func (a *app) treeNote(c *ui.Context, n *library.Note, depth int, seen map[strin
 				btnMore.PopoverMenuButton(func(m *ui.Menu) {
 					a.noteMenu(m, n)
 				})
-			}
+			})
 		})
 	})
 
@@ -1005,7 +1014,8 @@ func (a *app) editorView(c *ui.Context) {
 	// Dock changes take effect on the next frame, so a click cannot build the
 	// same outline list twice (first on the left, then again on the right).
 	outlineSide := a.outlineSide()
-	ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Justify(a.pageAlignment()).Children(func() {
+	// Find-bar visibility must not replace the editor's identity or keyboard focus.
+	ui.Row(c.Key("document-content")).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Justify(a.pageAlignment()).Children(func() {
 		// Move the outline with the page so wide windows keep navigation nearby.
 		group := ui.Row(c).Grow(1).MinWidth(0).MinHeight(0).AlignItems(ui.Stretch)
 		if width := a.documentPageWidth(); width > 0 && a.mode != "Split" {
@@ -1285,6 +1295,17 @@ func (a *app) findBar(c *ui.Context) {
 		}
 		if ghostButton(c, "×").Label(a.tr("Close find")).Clicked() {
 			a.findOpen = false
+			if a.structured() {
+				session := a.blockEditor
+				if session.doc.Find(session.active) != nil {
+					_, caret := a.doc.Selection()
+					a.focusBlock(session.active, caret)
+				} else {
+					a.focusAfterBlockRemoval(0)
+				}
+			} else {
+				a.richEditor.Focus(c)
+			}
 		}
 		if ui.Button(c, a.tr("Replace all")).Clicked() {
 			a.replaceAll()

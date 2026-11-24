@@ -260,6 +260,16 @@ func (a *app) libraryOverlays(c *ui.Context) {
 					a.folderOpen = false
 				}
 				if ui.PrimaryButton(c, a.tr("Save folder")).Padding(5, 14).Radius(6).Clicked() && !a.fail(a.lib.RenameFolder(a.folderFrom, a.folderName)) {
+					if a.folderFrom != "" {
+						renamed := strings.TrimSpace(a.folderName)
+						if a.folder == a.folderFrom {
+							a.folder = renamed
+						}
+						if collapsed, ok := a.collapsedFolders[a.folderFrom]; ok && renamed != a.folderFrom {
+							a.collapsedFolders[renamed] = collapsed
+							delete(a.collapsedFolders, a.folderFrom)
+						}
+					}
 					a.folderOpen = false
 				}
 			})

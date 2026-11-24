@@ -122,7 +122,22 @@ func (a *app) richDocumentEditor(c *ui.Context) {
 			Label: a.tr("Document editor"), Placeholder: placeholder, Font: font,
 			OnLink: a.openLink, OnLinkCommand: func() { a.linkURL = doc.Formatting().Link; a.linkOpen = true },
 			Theme: a.docTheme.Rich(c.Theme(), font),
-		}).Fill()
+			OnKey: func(key ui.Key, mods ui.Modifiers) bool {
+				redoMods, redoKey, err := parseKey(a.keyFor("Redo", "Cmd+Shift+Z"))
+				if err == nil && key == redoKey && mods == redoMods {
+					redoRichText(doc)
+					return true
+				}
+				return false
+			},
+			OnCommand: func(command string) bool {
+				if command == "redo" {
+					redoRichText(doc)
+					return true
+				}
+				return false
+			},
+		}).Bind(&a.richEditor).Fill()
 		if a.bodyFocus {
 			doc.SetSelection(0, 0)
 			if a.bodyInput != "" {

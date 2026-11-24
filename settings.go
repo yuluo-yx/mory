@@ -13,9 +13,12 @@ func (a *app) settingsPage(c *ui.Context) {
 	if a.helpOpen {
 		a.settingsTab = "Keyboard shortcuts"
 	}
-	ui.Column(c).Fill().MinHeight(0).Padding(48, 32, 20).Gap(20).Children(func() {
+	// Scope larger interface text to preferences, leaving document typography intact.
+	settingsTheme := *c.Theme()
+	settingsTheme.FontSize += 2
+	ui.Themed(c, &settingsTheme).Column().Fill().MinHeight(0).Padding(48, 32, 20).Gap(20).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Gap(12).Children(func() {
-			ui.Text(c, a.tr("Settings")).FontSize(28).Bold().Grow(1)
+			ui.Text(c, a.tr("Settings")).FontSize(30).Bold().Grow(1)
 			if ui.Button(c, a.tr("Done")).Label(a.tr("Back from settings")).Clicked() {
 				a.settingsOpen, a.helpOpen = false, false
 				a.shortcutDraft = nil

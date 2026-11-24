@@ -88,7 +88,7 @@ func (a *app) actions() []shortcut {
 			if a.structured() {
 				a.blockUndo(true)
 			} else if a.doc != nil && a.mode == "Write" {
-				a.doc.Redo()
+				redoRichText(a.doc)
 				a.capture()
 			}
 		}},

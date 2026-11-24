@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Exercise a real macOS MyGo window using its opt-in automation socket."""
+import argparse
 import json
 import os
 from pathlib import Path
@@ -13,10 +14,12 @@ import zlib
 
 from editor_e2e import exercise_editor
 from clipboard_e2e import exercise_clipboard
+from workspace_e2e import exercise_workspace
+from writing_e2e import exercise_writing
 from library_records import note_paths, read_note
 
 
-def exercise(binary, root):
+def exercise(binary, root, suite="all"):
     sock_path = root / "app.sock"
     fixtures = root / "fixtures"
     fixtures.mkdir()
@@ -140,6 +143,15 @@ def exercise(binary, root):
                 raise AssertionError("Native PDF export did not finish")
             time.sleep(0.1)
         assert (root / "export.pdf").read_bytes().startswith(b"%PDF-"), "Invalid PDF export"
+        if suite in {"all", "workspace"}:
+            exercise_workspace(call, nodes, act, key, root)
+        if suite in {"all", "writing"}:
+            exercise_writing(call, nodes, act, key, root, fixtures)
+        if suite != "all":
+            call("menu", path=["Mory", "Quit Mory"])
+            process.wait(timeout=10)
+            assert process.returncode == 0, process.communicate()[1].decode()
+            return
         call("menu", path=["Help", "Open welcome guide"])
         welcome_deadline = time.monotonic() + 5
         while not any(n.get("label") == "Document title" and n.get("value") == "Welcome to Mory" for n in nodes()):
@@ -430,8 +442,12 @@ def exercise(binary, root):
 
 
 if __name__ == "__main__":
-    binary = Path(sys.argv[1]).resolve()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("binary", type=Path)
+    parser.add_argument("--suite", choices=["all", "workspace", "writing"], default="all")
+    args = parser.parse_args()
+    binary = args.binary.resolve()
     output = Path(".test-output")
     output.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="e2e-", dir=output) as folder:
-        exercise(binary, Path(folder).resolve())
+        exercise(binary, Path(folder).resolve(), args.suite)

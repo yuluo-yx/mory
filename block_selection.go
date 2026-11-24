@@ -5,6 +5,7 @@ import (
 
 	"github.com/egoist/mygo/transfer"
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/richtext"
 	"github.com/yuluo-yx/mory/internal/blocks"
 )
 
@@ -261,11 +262,26 @@ func (a *app) replaceAll() {
 		a.captureBlocks()
 	} else {
 		text := a.doc.Text().String()
-		count := strings.Count(text, a.findText)
-		for range count {
-			a.findNext()
-			a.doc.InsertText(a.replaceText)
+		var matches []int
+		for offset, runeOffset := 0, 0; offset < len(text); {
+			index := strings.Index(text[offset:], a.findText)
+			if index < 0 {
+				break
+			}
+			runeOffset += len([]rune(text[offset : offset+index]))
+			matches = append(matches, runeOffset)
+			offset += index + len(a.findText)
+			runeOffset += len([]rune(a.findText))
 		}
+		// Replace original matches backwards in one undo step. Replacement text
+		// may contain the query and must never become another match in this edit.
+		a.doc.Edit(func(edit *richtext.Edit) {
+			length := len([]rune(a.findText))
+			for index := len(matches) - 1; index >= 0; index-- {
+				start := matches[index]
+				edit.ReplaceString(start, start+length, a.replaceText, edit.Text().AttributesAt(start))
+			}
+		})
 		a.capture()
 	}
 }

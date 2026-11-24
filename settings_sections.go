@@ -11,7 +11,7 @@ import (
 func settingsCard(c *ui.Context, title string, content func()) {
 	ui.Column(c).FillWidth().Padding(16).Radius(10).Background(c.Theme().Surface).
 		Border(1, c.Theme().Border.Alpha(0.6)).Gap(12).Children(func() {
-		ui.Text(c, title).FontSize(14).Bold()
+		ui.Text(c, title).FontSize(c.Theme().FontSize + 1).Bold()
 		content()
 	})
 }
@@ -49,25 +49,25 @@ func (a *app) generalSettings(c *ui.Context) {
 		}
 	})
 	settingsCard(c, a.tr("Library & Storage"), func() {
-		ui.Text(c, a.lib.Dir).FontSize(13).TextColor(c.Theme().TextMuted)
+		ui.Text(c, a.lib.Dir).TextColor(c.Theme().TextMuted)
 		if ui.Button(c, a.tr("Reveal library in Finder")).AlignSelf(ui.Start).Clicked() {
 			a.reveal(a.lib.Dir)
 		}
 	})
 	settingsCard(c, a.tr("Default application"), func() {
-		ui.Text(c, a.tr("Open .md, .markdown and .mdx files with Mory from Finder.")).FontSize(13).TextColor(c.Theme().TextMuted)
+		ui.Text(c, a.tr("Open .md, .markdown and .mdx files with Mory from Finder.")).TextColor(c.Theme().TextMuted)
 		if ui.Button(c, a.tr("Make Mory the default Markdown app")).AlignSelf(ui.Start).Clicked() {
 			a.makeMarkdownDefault()
 		}
 		if a.associationStatus != "" {
-			ui.Text(c, a.associationStatus).FontSize(12).TextColor(c.Theme().Accent)
+			ui.Text(c, a.associationStatus).FontSize(c.Theme().FontSize - 1).TextColor(c.Theme().Accent)
 		}
 	})
 	version := mygo.App.Version()
 	if version == "" {
 		version = "dev"
 	}
-	ui.Text(c, a.trf("Mory %s · Made for macOS", version)).FontSize(12).TextColor(c.Theme().TextMuted)
+	ui.Text(c, a.trf("Mory %s · Made for macOS", version)).FontSize(c.Theme().FontSize - 1).TextColor(c.Theme().TextMuted)
 }
 
 func (a *app) editorSettings(c *ui.Context) {
@@ -93,7 +93,7 @@ func (a *app) editorSettings(c *ui.Context) {
 				a.setPagePosition(position)
 			}
 		})
-		ui.Text(c, a.tr("Position the cover, title and body together within the writing area.")).FontSize(12).TextColor(c.Theme().TextMuted)
+		ui.Text(c, a.tr("Position the cover, title and body together within the writing area.")).FontSize(c.Theme().FontSize - 1).TextColor(c.Theme().TextMuted)
 		a.pageWidthControls(c)
 	})
 	settingsCard(c, a.tr("Document outline"), func() {

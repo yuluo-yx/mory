@@ -84,7 +84,7 @@ func (a *app) selectText(c *ui.Context, value *string, options []string) ui.Elem
 	t := c.Theme()
 	sel := ui.SelectBase(c, value)
 	sel.Trigger.Padding(5, 10).Gap(8).Radius(6).Border(1, t.Border).Background(t.Surface).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, a.tr(*value)).Grow(1).FontSize(13)
+		ui.Text(c, a.tr(*value)).Grow(1).FontSize(t.FontSize)
 		ui.Icon(c, iconChevronDown()).Width(12).Height(12).TextColor(t.TextMuted)
 	})
 	sel.Popup(func(panel ui.Element) {

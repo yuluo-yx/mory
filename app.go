@@ -50,6 +50,7 @@ type app struct {
 	services                                                                        ui.Services
 	textFocused                                                                     bool
 	bodyFocus                                                                       bool
+	richEditor                                                                      ui.Handle
 	bodyInput                                                                       string
 	submittedTitle                                                                  string
 	reminderSources                                                                 map[string]string
@@ -301,6 +302,7 @@ func (a *app) openNote(n *library.Note) {
 	a.current = n
 	a.sourceRevision++
 	a.settingsOpen, a.helpOpen = false, false
+	a.shortcutDraft = nil
 	if a.lib.Changed(n) {
 		if a.fail(a.lib.Reload(n.ID)) {
 			return
@@ -473,6 +475,7 @@ func (a *app) home(section string) {
 	}
 	a.current = nil
 	a.settingsOpen, a.helpOpen = false, false
+	a.shortcutDraft = nil
 	a.section = section
 	if section == "Trash" {
 		a.fail(a.lib.PruneTrash(time.Now()))
