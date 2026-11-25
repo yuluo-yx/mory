@@ -144,6 +144,29 @@ def exercise_workspace(call, nodes, act, key, root):
     assert folder not in settings()["folders"]
     check("active folder rename / filter follows name / records persisted")
 
+    # The sidebar border is a captured drag target; save only on release.
+    divider = control("Resize sidebar", "splitter")
+    box = divider["bounds"]
+    x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+    before = snapshot()
+    call("input", events=[dict(type="pointerDown", x=x, y=y),
+                           dict(type="pointerMove", x=x + 110, y=y)])
+    assert settings().get("sidebarWidth", 0) == 0, "Drag wrote preferences before release"
+    call("input", events=[dict(type="pointerUp", x=x + 110, y=y)])
+    wait("Sidebar width was not saved", lambda tree: settings().get("sidebarWidth") == 350)
+    widened = control("Folder " + renamed)["bounds"]
+    assert widened["width"] == 325, widened
+    assert snapshot() == before, "Resizing changed document records"
+    # Restore the default via the same handle, keeping later geometry stable.
+    divider = control("Resize sidebar", "splitter")
+    box = divider["bounds"]
+    x = box["x"] + box["width"] / 2
+    call("input", events=[dict(type="pointerDown", x=x, y=y),
+                           dict(type="pointerMove", x=x - 110, y=y),
+                           dict(type="pointerUp", x=x - 110, y=y)])
+    wait("Sidebar default width was not saved", lambda tree: settings().get("sidebarWidth") == 240)
+    check("sidebar border drag / live width / persisted on release / document isolation")
+
     # Entering preferences again must start with saved shortcut values,
     # regardless of which navigation control dismissed the previous draft.
     pointer("Open " + first, offset=50)
@@ -265,5 +288,34 @@ def exercise_workspace(call, nodes, act, key, root):
     opened(child)
     assert snapshot() == before, "Language round trip changed document records"
     check("Chinese and English settings / reachable controls / document isolation")
+
+    # Delete a whole folder with pending edits in a child, then recover its tree.
+    pointer("Folder " + renamed, offset=50, button="right")
+    pointer("Delete folder…")
+    pointer("Cancel", "button")
+    assert snapshot() == before, "Canceling folder deletion changed records"
+    opened(child)
+    pointer("Document editor")
+    key("Cmd+End")
+    call("input", events=[dict(type="text", text=" saved before folder deletion")])
+    pointer("Folder " + renamed, offset=50, button="right")
+    pointer("Delete folder…")
+    pointer("Delete folder", "button")
+    control("Search notes")
+    assert renamed not in settings().get("folders", [])
+    assert not any(note.get("folder") == renamed for note in records())
+    assert stored(child, "trash")["source"] == "Child body survives restore saved before folder deletion"
+    assert stored(child, "trash")["trashRoot"] == stored(first, "trash")["id"]
+    assert stored(second, "trash")["source"] == "Second body"
+    assert not any(node.get("label") == "Folder " + renamed for node in nodes())
+    pointer("Trash", "button")
+    act("Actions " + first)
+    pointer("Restore note")
+    assert not stored(first).get("folder")
+    assert stored(child).get("parent") == stored(first)["id"]
+    pointer("Open " + child, offset=50)
+    opened(child)
+    assert control("Document editor").get("value") == "Child body survives restore saved before folder deletion"
+    check("folder deletion cancellation / pending edits saved / subtree trash / restore to library root")
     home()
     return completed

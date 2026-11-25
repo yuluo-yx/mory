@@ -33,8 +33,13 @@ type app struct {
 	selected                                                                        map[string]bool
 	collapsedFolders                                                                map[string]bool
 	collapsedNotes                                                                  map[string]bool
+	sidebarDragging                                                                 bool
+	sidebarDragMoved                                                                bool
+	sidebarDragWidth                                                                float32
 	selecting, batchMove, folderOpen, emptyTrashOpen, historyOpen, recoveryOpen     bool
 	folderFrom, folderName                                                          string
+	folderDeleteOpen                                                                bool
+	folderDeleteTarget                                                              string
 	revisions                                                                       []library.Revision
 	recoveries                                                                      []library.Revision
 	lastDiskCheck                                                                   time.Time
@@ -74,6 +79,8 @@ type app struct {
 	richVersion, codeVersion                                                        uint64
 	mode, section, query, folder, order                                             string
 	dirty                                                                           bool
+	saveFailed                                                                      bool
+	missingExternal                                                                 string
 	dirtySince                                                                      time.Time
 	status, problem                                                                 string
 	outline, focus, sidebarHidden                                                   bool
@@ -281,13 +288,16 @@ func (a *app) saveWithHistory(force bool) bool {
 	if force {
 		save = a.lib.SaveWithHistory
 	}
-	if a.fail(save(a.current)) {
+	if err := save(a.current); a.fail(err) {
+		a.saveFailed = true
+		a.noteMissingExternal(a.current, err)
 		if err := a.lib.Recover(a.current); err != nil {
 			a.problem += "; recovery: " + err.Error()
 		}
 		return false
 	}
 	a.dirty = false
+	a.saveFailed, a.missingExternal = false, ""
 	a.status = "All changes saved"
 	return true
 }
@@ -300,11 +310,17 @@ func (a *app) openNote(n *library.Note) {
 		return
 	}
 	a.current = n
+	a.saveFailed, a.missingExternal = false, ""
 	a.sourceRevision++
 	a.settingsOpen, a.helpOpen = false, false
 	a.shortcutDraft = nil
 	if a.lib.Changed(n) {
-		if a.fail(a.lib.Reload(n.ID)) {
+		if err := a.lib.Reload(n.ID); a.fail(err) {
+			if a.noteMissingExternal(n, err) {
+				// Show this note's cached content, never the previous editor buffer.
+				a.readMetadata()
+				a.loadEditors()
+			}
 			return
 		}
 	}
@@ -320,7 +336,9 @@ func (a *app) openNote(n *library.Note) {
 		a.status = a.tr("This document opens in Source mode because it contains a very long line.")
 	}
 	a.loadEditors()
-	a.fail(a.lib.Save(n))
+	if err := a.lib.Save(n); a.fail(err) {
+		a.noteMissingExternal(n, err)
+	}
 	a.previewSource = "\x00"
 }
 

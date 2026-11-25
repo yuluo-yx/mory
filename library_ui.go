@@ -28,6 +28,9 @@ func (a *app) refreshDisk() {
 	}
 	a.lastDiskCheck = time.Now()
 	a.checkReminders(time.Now())
+	if a.current != nil && (a.missingExternal == a.current.ID || a.saveFailed) {
+		return
+	}
 	if a.current != nil && a.lib.Changed(a.current) {
 		if a.dirty {
 			a.capture()
@@ -36,6 +39,10 @@ func (a *app) refreshDisk() {
 			return
 		}
 		err := a.lib.Reload(a.current.ID)
+		if a.noteMissingExternal(a.current, err) {
+			a.fail(err)
+			return
+		}
 		if errors.Is(err, fs.ErrNotExist) && a.lib.Get(a.current.ID) != nil {
 			// A clean document removed by another window must not stay open.
 			fresh, openErr := library.Open(a.lib.Dir)
@@ -229,6 +236,20 @@ func (a *app) batchBar(c *ui.Context, notes []*library.Note) {
 }
 
 func (a *app) libraryOverlays(c *ui.Context) {
+	ui.Modal(c, &a.folderDeleteOpen, func() {
+		ui.Column(c).Width(400).Gap(12).Children(func() {
+			ui.Text(c, a.trf("Delete folder “%s”?", a.folderDeleteTarget)).FontSize(20).Bold().FillWidth()
+			ui.Text(c, a.tr("The folder and its subfolders will be removed. Their notes and child notes will move to Trash for 30 days. External files will only be removed from the list.")).FillWidth()
+			ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
+				if ui.Button(c, a.tr("Cancel")).Clicked() {
+					a.folderDeleteOpen = false
+				}
+				if ui.Button(c, a.tr("Delete folder")).TextColor(ui.Hex("#ff3b30")).Clicked() {
+					a.trashFolder(a.folderDeleteTarget)
+				}
+			})
+		})
+	})
 	ui.Modal(c, &a.folderOpen, func() {
 		t := c.Theme()
 		titleText := a.tr("New folder")
@@ -351,6 +372,33 @@ func (a *app) libraryOverlays(c *ui.Context) {
 			}
 		})
 	})
+}
+
+// Save pending input before deleting a folder, and reconcile the open document
+// even when an I/O error interrupts the operation after some notes were moved.
+func (a *app) trashFolder(folder string) {
+	if !a.save() {
+		return
+	}
+	err := a.lib.TrashFolder(folder)
+	if a.current != nil && (a.current.Deleted || a.lib.Get(a.current.ID) == nil) {
+		a.current = nil
+	}
+	if a.fail(err) {
+		return
+	}
+	if library.FolderContains(folder, a.folder) {
+		a.folder, a.query, a.section = "", "", "All notes"
+	}
+	for name := range a.collapsedFolders {
+		if library.FolderContains(folder, name) {
+			delete(a.collapsedFolders, name)
+		}
+	}
+	a.endSelection()
+	a.syncNoteActionState()
+	a.folderDeleteOpen = false
+	a.status = "Folder deleted"
 }
 
 func (a *app) chooseLocal(folder bool) {

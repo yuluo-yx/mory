@@ -340,6 +340,11 @@ func (l *Library) Forget(n *Note) error {
 		return err
 	}
 	defer unlock()
+	return l.forget(n)
+}
+
+// forget removes a registration while the caller holds the library lock.
+func (l *Library) forget(n *Note) error {
 	if err := checkVersion(l.notePath(n), l.versions[n.ID]); err != nil {
 		return err
 	}

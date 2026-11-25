@@ -365,6 +365,30 @@ def exercise(binary, root, suite="all"):
         act("Remove from list")
         assert (fixtures / "Fixture import.md").read_bytes() == original_bytes, "Remove from list changed original"
         assert not any(read_note(p).get("external") for p in note_paths(root / "library" / "trash"))
+
+        # A vanished external file must not trap the editor in repeated errors.
+        call("menu", path=["File", "Open local file"])
+        act("Source")
+        external_path = fixtures / "Fixture import.md"
+        moved_path = fixtures / "Fixture import.moved.md"
+        external_path.rename(moved_path)
+        act("Source editor", "setValue", text="Pending content from a missing file")
+        call("menu", path=["File", "Save"])
+        act("Dismiss")
+        deadline = time.monotonic() + 2.2
+        while time.monotonic() < deadline:
+            assert not any(n.get("label") == "Original file is missing" for n in nodes()), "Dismissed error reopened"
+            time.sleep(0.05)
+        call("menu", path=["File", "Save"])
+        act("Close document")
+        act("Recover as a copy")
+        call("menu", path=["File", "Save"])
+        recovered = [read_note(p) for p in note_paths(root / "library" / "notes")
+                     if read_note(p)["source"] == "Pending content from a missing file"]
+        assert len(recovered) == 1 and not recovered[0].get("external"), recovered
+        assert not external_path.exists() and moved_path.read_bytes() == original_bytes
+        moved_path.rename(external_path)
+        print("Native missing-file recovery passed: dismiss stays closed, close preserves edits, recovered copy is durable.", flush=True)
         act("▱   Import folder")
         act("Document title", "setValue", text="Structured import")
         deadline = time.monotonic() + 15

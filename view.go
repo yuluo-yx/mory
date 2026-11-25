@@ -74,7 +74,7 @@ func (a *app) view(c *ui.Context) {
 		a.refreshDisk()
 		c.After(2 * time.Second)
 	}
-	if a.dirty {
+	if a.dirty && !a.saveFailed {
 		if time.Since(a.dirtySince) > 700*time.Millisecond {
 			a.save()
 		} else {
@@ -90,8 +90,9 @@ func (a *app) view(c *ui.Context) {
 	}
 
 	ui.Row(c).Fill().AlignItems(ui.Stretch).Background(c.Theme().Background).Children(func() {
+		var sidebar ui.Element
 		if (!a.focus && !a.sidebarHidden) || a.settingsOpen || a.helpOpen {
-			a.sidebar(c)
+			sidebar = a.sidebar(c)
 		}
 		ui.Column(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
 			if a.settingsOpen || a.helpOpen {
@@ -102,6 +103,11 @@ func (a *app) view(c *ui.Context) {
 				a.editorView(c)
 			}
 		})
+		if (!a.focus && !a.sidebarHidden) || a.settingsOpen || a.helpOpen {
+			a.sidebarResizer(c, sidebar)
+		} else {
+			a.sidebarDragging = false
+		}
 	})
 	a.overlays(c)
 }
@@ -116,7 +122,7 @@ func ghostButton(c *ui.Context, label string) ui.Element {
 
 const sidebarFontSize float32 = 15
 
-func (a *app) sidebar(c *ui.Context) {
+func (a *app) sidebar(c *ui.Context) ui.Element {
 	t := c.Theme()
 	vibrant := c.Vibrancy()
 	sideBg := t.Surface
@@ -129,7 +135,8 @@ func (a *app) sidebar(c *ui.Context) {
 		topPadding = max(topPadding, bar.Height+14)
 	}
 
-	sideCol := ui.Column(c).Width(240).Shrink(0).Background(sideBg).BorderWidth(0, 1, 0, 0).BorderColor(t.Border).Padding(topPadding, 12, 12).Gap(6)
+	windowWidth, _ := c.Size()
+	sideCol := ui.Column(c).Width(a.visibleSidebarWidth(windowWidth)).Shrink(0).Background(sideBg).BorderWidth(0, 1, 0, 0).BorderColor(t.Border).Padding(topPadding, 12, 12).Gap(6)
 	if bar.Height > 0 {
 		sideCol.DragWindow()
 	}
@@ -260,6 +267,7 @@ func (a *app) sidebar(c *ui.Context) {
 			}
 		})
 	})
+	return sideCol
 }
 
 func (a *app) treeFolder(c *ui.Context, folder string, depth int, seen map[string]bool) {
@@ -349,6 +357,10 @@ func (a *app) treeFolder(c *ui.Context, folder string, depth int, seen map[strin
 						a.folderName = folder
 						a.folderOpen = true
 					}
+					m.Separator()
+					if m.Item(a.tr("Delete folder…")).Chosen() {
+						a.folderDeleteTarget, a.folderDeleteOpen = folder, true
+					}
 				})
 			})
 		})
@@ -363,6 +375,10 @@ func (a *app) treeFolder(c *ui.Context, folder string, depth int, seen map[strin
 			a.folderFrom = folder
 			a.folderName = folder
 			a.folderOpen = true
+		}
+		m.Separator()
+		if m.Item(a.tr("Delete folder…")).Chosen() {
+			a.folderDeleteTarget, a.folderDeleteOpen = folder, true
 		}
 	})
 

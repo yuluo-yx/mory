@@ -25,6 +25,8 @@ Mory is a native macOS writing app for Markdown, MDX, and Feishu/Lark DocxXML do
 - Native editing for headings, lists, tasks, tables, LaTeX, code blocks, callouts, tabs, columns, images, attachments, and document links.
 - Static Docusaurus and MDX support, including front matter, admonitions, heading IDs, code metadata, details, and tabs. React components, JavaScript expressions, and site-specific build plugins remain source text and are not executed.
 - Local organization with folders, nested documents, favorites, pins, search, manual ordering, batch actions, multiple windows, and quick notes.
+- Drag the sidebar's right edge to resize it, or double-click to restore its default width. The width is saved across launches and shared with other windows; narrow windows temporarily limit it to leave room for the document. A focused divider also supports the Left and Right arrow keys.
+- Delete a folder from its context or more menu to remove it and its subfolders. Their documents and child documents stay recoverable in Trash for 30 days; external originals are kept. Restoring documents whose folder was deleted places them in My documents, preserving child relationships. The folder editor also supports removing a folder while keeping its notes.
 - Five document themes, editable CSS, light and dark appearance, and English and Simplified Chinese UI.
 - Import files or folders and export Markdown, DocxXML, self-contained HTML, or PDF.
 - Local and remote images. Relative local assets are stored beside their document; `http(s)` image URLs are rendered when online and remain URLs in the document source.
@@ -67,6 +69,8 @@ The default library is `~/Documents/Mory`. Set `MORY_LIBRARY` to use another dir
 Local asset files use the SHA-256 digest of their content as the filename prefix, so the document stores a stable relative reference such as `assets/6cbb4a435a30b8abe4bb23b1.png`. A single inserted or imported asset may be up to 32 MiB.
 
 Autosave starts after editing begins and writes changed content about every 750 ms using atomic replacement. If saving fails, Mory keeps the edit buffer and writes recovery content when possible; recovery is offered on the next launch.
+
+After a save failure or a missing external file, background retries pause so dismissing the error stays effective. Use **Retry** to try again, or **Close document** to return to the library. Closing with unsaved edits first writes a recovery snapshot and immediately offers **Recover as a copy**; if recovery fails, the document stays open. Missing external files without pending edits can also be removed from the list without recreating or deleting the original file.
 
 **Settings → Editor → Document history** controls revisions independently from autosave. The defaults are a 5-minute checkpoint interval, 30-day retention, 100 versions, and 64 MiB per document. Older versions are coalesced and pruned when changed content is saved or history is opened. Disabling history stops new snapshots and pruning without deleting existing copies. Restoring a revision first checkpoints the current document.
 

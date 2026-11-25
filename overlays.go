@@ -213,14 +213,43 @@ func (a *app) overlays(c *ui.Context) {
 	showError := a.problem != ""
 	ui.Modal(c, &showError, func() {
 		ui.Column(c).Width(440).Gap(16).Children(func() {
-			ui.Text(c, a.tr("Something needs your attention")).FontSize(21).Bold()
-			ui.Text(c, a.localizedProblem(a.problem))
+			missing := a.current != nil && a.missingExternal == a.current.ID
+			if missing {
+				ui.Text(c, a.tr("Original file is missing")).FontSize(21).Bold()
+				ui.Text(c, a.tr("The file may have been moved or deleted. Mory still has its last loaded content. Retry after restoring the file, or close this document to continue.")).FillWidth()
+				ui.Text(c, a.current.External).FontSize(12).TextColor(c.Theme().TextMuted).FillWidth()
+			} else {
+				ui.Text(c, a.tr("Something needs your attention")).FontSize(21).Bold()
+				ui.Text(c, a.localizedProblem(a.problem))
+			}
 			if a.dirty {
-				ui.Text(c, a.tr("Your edits are still in memory. Export a copy before closing.")).TextColor(c.Theme().TextMuted)
+				message := "Your edits are still in memory. Export a copy before closing."
+				if missing || a.saveFailed {
+					message = "Your edits are still in memory. Closing this document saves a recovery copy first."
+				}
+				ui.Text(c, a.tr(message)).TextColor(c.Theme().TextMuted).FillWidth()
 				if ui.Button(c, a.tr("Export a copy")).Clicked() {
 					a.problem = ""
 					a.chooseExport("Markdown")
 				}
+			}
+			if missing || a.saveFailed {
+				ui.Row(c).Gap(8).Children(func() {
+					if ui.Button(c, a.tr("Retry")).Clicked() {
+						a.retryDocumentIO()
+					}
+					if ui.Button(c, a.tr("Close document")).Clicked() {
+						a.closeFailedDocument()
+					}
+					if missing && !a.dirty {
+						if ui.Button(c, a.tr("Remove from list")).Clicked() {
+							a.trash(a.current)
+							if a.current == nil {
+								a.problem, a.missingExternal = "", ""
+							}
+						}
+					}
+				})
 			}
 			if ui.PrimaryButton(c, a.tr("Dismiss")).Clicked() {
 				a.problem = ""

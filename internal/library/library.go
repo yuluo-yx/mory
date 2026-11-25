@@ -56,6 +56,7 @@ type Settings struct {
 	PagePosition    string            `json:"pagePosition,omitempty"`
 	PageWidthMode   string            `json:"pageWidthMode,omitempty"`
 	PageWidth       int               `json:"pageWidth,omitempty"`
+	SidebarWidth    int               `json:"sidebarWidth,omitempty"`
 	Folders         []string          `json:"folders,omitempty"`
 	Keys            map[string]string `json:"keys,omitempty"`
 	QuickNote       string            `json:"quickNote,omitempty"`
@@ -246,6 +247,11 @@ func (l *Library) SaveSettings() error {
 		return err
 	}
 	defer unlock()
+	return l.saveSettings()
+}
+
+// saveSettings is also used by compound operations holding the library lock.
+func (l *Library) saveSettings() error {
 	path := filepath.Join(l.Dir, "settings.json")
 	if err := checkVersion(path, l.settingsVersion); err != nil {
 		return err
@@ -254,7 +260,7 @@ func (l *Library) SaveSettings() error {
 	if err != nil {
 		return err
 	}
-	if err = AtomicWrite(path, b); err != nil {
+	if err := AtomicWrite(path, b); err != nil {
 		return err
 	}
 	l.settingsVersion = sha256.Sum256(b)
