@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 )
 
 func TestTrashFolderPreservesRecoverableTrees(t *testing.T) {
@@ -58,18 +59,36 @@ func TestTrashFolderPreservesRecoverableTrees(t *testing.T) {
 			t.Fatalf("note was not preserved in Trash: %+v", saved)
 		}
 	}
-	if len(l.Query("Trash", "", "", "")) != 3 || l.Get(sibling.ID).Deleted || l.Get(outside.ID).Deleted {
+	if len(l.Query("Trash", "", "", "")) != 2 || l.Get(sibling.ID).Deleted || l.Get(outside.ID).Deleted {
 		t.Fatal("folder deletion affected unrelated notes or flattened groups")
 	}
-	if moved, err := l.RestoreTree(l.Get(parent.ID)); err != nil || !moved {
-		t.Fatal("deleted-folder restore did not fall back to the library root", moved, err)
+	group := folderTrashEntry(t, l, "Work")
+	if found := l.Query("Trash", "Child", "", ""); len(found) != 1 || found[0].ID != group.ID {
+		t.Fatal("child search did not find its folder")
 	}
-	if l.Get(parent.ID).Folder != "" || l.Get(child.ID).Parent != parent.ID || l.Get(grandchild.ID).Parent != child.ID || !l.Get(independent.ID).Deleted {
+	if moved, err := l.RestoreTree(group); err != nil || moved {
+		t.Fatal("folder restore did not preserve the original location", moved, err)
+	}
+	if l.Get(parent.ID).Folder != "Work" || l.Get(child.ID).Parent != parent.ID || l.Get(grandchild.ID).Parent != child.ID || !l.Get(independent.ID).Deleted {
 		t.Fatal("restoring lost hierarchy or revived an independent deletion")
+	}
+	if l.Get(group.ID) != nil || !slices.Contains(l.Folders(), "Work/Empty") || l.Get(nested.ID).Deleted {
+		t.Fatal("folder restore omitted an empty subfolder or retained its trash marker")
 	}
 }
 
-func TestTrashFolderForgetsExternalRegistrationsOnly(t *testing.T) {
+func folderTrashEntry(t *testing.T, l *Library, folder string) *Note {
+	t.Helper()
+	for _, n := range l.Query("Trash", "", "", "") {
+		if n.FolderTrash && n.Folder == folder {
+			return n
+		}
+	}
+	t.Fatalf("folder %q is missing from Trash", folder)
+	return nil
+}
+
+func TestTrashFolderPreservesExternalRegistrations(t *testing.T) {
 	l := mustLibrary(t)
 	path := filepath.Join(t.TempDir(), "external.md")
 	mustWrite(t, path, []byte("original content"))
@@ -77,6 +96,7 @@ func TestTrashFolderForgetsExternalRegistrationsOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	originalPath := external.External
 	child := mustNote(t, l, "Local child")
 	if err := l.Move(external, "Work", ""); err != nil {
 		t.Fatal(err)
@@ -84,21 +104,25 @@ func TestTrashFolderForgetsExternalRegistrationsOnly(t *testing.T) {
 	if err := l.Move(child, "", external.ID); err != nil {
 		t.Fatal(err)
 	}
-	// Forgetting a missing external original must also work.
+	// A missing original must not prevent preserving its cached registration.
 	if err := os.Rename(path, path+".moved"); err != nil {
 		t.Fatal(err)
 	}
 	if err := l.TrashFolder("Work"); err != nil {
 		t.Fatal(err)
 	}
-	if l.Get(external.ID) != nil || !child.Deleted || child.TrashRoot != child.ID || len(l.Folders()) != 0 {
+	group := folderTrashEntry(t, l, "Work")
+	if l.Get(external.ID) == nil || !external.Deleted || !child.Deleted || child.TrashRoot != group.ID || external.TrashRoot != group.ID || len(l.Folders()) != 0 {
 		t.Fatal("external registration or its child remained active")
 	}
 	if data, err := os.ReadFile(path + ".moved"); err != nil || string(data) != "original content" {
 		t.Fatal("external original changed", err)
 	}
-	if moved, err := l.RestoreTree(child); err != nil || !moved || child.Parent != "" {
-		t.Fatal("external child could not be restored", moved, err)
+	if moved, err := l.RestoreTree(group); err != nil || moved || child.Parent != external.ID || external.Deleted || external.Folder != "Work" {
+		t.Fatal("external file tree could not be restored", moved, err)
+	}
+	if external.External != originalPath || external.Source != "original content" {
+		t.Fatal("external reference or cached source changed")
 	}
 }
 
@@ -183,6 +207,13 @@ func TestTrashFolderEmptyAndInvalidTargets(t *testing.T) {
 	if !slices.Equal(l.Folders(), []string{"Workshop"}) || l.Get(root.ID).Deleted {
 		t.Fatal("empty folder deletion was not persisted or included a prefix sibling")
 	}
+	group := folderTrashEntry(t, l, "Work")
+	if len(l.Query("Trash", "", "", "")) != 1 {
+		t.Fatal("retry duplicated the folder trash entry")
+	}
+	if moved, err := l.RestoreTree(group); err != nil || moved || !slices.Contains(l.Folders(), "Work/Empty") {
+		t.Fatal("empty folder tree could not be restored", moved, err)
+	}
 	if err := os.Remove(filepath.Join(l.Dir, ".write.lock")); err != nil {
 		t.Fatal(err)
 	}
@@ -191,5 +222,96 @@ func TestTrashFolderEmptyAndInvalidTargets(t *testing.T) {
 	}
 	if err := l.TrashFolder("Workshop"); err == nil {
 		t.Fatal("lock failure was ignored")
+	}
+}
+
+func TestFolderTrashPurgeAndRetentionKeepExternalOriginals(t *testing.T) {
+	for _, action := range []string{"purge", "empty", "expire"} {
+		t.Run(action, func(t *testing.T) {
+			l := mustLibrary(t)
+			path := filepath.Join(t.TempDir(), "original.md")
+			mustWrite(t, path, []byte("External content"))
+			external, err := l.OpenExternal(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := l.Move(external, "Parent/test", ""); err != nil {
+				t.Fatal(err)
+			}
+			if err := l.TrashFolder("Parent/test"); err != nil {
+				t.Fatal(err)
+			}
+			group := folderTrashEntry(t, l, "Parent/test")
+			switch action {
+			case "purge":
+				err = l.Purge(group)
+			case "empty":
+				err = l.EmptyTrash()
+			case "expire":
+				err = l.PruneTrash(group.DeletedAt.Add(TrashRetention + time.Second))
+			}
+			if err != nil || l.Get(group.ID) != nil || l.Get(external.ID) != nil {
+				t.Fatal("folder group was not fully removed", err)
+			}
+			if data, err := os.ReadFile(path); err != nil || string(data) != "External content" {
+				t.Fatal("permanent deletion touched the external original", err)
+			}
+		})
+	}
+}
+
+func TestFolderRestorePreflightsSettingsAndDocuments(t *testing.T) {
+	for _, conflict := range []string{"settings", "destination"} {
+		t.Run(conflict, func(t *testing.T) {
+			l := mustLibrary(t)
+			n := mustNote(t, l, "Child")
+			if err := l.Move(n, "Parent/test", ""); err != nil {
+				t.Fatal(err)
+			}
+			if err := l.TrashFolder("Parent/test"); err != nil {
+				t.Fatal(err)
+			}
+			l = reopenLibrary(t, l)
+			n = l.Get(n.ID)
+			group := folderTrashEntry(t, l, "Parent/test")
+			if conflict == "settings" {
+				other := reopenLibrary(t, l)
+				if err := other.RenameFolder("", "Other"); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				next := *n
+				next.Deleted = false
+				mustWrite(t, l.notePath(&next), []byte("Occupied"))
+			}
+			if _, err := l.RestoreTree(group); !errors.Is(err, ErrConflict) {
+				t.Fatal("folder restoration ignored a conflict", err)
+			}
+			if !n.Deleted || l.Get(group.ID) == nil || slices.Contains(l.Folders(), "Parent/test") {
+				t.Fatal("conflicting restore partially changed the folder")
+			}
+		})
+	}
+}
+
+func TestFolderTrashRestoresAlongsideRecreatedFolder(t *testing.T) {
+	l := mustLibrary(t)
+	n := mustNote(t, l, "Original")
+	if err := l.Move(n, "Parent/test", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.TrashFolder("Parent/test"); err != nil {
+		t.Fatal(err)
+	}
+	group := folderTrashEntry(t, l, "Parent/test")
+	newNote := mustNote(t, l, "New")
+	if err := l.Move(newNote, "Parent/test", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.RestoreTree(group); err != nil {
+		t.Fatal(err)
+	}
+	if n.Deleted || newNote.Deleted || len(l.Query("All notes", "", "Parent/test", "")) != 2 {
+		t.Fatal("restoring the old folder replaced new documents")
 	}
 }

@@ -305,17 +305,18 @@ def exercise_workspace(call, nodes, act, key, root):
     assert renamed not in settings().get("folders", [])
     assert not any(note.get("folder") == renamed for note in records())
     assert stored(child, "trash")["source"] == "Child body survives restore saved before folder deletion"
-    assert stored(child, "trash")["trashRoot"] == stored(first, "trash")["id"]
+    assert stored(child, "trash")["trashRoot"] == stored(renamed, "trash")["id"]
     assert stored(second, "trash")["source"] == "Second body"
     assert not any(node.get("label") == "Folder " + renamed for node in nodes())
     pointer("Trash", "button")
-    act("Actions " + first)
-    pointer("Restore note")
-    assert not stored(first).get("folder")
+    act("Actions " + renamed)
+    pointer("Restore folder")
+    assert stored(first).get("folder") == renamed
+    assert renamed in settings()["folders"]
     assert stored(child).get("parent") == stored(first)["id"]
     pointer("Open " + child, offset=50)
     opened(child)
     assert control("Document editor").get("value") == "Child body survives restore saved before folder deletion"
-    check("folder deletion cancellation / pending edits saved / subtree trash / restore to library root")
+    check("folder deletion cancellation / pending edits saved / folder trash entry / restore original hierarchy")
     home()
     return completed

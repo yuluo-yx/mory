@@ -304,10 +304,7 @@ func (a *app) treeFolder(c *ui.Context, folder string, depth int, seen map[strin
 			}
 
 			ui.Icon(c, iconFolder()).Width(14).Height(14).Shrink(0).TextColor(t.Accent)
-			displayName := folder
-			if idx := strings.LastIndex(folder, "/"); idx >= 0 {
-				displayName = folder[idx+1:]
-			}
+			displayName := library.FolderName(folder)
 			txt := ui.Text(c, displayName).FontSize(sidebarFontSize).Grow(1).MinWidth(0).SingleLine()
 			if isActiveFolder {
 				txt.Bold().TextColor(t.Accent)
@@ -749,7 +746,11 @@ func (a *app) noteCard(c *ui.Context, n *library.Note, list bool) {
 	if !dark {
 		cardBg = ui.Hex("#f8f8fa")
 	}
-	card := ui.Column(c.Key("card-"+n.ID)).Height(height).MinWidth(0).Radius(12).Border(1, t.Border).Background(cardBg).Label(a.tr("Note ") + a.displayTitle(n.Title)).Focusable().Cursor(ui.CursorPointer)
+	cardLabel, cardIcon := a.tr("Note ")+a.displayTitle(n.Title), iconFileText()
+	if n.FolderTrash {
+		cardLabel, cardIcon = a.tr("Trashed folder ")+n.Title, iconFolder()
+	}
+	card := ui.Column(c.Key("card-"+n.ID)).Height(height).MinWidth(0).Radius(12).Border(1, t.Border).Background(cardBg).Label(cardLabel).Focusable().Cursor(ui.CursorPointer)
 	if !n.Deleted {
 		card.Drag(noteDrag{n.ID})
 	} else {
@@ -777,7 +778,7 @@ func (a *app) noteCard(c *ui.Context, n *library.Note, list bool) {
 						a.selected[n.ID] = selected
 					}
 				}
-				ui.Icon(c, iconFileText()).Width(15).Height(15).TextColor(t.Accent)
+				ui.Icon(c, cardIcon).Width(15).Height(15).TextColor(t.Accent)
 				ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
 					ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 						ui.Text(c, a.displayTitle(n.Title)).FontSize(14).Bold().LetterSpacing(-0.2).Grow(1).MinWidth(0).SingleLine()
@@ -814,7 +815,7 @@ func (a *app) noteCard(c *ui.Context, n *library.Note, list bool) {
 							a.selected[n.ID] = selected
 						}
 					}
-					ui.Icon(c, iconFileText()).Width(13).Height(13).TextColor(t.Accent)
+					ui.Icon(c, cardIcon).Width(13).Height(13).TextColor(t.Accent)
 					ui.Text(c, a.displayTitle(n.Title)).FontSize(12).Bold().LetterSpacing(-0.2).Grow(1).MinWidth(0).SingleLine()
 					if n.Pinned {
 						ui.Icon(c, iconPin()).Width(11).Height(11).TextColor(t.TextMuted)
@@ -831,6 +832,9 @@ func (a *app) noteCard(c *ui.Context, n *library.Note, list bool) {
 					}
 				})
 				preview := n.Source
+				if n.FolderTrash {
+					preview = a.trf("Folder: %s", n.Folder)
+				}
 				if n.Format == "xml" {
 					_, preview, _ = document.FromXML(preview)
 				}

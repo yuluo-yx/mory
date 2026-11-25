@@ -254,6 +254,11 @@ func (l *Library) RestoreTree(n *Note) (bool, error) {
 			return false, err
 		}
 	}
+	if n.FolderTrash {
+		if err := l.restoreFolderNames(n); err != nil {
+			return false, err
+		}
+	}
 	depth := func(item *Note) int {
 		seen := map[string]bool{item.ID: true}
 		d := 0
@@ -267,6 +272,9 @@ func (l *Library) RestoreTree(n *Note) (bool, error) {
 	folders := l.Folders()
 	moved := false
 	for _, item := range group {
+		if item.FolderTrash {
+			continue
+		}
 		next := *item
 		if next.Parent != "" {
 			parent := l.Get(next.Parent)
@@ -281,6 +289,12 @@ func (l *Library) RestoreTree(n *Note) (bool, error) {
 			moved = true
 		}
 		if err := l.setDeleted(item, next, false, time.Now()); err != nil {
+			return moved, err
+		}
+	}
+	if n.FolderTrash {
+		// Folder records exist only in Trash, never as empty editor documents.
+		if err := l.purgeOne(n); err != nil {
 			return moved, err
 		}
 	}

@@ -238,8 +238,11 @@ func (a *app) batchBar(c *ui.Context, notes []*library.Note) {
 func (a *app) libraryOverlays(c *ui.Context) {
 	ui.Modal(c, &a.folderDeleteOpen, func() {
 		ui.Column(c).Width(400).Gap(12).Children(func() {
-			ui.Text(c, a.trf("Delete folder “%s”?", a.folderDeleteTarget)).FontSize(20).Bold().FillWidth()
-			ui.Text(c, a.tr("The folder and its subfolders will be removed. Their notes and child notes will move to Trash for 30 days. External files will only be removed from the list.")).FillWidth()
+			ui.Text(c, a.trf("Delete folder “%s”?", library.FolderName(a.folderDeleteTarget))).FontSize(20).Bold().FillWidth()
+			if split := strings.LastIndex(a.folderDeleteTarget, "/"); split >= 0 {
+				ui.Text(c, a.trf("Location: %s", a.folderDeleteTarget[:split])).FontSize(12).TextColor(c.Theme().TextMuted).FillWidth()
+			}
+			ui.Text(c, a.tr("The folder, its subfolders, notes, and external file references will move to Trash for 30 days. Restore the folder to recover them together. Original external files stay on disk.")).FillWidth()
 			ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
 				if ui.Button(c, a.tr("Cancel")).Clicked() {
 					a.folderDeleteOpen = false

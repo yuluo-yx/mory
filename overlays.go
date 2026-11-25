@@ -185,9 +185,15 @@ func (a *app) overlays(c *ui.Context) {
 			ui.Text(c, a.tr("In the Trash")).FontSize(24)
 			ui.Text(c, a.displayTitle(a.target.Title))
 			ui.Text(c, a.noteSummary(a.target))
-			ui.Text(c, a.tr("Restore this note and its deleted child notes, or permanently delete the group. Permanent deletion cannot be undone."))
+			restoreLabel, explanation := "Restore note", "Restore this note and its deleted child notes, or permanently delete the group. Permanent deletion cannot be undone."
+			if a.target.FolderTrash {
+				restoreLabel = "Restore folder"
+				explanation = "Restore this folder with its subfolders, notes, and external file references. Permanently deleting this group keeps original external files on disk."
+				ui.Text(c, a.trf("Folder: %s", a.target.Folder)).FontSize(12).TextColor(c.Theme().TextMuted).FillWidth()
+			}
+			ui.Text(c, a.tr(explanation)).FillWidth()
 			ui.Row(c).Gap(10).Children(func() {
-				if ui.PrimaryButton(c, a.tr("Restore note")).Clicked() && a.restoreNote(a.target) {
+				if ui.PrimaryButton(c, a.tr(restoreLabel)).Clicked() && a.restoreNote(a.target) {
 					a.deleteOpen = false
 				}
 				if ui.Button(c, a.tr("Delete permanently")).Clicked() && !a.fail(a.lib.Purge(a.target)) {

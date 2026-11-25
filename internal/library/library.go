@@ -33,6 +33,8 @@ type Note struct {
 	External       string    `json:"external,omitempty" xml:"external,omitempty"`
 	ExternalHash   string    `json:"externalHash,omitempty" xml:"externalHash,omitempty"`
 	TrashRoot      string    `json:"trashRoot,omitempty" xml:"trashRoot,omitempty"`
+	FolderTrash    bool      `json:"folderTrash,omitempty" xml:"folderTrash,omitempty"`
+	TrashFolders   []string  `json:"trashFolders,omitempty" xml:"trashFolder,omitempty"`
 	DeletedAt      time.Time `json:"deletedAt,omitzero" xml:"deletedAt,omitempty"`
 	ID             string    `json:"id" xml:"id"`
 	Title          string    `json:"title" xml:"title"`

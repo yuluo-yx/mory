@@ -1,12 +1,19 @@
 package library
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
 	"fmt"
 	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 )
+
+// FolderName is the leaf label shown in the sidebar; storage retains the path.
+func FolderName(folder string) string {
+	return folder[strings.LastIndex(folder, "/")+1:]
+}
 
 // FolderContains matches a workspace folder and its slash-separated subfolders.
 // The empty library root is never a deletable folder.
@@ -15,7 +22,8 @@ func FolderContains(folder, candidate string) bool {
 }
 
 // TrashFolder removes a folder subtree and trashes its live document trees.
-// Existing trash groups stay intact; external registrations are only forgotten.
+// A dedicated trash record preserves empty folders and groups every document,
+// including external registrations. External original files are never changed.
 func (l *Library) TrashFolder(folder string) error {
 	if folder == "" {
 		return fmt.Errorf("folder name is empty")
@@ -49,67 +57,78 @@ func (l *Library) TrashFolder(folder string) error {
 			include(n)
 		}
 	}
-	type removal struct {
-		note *Note
-		root string
-	}
-	var removals []removal
-	seen := map[string]bool{}
-	var visit func(*Note, string)
-	visit = func(n *Note, root string) {
-		if seen[n.ID] || !affected[n.ID] {
-			return
-		}
-		seen[n.ID] = true
-		if !n.Deleted {
-			if root == "" && n.External == "" {
-				root = n.ID
-			}
-			removals = append(removals, removal{n, root})
-		}
-		for _, child := range children[n.ID] {
-			visit(child, root)
-		}
-	}
+	var removals []*Note
 	for _, n := range l.Notes {
-		if !affected[n.Parent] {
-			visit(n, "")
+		if affected[n.ID] && !n.Deleted {
+			removals = append(removals, n)
 		}
-	}
-	// A manually edited parent cycle still gets one visible, recoverable group.
-	for _, n := range l.Notes {
-		visit(n, "")
 	}
 	// Preflight the entire folder before moving anything, including registrations.
-	for _, item := range removals {
-		if item.note.External != "" {
-			err = checkVersion(l.notePath(item.note), l.versions[item.note.ID])
-		} else {
-			err = l.checkTrashMove(item.note, true)
-		}
-		if err != nil {
+	for _, n := range removals {
+		if err := l.checkTrashMove(n, true); err != nil {
 			return err
 		}
+	}
+	folders := []string{folder}
+	for _, name := range l.Folders() {
+		if name != folder && FolderContains(folder, name) {
+			folders = append(folders, name)
+		}
+	}
+	if len(removals) == 0 && len(folders) == 1 && !slices.Contains(l.Folders(), folder) {
+		return nil
 	}
 	now := time.Now()
-	for _, item := range removals {
-		if item.note.External != "" {
-			err = l.forget(item.note)
-		} else {
-			next := *item.note
-			next.TrashRoot = item.root
-			err = l.setDeleted(item.note, next, true, now)
-		}
-		if err != nil {
+	root := &Note{
+		ID: strings.ToLower(rand.Text()), Title: FolderName(folder), Folder: folder,
+		Format: "markdown", FolderTrash: true, TrashFolders: folders,
+		Deleted: true, DeletedAt: now, Created: now, Updated: now,
+	}
+	root.TrashRoot = root.ID
+	data, err := marshalNote(root)
+	if err != nil {
+		return err
+	}
+	// Persist the group first so an interrupted move always has a visible entry.
+	if err := checkVersion(l.notePath(root), [32]byte{}); err != nil {
+		return err
+	}
+	if err := AtomicWrite(l.notePath(root), data); err != nil {
+		return err
+	}
+	l.Notes = append(l.Notes, root)
+	l.versions[root.ID] = sha256.Sum256(data)
+	for _, n := range removals {
+		next := *n
+		next.TrashRoot = root.ID
+		if err := l.setDeleted(n, next, true, now); err != nil {
 			return err
 		}
 	}
-	folders := l.Settings.Folders
-	l.Settings.Folders = slices.DeleteFunc(slices.Clone(folders), func(candidate string) bool {
+	previous := l.Settings.Folders
+	l.Settings.Folders = slices.DeleteFunc(slices.Clone(previous), func(candidate string) bool {
 		return FolderContains(folder, candidate)
 	})
 	if err := l.saveSettings(); err != nil {
-		l.Settings.Folders = folders
+		l.Settings.Folders = previous
+		return err
+	}
+	return nil
+}
+
+// restoreFolderNames runs under the same lock as RestoreTree. Folder names are
+// restored before their documents; retries merge safely with an existing folder.
+func (l *Library) restoreFolderNames(n *Note) error {
+	previous := l.Settings.Folders
+	folders := slices.Clone(previous)
+	for _, folder := range append([]string{n.Folder}, n.TrashFolders...) {
+		if folder != "" && !slices.Contains(folders, folder) {
+			folders = append(folders, folder)
+		}
+	}
+	l.Settings.Folders = folders
+	if err := l.saveSettings(); err != nil {
+		l.Settings.Folders = previous
 		return err
 	}
 	return nil

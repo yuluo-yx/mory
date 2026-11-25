@@ -74,10 +74,14 @@ func (a *app) noteSummary(n *library.Note) string {
 	if !n.Deleted {
 		return a.dateText(n.Updated, false) + "  ·  " + formatLabel(n)
 	}
+	prefix := ""
+	if n.FolderTrash {
+		prefix = a.tr("Folder") + "  ·  "
+	}
 	left := time.Until(n.DeletedAt.Add(library.TrashRetention))
 	if left < 24*time.Hour {
-		return a.tr("Will be permanently deleted soon")
+		return prefix + a.tr("Will be permanently deleted soon")
 	}
 	days := int((left + 24*time.Hour - 1) / (24 * time.Hour))
-	return a.trf("%d days remaining", days)
+	return prefix + a.trf("%d days remaining", days)
 }
