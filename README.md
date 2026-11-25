@@ -37,14 +37,14 @@ Sidebar rows keep a fixed height and reserve space for their actions, so hoverin
 
 ## Get started
 
-Download **Mory 0.0.1 Alpha** for your Mac:
+Download **Mory 0.0.3** for your Mac:
 
 | Mac | Installer |
 | --- | --- |
-| Apple Silicon (M-series) | [macOS arm64](https://github.com/yuluo-yx/mory/releases/download/v0.0.1-alpha.1/mory-0.0.1-alpha.1-macos-arm64.dmg) |
-| Intel (x86_64) | [macOS amd64](https://github.com/yuluo-yx/mory/releases/download/v0.0.1-alpha.1/mory-0.0.1-alpha.1-macos-amd64.dmg) |
+| Apple Silicon (M-series) | [macOS arm64](https://github.com/yuluo-yx/mory/releases/download/v0.0.3/mory-0.0.3-macos-arm64.dmg) |
+| Intel (x86_64) | [macOS amd64](https://github.com/yuluo-yx/mory/releases/download/v0.0.3/mory-0.0.3-macos-amd64.dmg) |
 
-[Release notes](https://github.com/yuluo-yx/mory/releases/tag/v0.0.1-alpha.1) · [SHA-256 checksums](https://github.com/yuluo-yx/mory/releases/download/v0.0.1-alpha.1/SHA256SUMS). Open the DMG and drag Mory to Applications. Alpha packages are ad-hoc signed and not notarized by Apple; if macOS blocks the first launch, confirm **Open Anyway** in **System Settings → Privacy & Security**.
+[Release notes](https://github.com/yuluo-yx/mory/releases/tag/v0.0.3) · [SHA-256 checksums](https://github.com/yuluo-yx/mory/releases/download/v0.0.3/SHA256SUMS). Open the DMG and drag Mory to Applications. Packages are ad-hoc signed and not notarized by Apple; if macOS blocks the first launch, confirm **Open Anyway** in **System Settings → Privacy & Security**.
 
 Open Mory to create a local library, then use the English or Chinese welcome guide as the starting point. The complete editor tour and syntax reference live in [`resources/welcome.md`](resources/welcome.md) and [`resources/welcome.zh-CN.md`](resources/welcome.zh-CN.md).
 
@@ -56,7 +56,7 @@ The default library is `~/Documents/Mory`. Set `MORY_LIBRARY` to use another dir
 
 | Path | Contents |
 | --- | --- |
-| `notes/` | One JSON record per Mory document, including its source and metadata |
+| `notes/` | One Markdown or DocxXML file per Mory document, with embedded metadata |
 | `assets/` | Local images and attachments |
 | `history/` | Saved document revisions |
 | `recovery/` | Recoverable content from failed or interrupted saves |
@@ -72,7 +72,7 @@ Autosave starts after editing begins and writes changed content about every 750 
 
 Importing a document copies local assets into the destination library and rewrites their relative paths. Markdown and DocxXML exports copy local assets into an `assets/` directory. HTML and PDF exports embed local images. Remote URLs remain remote and are not fetched for export.
 
-Existing libraries require no migration. Back up the library before maintenance or manual cleanup; replacing the application cannot recover revisions that have already been pruned.
+Back up the complete library before upgrading. Existing JSON document records, including history, recovery, and trash, are automatically converted to Markdown or DocxXML files while preserving source text and metadata. Conflicting destination files stop migration rather than being overwritten. To return to an older release, reinstall that application and restore the library backup created before migration; replacing the application alone does not reverse the conversion or recover pruned revisions.
 
 ## Plugins
 

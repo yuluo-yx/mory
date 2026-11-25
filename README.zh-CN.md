@@ -33,14 +33,14 @@ Mory 是一款原生 macOS 写作应用，支持 Markdown、MDX 和飞书/Lark D
 
 ## 快速开始
 
-根据 Mac 的芯片下载 **Mory 0.0.1 Alpha**：
+根据 Mac 的芯片下载 **Mory 0.0.3**：
 
 | Mac 类型 | 安装包 |
 | --- | --- |
-| Apple Silicon（M 系列） | [macOS arm64](https://github.com/yuluo-yx/mory/releases/download/v0.0.1-alpha.1/mory-0.0.1-alpha.1-macos-arm64.dmg) |
-| Intel（x86_64） | [macOS amd64](https://github.com/yuluo-yx/mory/releases/download/v0.0.1-alpha.1/mory-0.0.1-alpha.1-macos-amd64.dmg) |
+| Apple Silicon（M 系列） | [macOS arm64](https://github.com/yuluo-yx/mory/releases/download/v0.0.3/mory-0.0.3-macos-arm64.dmg) |
+| Intel（x86_64） | [macOS amd64](https://github.com/yuluo-yx/mory/releases/download/v0.0.3/mory-0.0.3-macos-amd64.dmg) |
 
-[发布说明](https://github.com/yuluo-yx/mory/releases/tag/v0.0.1-alpha.1) · [SHA-256 校验和](https://github.com/yuluo-yx/mory/releases/download/v0.0.1-alpha.1/SHA256SUMS)。打开 DMG，将 Mory 拖入“应用程序”。Alpha 安装包使用 ad-hoc 签名，尚未经过 Apple 公证；如果 macOS 拦截首次启动，可在 **系统设置 → 隐私与安全性** 中确认“仍要打开”。
+[发布说明](https://github.com/yuluo-yx/mory/releases/tag/v0.0.3) · [SHA-256 校验和](https://github.com/yuluo-yx/mory/releases/download/v0.0.3/SHA256SUMS)。打开 DMG，将 Mory 拖入“应用程序”。安装包使用 ad-hoc 签名，尚未经过 Apple 公证；如果 macOS 拦截首次启动，可在 **系统设置 → 隐私与安全性** 中确认“仍要打开”。
 
 打开 Mory 创建本地文档库，然后从英文或中文欢迎指南开始。完整的编辑器介绍和语法参考见 [`resources/welcome.md`](resources/welcome.md) 与 [`resources/welcome.zh-CN.md`](resources/welcome.zh-CN.md)。
 
@@ -50,7 +50,7 @@ Mory 是一款原生 macOS 写作应用，支持 Markdown、MDX 和飞书/Lark D
 
 | 路径 | 内容 |
 | --- | --- |
-| `notes/` | 每篇 Mory 文档的一条 JSON 记录，包含源码和元数据 |
+| `notes/` | 每篇 Mory 文档的 Markdown 或 DocxXML 文件，内嵌元数据 |
 | `assets/` | 本地图片和附件 |
 | `history/` | 已保存的文档版本 |
 | `recovery/` | 保存失败或中断时保留的可恢复内容 |
@@ -66,7 +66,7 @@ Mory 是一款原生 macOS 写作应用，支持 Markdown、MDX 和飞书/Lark D
 
 导入文档时，本地资源会复制到目标文档库，并改写相对路径。导出 Markdown 和 DocxXML 时，本地资源会复制到 `assets/` 目录；导出 HTML 和 PDF 时，本地图片会嵌入文件。远程 URL 会保持为远程地址，导出时不会下载。
 
-已有文档库无需迁移。维护或手动清理前请先备份文档库；应用替换后无法恢复已经清理的历史版本。
+升级前请先备份完整文档库。已有 JSON 文档记录（包括历史版本、恢复内容和废纸篓记录）会自动转换为 Markdown 或 DocxXML 文件，保留源码和元数据；目标文件存在冲突时会停止迁移，不会覆盖。降级时，需要重新安装旧版应用，并恢复迁移前的文档库备份；仅替换应用无法撤销转换，也无法恢复已经清理的历史版本。
 
 ## 插件
 
