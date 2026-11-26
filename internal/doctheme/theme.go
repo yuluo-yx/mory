@@ -378,12 +378,25 @@ func (t *Theme) ListIndent(font ui.Font) float32 {
 	return t.Length("ul", "padding-left", font.Size, font.Size, 40)
 }
 
+// LinkColor keeps neutral stylesheet links distinct from body text. Authored
+// chromatic link colors remain intact, with a readable native dark fallback.
+func (t *Theme) LinkColor(base *ui.Theme) ui.Color {
+	if base.Dark {
+		return ui.Hex("#8db2ff")
+	}
+	color := t.Color("a", "color", ui.Hex("#0969da"))
+	if max(color.R, color.G, color.B)-min(color.R, color.G, color.B) < 32 || color == t.Color(".page", "color", base.Text) {
+		return ui.Hex("#0969da")
+	}
+	return color
+}
+
 func (t *Theme) Rich(base *ui.Theme, font ui.Font) *richtext.Theme {
 	r := richtext.DefaultTheme(base)
 	r.Text = t.Color(".page", "color", base.Text)
 	r.Caret = t.Color(".page", "caret-color", base.Accent)
 	r.Selection = t.Color("::selection", "background-color", base.Selection)
-	r.Link = t.Color("a", "color", base.Accent)
+	r.Link = t.LinkColor(base)
 	r.Code = t.Color("code", "color", r.Text)
 	r.CodeBackground = t.Color("code", "background-color", r.CodeBackground)
 	r.CodeFont = t.Font("pre", font).Family

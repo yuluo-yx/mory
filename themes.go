@@ -56,7 +56,7 @@ func (a *app) pageTheme(base *ui.Theme) *ui.Theme {
 	}
 	t.Text = a.docTheme.Color(".page", "color", t.Text)
 	t.Background = a.docTheme.Color(".page", "background-color", t.Background)
-	t.Accent = a.docTheme.Color("a", "color", t.Accent)
+	t.Accent = a.docTheme.LinkColor(base)
 	t.Selection = a.docTheme.Color("::selection", "background-color", t.Selection)
 	if base.Dark {
 		// CSS colors remain authored in light mode; adapt contrast for native dark

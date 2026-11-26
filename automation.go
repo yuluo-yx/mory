@@ -27,6 +27,18 @@ func (s *e2eWindowStore) SaveWindowStates(states map[string]mygo.WindowState) er
 func init() {
 	mygo.App.SetWindowStateStore(&e2eWindowStore{})
 	if dir := os.Getenv("MORY_E2E_FIXTURES"); dir != "" {
+		openExternal = func(destination string) error {
+			file, err := os.OpenFile(filepath.Join(dir, "opened-links.txt"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+			if err != nil {
+				return err
+			}
+			_, err = file.WriteString(destination + "\n")
+			closeErr := file.Close()
+			if err != nil {
+				return err
+			}
+			return closeErr
+		}
 		// Exercise the native print renderer without leaving an interactive
 		// printer-selection sheet open on the CI desktop.
 		printPage = func(w *mygo.Window) {

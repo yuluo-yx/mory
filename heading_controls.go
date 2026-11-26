@@ -109,6 +109,7 @@ func (a *app) headingToggle(c *ui.Context, level int, title string, folded bool)
 func (a *app) richDocumentEditor(c *ui.Context) {
 	font := a.writingFont(".page")
 	doc := a.doc
+	richTheme := a.docTheme.Rich(c.Theme(), font)
 	placeholder := ""
 	style := doc.Text().ParagraphStyleAt(0)
 	// The native placeholder ignores paragraph indentation and top spacing.
@@ -121,7 +122,7 @@ func (a *app) richDocumentEditor(c *ui.Context) {
 		ed := richtext.EditorBase(c.Key(a.current.ID), doc, richtext.EditorOptions{
 			Label: a.tr("Document editor"), Placeholder: placeholder, Font: font,
 			OnLink: a.openLink, OnLinkCommand: func() { a.linkURL = doc.Formatting().Link; a.linkOpen = true },
-			Theme: a.docTheme.Rich(c.Theme(), font),
+			Theme: richTheme,
 			OnKey: func(key ui.Key, mods ui.Modifiers) bool {
 				if isBlockDeleteKey(key, mods) && exitEmptyRichBlock(doc) {
 					return true
@@ -141,6 +142,7 @@ func (a *app) richDocumentEditor(c *ui.Context) {
 				return false
 			},
 		}).Bind(&a.richEditor).Fill()
+		a.hoverDocumentLink(c, ed, doc, font, richTheme)
 		if a.bodyFocus {
 			doc.SetSelection(0, 0)
 			if a.bodyInput != "" {

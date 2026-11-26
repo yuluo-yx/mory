@@ -130,6 +130,8 @@ Build output is written to `build/darwin-arm64/` or `build/darwin-amd64/`; omitt
 
 Empty quotes, code blocks, callouts, list items, and tasks support direct Backspace and Delete from their focused editor: one key exits the empty structure into a writable paragraph. Deleting selected text leaves its block in place until a subsequent deletion. Native E2E covers both keys, single-step undo/redo, continued typing without refocusing, saved/reopened blocks after lists, and read-only protection; unit/UI tests also protect nested containers, attachments, titles, captions, and table cells.
 
+Document links use a distinct color and an underline. Hold Ctrl and hover over a link to open it once per hover; ordinary hover leaves the document in place. Writing, reading, and split previews share this behavior, including links to other Mory notes. Tests cover pointer modifiers, blank space beside links, wrapped text, selection preservation, theme colors, and unchanged source after navigation.
+
 To run one group while debugging:
 
 ```sh

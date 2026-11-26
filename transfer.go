@@ -21,6 +21,9 @@ import (
 var openDialog = mygo.Dialog.Open
 var saveDialog = mygo.Dialog.Save
 
+// E2E captures outgoing destinations without launching the user's browser.
+var openExternal = mygo.Shell.OpenExternal
+
 // Native dialogs run outside the draw callback. All resulting state changes are
 // marshalled back through Window.Update, keeping the UI and its library confined.
 func (a *app) chooseImport() {
@@ -156,7 +159,7 @@ func (a *app) openLink(raw string) {
 		return
 	}
 	if ui.SafeToOpen(raw) {
-		go func() { err := mygo.Shell.OpenExternal(raw); a.win.Update(func() { a.fail(err) }) }()
+		go func() { err := openExternal(raw); a.win.Update(func() { a.fail(err) }) }()
 		return
 	}
 	u, err := url.Parse(raw)

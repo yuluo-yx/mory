@@ -62,6 +62,12 @@ func (a *app) theme(c *ui.Context) {
 func (a *app) view(c *ui.Context) {
 	// Input outside the block editor also breaks a consecutive Select All pair.
 	c.Root().ObserveInput(func(event ui.InputEvent) {
+		if event.Kind == ui.InputPointerDown {
+			a.linkHover.pressed = true
+			a.linkHover.pending = ""
+		} else if event.Kind == ui.InputPointerUp {
+			a.linkHover.pressed = false
+		}
 		if a.blockEditor != nil && !isSelectAllInput(event) {
 			a.observeBlockSelectAll("", event)
 		}
@@ -69,6 +75,8 @@ func (a *app) view(c *ui.Context) {
 	a.services = c.Services()
 	a.theme(c)
 	a.capture()
+	a.beginLinkHover(c)
+	defer a.endLinkHover()
 	a.restoreUnfoldedEditor()
 	if a.win != nil {
 		a.refreshDisk()

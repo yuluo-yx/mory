@@ -104,6 +104,7 @@ type app struct {
 	showToolbar                                                                     bool
 	settingsOpen, pluginsOpen, insertOpen, linkOpen, helpOpen, findOpen, exportOpen bool
 	linkURL, findText, replaceText                                                  string
+	linkHover                                                                       linkHoverState
 	renameOpen, moveOpen, deleteOpen, iconPickerOpen                                bool
 	renameTitle, moveFolder, moveParent                                             string
 	target                                                                          *library.Note
@@ -427,6 +428,11 @@ func (a *app) changeMode(mode string) {
 		}
 		if a.blockEditor == nil {
 			a.ensureRichDocument()
+			// Link-bearing read views share native text geometry and hover behavior
+			// with writing and split views, without changing the stored Markdown.
+			if mode == "Read" && hasRichLinks(a.doc) && !a.enableBlocks() {
+				return
+			}
 		}
 	} else if mode == "Source" || mode == "Split" {
 		if a.code.Buffer.String() != a.current.Source {

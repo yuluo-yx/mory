@@ -78,6 +78,59 @@ def exercise_editor(call, nodes, act, key, root, fixtures, native_space):
         finally:
             path.write_bytes(previous)
 
+    # Control-hover uses real pointer modifiers and actual document navigation.
+    # No accessibility activation or selection repair may open the destination.
+    target_title = "Editing hyperlink destination"
+    new_note(target_title)
+    type_text("Destination body")
+    target_id = saved(target_title)["id"]
+    for structured in (False, True):
+        for mode in ("Write", "Read", "Split"):
+            title = "Editing Ctrl hover " + str(structured) + " " + mode
+            link = "mory:" + target_id
+            source = "[Open destination](" + link + ") and preserve this text"
+            if structured:
+                source = '<p><a href="' + link + '">Open destination</a> and preserve this text</p>'
+            imported(title, source)
+            original = saved(title)["source"]
+            if mode != "Write":
+                pointer(control(mode))
+            box = field("Open destination and preserve this text")["bounds"]
+            call("input", events=[dict(type="pointerMove", x=box["x"]+10, y=box["y"]+12)])
+            assert control("Document title")["value"] == title, "Ordinary hover navigated"
+            # Control over blank space must not use nearest-caret hit testing.
+            call("input", events=[dict(type="pointerMove", x=box["x"]+box["width"]-5,
+                                        y=box["y"]+12, mods=["ctrl"])])
+            assert control("Document title")["value"] == title, "Blank space opened nearest link"
+            call("input", events=[dict(type="pointerMove", x=box["x"]+10, y=box["y"]+12, mods=["ctrl"])])
+            wait("Control-hover did not navigate", lambda tree: any(n.get("label") == "Document title"
+                 and n.get("value") == target_title for n in tree))
+            field("Destination body")
+            call("input", events=[dict(type="pointerMove", x=box["x"]+10, y=box["y"]+12)])
+            reopen(title)
+            assert saved(title)["source"] == original, "Link navigation rewrote the source"
+            completed.append("Ctrl hover / ordinary hover / blank area / destination / exact source: " + str(structured) + " " + mode)
+
+    opened_links = fixtures / "opened-links.txt"
+    for mode in ("Write", "Read", "Split"):
+        title = "Editing external Ctrl hover " + mode
+        destination = "https://example.com/mory-hover?mode=" + mode
+        imported(title, "[Open website](" + destination + ") and keep editing")
+        original = saved(title)["source"]
+        if mode != "Write":
+            pointer(control(mode))
+        box = field("Open website and keep editing")["bounds"]
+        before = opened_links.read_text().splitlines() if opened_links.exists() else []
+        call("input", events=[dict(type="pointerMove", x=box["x"]+10, y=box["y"]+12, mods=["ctrl"])])
+        wait("External Ctrl hover did not open URL", lambda tree: opened_links.exists()
+             and opened_links.read_text().splitlines() == before + [destination])
+        for _ in range(3):
+            call("input", events=[dict(type="pointerMove", x=box["x"]+12, y=box["y"]+12, mods=["ctrl"])])
+        assert opened_links.read_text().splitlines() == before + [destination], "Hover opened duplicate browser tabs"
+        call("input", events=[dict(type="pointerMove", x=box["x"]+10, y=box["y"]+12)])
+        assert saved(title)["source"] == original
+        completed.append("external Ctrl hover / exact URL / no duplicate tabs / unchanged source: " + mode)
+
     # A lone dash below a paragraph is ambiguous while a list is being typed.
     # Check every intermediate state, not only the completed list's outline.
     title = "Editing source list outline"

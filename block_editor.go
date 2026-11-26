@@ -805,6 +805,7 @@ func (a *app) blockText(c *ui.Context, n *blocks.Node, readOnly bool) {
 			return key == ui.KeyEnter && mods == 0 && a.exitEmptyList(n.ID)
 		},
 	}).FillWidth()
+	a.hoverDocumentLink(c, ed, field.doc, font, richTheme)
 	width := ed.LayoutBounds().W
 	if width < 80 {
 		width = 600
