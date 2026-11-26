@@ -15,7 +15,7 @@ func (a *app) exitEmptyList(id string) bool {
 	}
 	item := session.doc.Find(id)
 	field := session.fields[id]
-	if item == nil || item.Kind != "li" || field == nil || field.doc == nil || field.doc.Text().Len() != 0 || len(blocks.Visible(item.Children)) != 0 {
+	if item == nil || item.Kind != "li" && item.Kind != "checkbox" || field == nil || field.doc == nil || field.doc.Text().Len() != 0 || len(blocks.Visible(item.Children)) != 0 {
 		return false
 	}
 	a.captureBlocks()
@@ -27,7 +27,7 @@ func (a *app) exitEmptyList(id string) bool {
 	if container == nil {
 		return false
 	}
-	paragraph := blocks.Paragraph("")
+	paragraph := blocks.New("p")
 	paragraph.ID = id
 	var replacement []*blocks.Node
 	if index > 0 {

@@ -147,6 +147,8 @@ def exercise(binary, root, suite="all"):
             exercise_workspace(call, nodes, act, key, root)
         if suite in {"all", "writing"}:
             exercise_writing(call, nodes, act, key, root, fixtures)
+        if suite == "editor":
+            exercise_editor(call, nodes, act, key, root, fixtures, native_space)
         if suite != "all":
             call("menu", path=["Mory", "Quit Mory"])
             process.wait(timeout=10)
@@ -468,7 +470,7 @@ def exercise(binary, root, suite="all"):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("binary", type=Path)
-    parser.add_argument("--suite", choices=["all", "workspace", "writing"], default="all")
+    parser.add_argument("--suite", choices=["all", "workspace", "writing", "editor"], default="all")
     args = parser.parse_args()
     binary = args.binary.resolve()
     output = Path(".test-output")

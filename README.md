@@ -128,12 +128,15 @@ Build output is written to `build/darwin-arm64/` or `build/darwin-amd64/`; omitt
 
 `make check` includes native workspace and everyday writing journeys. The workspace suite covers unsaved document switching, folder navigation and rename, search, six shortcut-draft cancellation routes, hover geometry, canceled batch moves, parent/child trash restoration, and a language round trip. The writing suite covers Unicode selection replacement, composed emoji deletion, formatting boundaries, mode switches, atomic replace-all undo/redo, settings interruptions, empty-list exit, and source editing. Assertions check actual input focus, rendered text and persisted records; fixtures use a temporary library and are removed when the run ends.
 
+Empty quotes, code blocks, callouts, list items, and tasks support direct Backspace and Delete from their focused editor: one key exits the empty structure into a writable paragraph. Deleting selected text leaves its block in place until a subsequent deletion. Native E2E covers both keys, single-step undo/redo, continued typing without refocusing, saved/reopened blocks after lists, and read-only protection; unit/UI tests also protect nested containers, attachments, titles, captions, and table cells.
+
 To run one group while debugging:
 
 ```sh
 mise exec -- go build -tags=e2e -o .test-output/mory-e2e .
 mise exec -- python3 scripts/e2e.py .test-output/mory-e2e --suite workspace
 mise exec -- python3 scripts/e2e.py .test-output/mory-e2e --suite writing
+mise exec -- python3 scripts/e2e.py .test-output/mory-e2e --suite editor
 ```
 
 These Unicode tests send committed text and native key events. They do not automate a macOS input method's candidate window or marked-text composition. Real-window performance measurements remain separate:

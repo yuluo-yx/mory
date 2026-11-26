@@ -33,6 +33,19 @@ func parseCommonMarkdown(source string) (*Node, error) {
 		if block.Kind == parser.Heading && start >= 0 && start < len(source) {
 			end = max(end, lineEnd(source, start))
 		}
+		// Empty quotes have no child range in the parser. Their marker lines
+		// still belong to the quote, otherwise deletion leaves invisible raw
+		// markers that turn back into quotes when the document is reopened.
+		if block.Kind == parser.Quote && end == start && start >= 0 {
+			for end < len(source) {
+				next := lineEnd(source, end)
+				line := strings.TrimSpace(source[end:next])
+				if !strings.HasPrefix(line, ">") || strings.Trim(line, "> \t") != "" {
+					break
+				}
+				end = next
+			}
+		}
 		if start < 0 || end < start || end > len(source) {
 			return nil, fmt.Errorf("invalid Markdown source range")
 		}
@@ -175,6 +188,43 @@ func (n *Node) Markdown() string {
 	}
 	if n.Kind == "#raw" {
 		return n.Text
+	}
+	// Empty alert/task markers are parsed as literal text without a body. Use
+	// the existing XML-in-Markdown form so reopening retains an editable block.
+	if n.Kind == "checkbox" && len(n.Children) == 0 {
+		return n.XML() + "\n\n"
+	}
+	if children := Visible(n.Children); n.Kind == "callout" && len(children) == 1 && children[0].Kind == "p" && len(children[0].Children) == 0 && strings.TrimSpace(n.Plain()) == "" {
+		// A custom opening tag must occupy its own line to be an HTML block.
+		// Otherwise CommonMark wraps the callout inside an extra paragraph.
+		copy := n.Clone()
+		before, after := New("#raw"), New("#raw")
+		before.Text, after.Text = "\n", "\n"
+		copy.Children = append([]*Node{before}, copy.Children...)
+		copy.Children = append(copy.Children, after)
+		return copy.XML() + "\n\n"
+	}
+	// Do not manufacture a blank code line between an empty pair of fences.
+	// Fences can only preserve language and code metadata; keep all other
+	// properties and opaque children in the existing XML representation.
+	if n.Kind == "pre" && n.Plain() == "" {
+		plain := true
+		n.Walk(func(child *Node) {
+			if child == n {
+				for key := range child.Attrs {
+					if key != "lang" && key != "code-meta" {
+						plain = false
+					}
+				}
+			} else if child.Kind != "code" && child.Kind != "#text" || len(child.Attrs) != 0 {
+				plain = false
+			}
+		})
+		if !plain {
+			return n.XML() + "\n\n"
+		}
+		info := strings.TrimSpace(n.Attr("lang") + " " + n.Attr("code-meta"))
+		return "```" + info + "\n```\n\n"
 	}
 	// Markdown whitespace separates blocks but cannot preserve an empty one.
 	if n.Kind == "p" && len(n.Children) == 0 {

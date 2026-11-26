@@ -123,6 +123,9 @@ func (a *app) richDocumentEditor(c *ui.Context) {
 			OnLink: a.openLink, OnLinkCommand: func() { a.linkURL = doc.Formatting().Link; a.linkOpen = true },
 			Theme: a.docTheme.Rich(c.Theme(), font),
 			OnKey: func(key ui.Key, mods ui.Modifiers) bool {
+				if isBlockDeleteKey(key, mods) && exitEmptyRichBlock(doc) {
+					return true
+				}
 				redoMods, redoKey, err := parseKey(a.keyFor("Redo", "Cmd+Shift+Z"))
 				if err == nil && key == redoKey && mods == redoMods {
 					redoRichText(doc)

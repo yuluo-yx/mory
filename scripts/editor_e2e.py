@@ -405,7 +405,7 @@ def exercise_editor(call, nodes, act, key, root, fixtures, native_space):
         wait("Insertion did not focus its empty field: " + kind, lambda tree: any(n.get("label") == empty["label"]
              and focused(n) for n in tree))
         source = saved(title)["source"]
-        assert "A thought worth keeping" not in source and "Write something" not in source and "/" not in source, source
+        assert "A thought worth keeping" not in source and "Write something" not in source, source
         type_text("Authored 世界")
         field("Authored 世界")
         type_text(" 🌱")
@@ -416,6 +416,134 @@ def exercise_editor(call, nodes, act, key, root, fixtures, native_space):
         field("Authored 世界 🌱" + ("\n" if kind == "Code block" else ""))
         assert saved(title)["source"] == source, "Reopening changed authored content"
         completed.append("slash insertion / empty content / focus / reopen: " + kind)
+
+    # Ordinary deletion belongs to the focused empty editor. Do not select a
+    # drag handle or click again after deletion to repair the expected caret.
+    for kind, action_label in (("Quote", "Block actions blockquote"),
+                               ("Code block", "Code language"),
+                               ("Callout", "Callout type"),
+                               ("Bullet list", "Block actions ul"),
+                               ("To-do list", "Block actions checkbox")):
+        for deletion in ("Backspace", "Delete"):
+            title = "Editing empty block direct deletion " + kind + " " + deletion
+            new_note(title)
+            type_text("/")
+            pointer(control("Insert " + kind))
+            focused_field("")
+            original = saved(title)["source"]
+            if kind in ("Code block", "Callout", "To-do list"):
+                reopen(title)
+                pointer(field(""))
+            key(deletion)
+            focused_field("")
+            assert not any(n.get("label") == action_label for n in nodes()), (kind, deletion)
+            clean = saved(title)["source"]
+            assert clean != original, (kind, deletion, original)
+            key("Cmd+Z")
+            control(action_label)
+            assert saved(title)["source"] == original, "One undo did not restore the empty block"
+            key("Cmd+Shift+Z")
+            focused_field("")
+            assert saved(title)["source"] == clean, "Redo changed empty-block deletion"
+            type_text("Continue")
+            type_text(" writing 世界")
+            focused_field("Continue writing 世界")
+            source = saved(title)["source"]
+            reopen(title)
+            field("Continue writing 世界")
+            assert saved(title)["source"] == source, "Reopening changed continued text"
+            completed.append("empty block / direct " + deletion + " / single undo and redo / typing / reopen: " + kind)
+
+    # Reopened quotes and code after a list reproduce the reported boundary.
+    for block, action_label in (("<blockquote><p/></blockquote>", "Block actions blockquote"),
+                                ("<pre lang=\"go\"><code/></pre>", "Code language"),
+                                ("<callout>\n<p/>\n</callout>", "Callout type")):
+        for deletion in ("Backspace", "Delete"):
+            title = "Editing reopened empty container " + action_label + " " + deletion
+            imported(title, "<ul><li>Water Cube</li><li>National Stadium</li></ul>\n\n" + block + "\n\n<p>Following</p>")
+            original = saved(title)["source"]
+            reopen(title)
+            pointer(field(""))
+            key(deletion)
+            focused_field("")
+            assert not any(n.get("label") == action_label for n in nodes())
+            field("Water Cube")
+            field("National Stadium")
+            field("Following")
+            key("Cmd+Z")
+            assert saved(title)["source"] == original
+            key("Cmd+Shift+Z")
+            focused_field("")
+            type_text("Body after list")
+            focused_field("Body after list")
+            source = saved(title)["source"]
+            reopen(title)
+            field("Body after list")
+            field("National Stadium")
+            assert saved(title)["source"] == source
+            completed.append("reopened empty container after list / " + deletion + " / neighbors / undo / continued typing: " + action_label)
+
+    # Ordinary lists and headings reopen in the rich editor. Exercise production
+    # editor selection without forcing a structured representation.
+    for source in (">\n", "-\n", "1.\n", "##\n"):
+        for deletion in ("Backspace", "Delete"):
+            title = "Editing empty Markdown " + source.strip() + " " + deletion
+            imported(title, source)
+            original = saved(title)["source"]
+            reopen(title)
+            pointer(field(""))
+            key(deletion)
+            focused_field("")
+            clean = saved(title)["source"]
+            assert clean != original, (source, deletion)
+            key("Cmd+Z")
+            assert saved(title)["source"].strip() == original.strip()
+            key("Cmd+Shift+Z")
+            type_text("Ordinary body")
+            focused_field("Ordinary body")
+            content = saved(title)["source"]
+            assert content.strip() == "Ordinary body", content
+            reopen(title)
+            field("Ordinary body")
+            completed.append("empty Markdown / " + deletion + " / undo / redo / body typing / reopen: " + source.strip())
+
+    # Deleting a selection empties the block first. Only a later key exits it.
+    for kind, action_label in (("Quote", "Block actions blockquote"),
+                               ("Code block", "Code language"),
+                               ("Callout", "Callout type")):
+        for deletion in ("Backspace", "Delete"):
+            title = "Editing text then block deletion " + kind + " " + deletion
+            new_note(title)
+            type_text("/")
+            pointer(control("Insert " + kind))
+            type_text("Authored 世界")
+            focused_field("Authored 世界")
+            key("Cmd+A")
+            key(deletion)
+            focused_field("")
+            control(action_label)
+            key(deletion)
+            focused_field("")
+            assert not any(n.get("label") == action_label for n in nodes())
+            type_text("Outside")
+            focused_field("Outside")
+            source = saved(title)["source"]
+            reopen(title)
+            field("Outside")
+            assert saved(title)["source"] == source
+            completed.append("selected text deletion preserves block / second " + deletion + " exits / reopen: " + kind)
+
+    # Read mode must never treat a boundary key as an editing command.
+    for block in ("<blockquote><p/></blockquote>", "<pre><code/></pre>", "<callout>\n<p/>\n</callout>"):
+        title = "Editing protected empty block " + block.split(">")[0]
+        imported(title, block)
+        source = saved(title)["source"]
+        pointer(control("Read"))
+        pointer(field(""))
+        key("Backspace")
+        key("Delete")
+        assert saved(title)["source"] == source, "Read-only empty block was deleted"
+        completed.append("read-only empty container / Backspace and Delete preserve source: " + block)
 
     # Native edit commands and both keyboard bindings share progressive scope.
     for shortcut in ("Ctrl+A", "Cmd+A", "menu"):

@@ -796,7 +796,13 @@ func (a *app) blockText(c *ui.Context, n *blocks.Node, readOnly bool) {
 		Label: "Block text " + n.ID, ReadOnly: readOnly, Font: font, Theme: richTheme,
 		OnLink: a.openLink, OnLinkCommand: func() { a.doc = field.doc; a.linkURL = field.doc.Formatting().Link; a.linkOpen = true },
 		OnKey: func(key ui.Key, mods ui.Modifiers) bool {
-			return !readOnly && key == ui.KeyEnter && mods == 0 && a.exitEmptyList(n.ID)
+			if readOnly {
+				return false
+			}
+			if isBlockDeleteKey(key, mods) && a.exitEmptyBlock(n.ID) {
+				return true
+			}
+			return key == ui.KeyEnter && mods == 0 && a.exitEmptyList(n.ID)
 		},
 	}).FillWidth()
 	width := ed.LayoutBounds().W
@@ -899,6 +905,10 @@ func (a *app) blockText(c *ui.Context, n *blocks.Node, readOnly bool) {
 			}
 			anchor, caret := field.doc.Selection()
 			if anchor != caret {
+				return
+			}
+			if isBlockDeleteKey(event.Key, event.Mods) && a.emptyBlockTarget(n.ID) != nil {
+				// OnKey consumes the structural deletion before native formatting.
 				return
 			}
 			if a.calloutBoundaryInput(n.ID, field, event) {
@@ -1110,6 +1120,9 @@ func (a *app) blockCode(c *ui.Context, n *blocks.Node, readOnly bool) {
 		a.observeBlockSelectAll(n.ID, event)
 		if event.Kind == ui.InputKeyDown && event.Key == ui.KeyA && event.Mods == ui.Ctrl {
 			f.code.Select(0, len([]rune(f.code.Buffer.String())))
+			return true
+		}
+		if event.Kind == ui.InputKeyDown && isBlockDeleteKey(event.Key, event.Mods) && a.exitEmptyBlock(n.ID) {
 			return true
 		}
 		if a.codeBoundaryInput(n.ID, f, event) {
