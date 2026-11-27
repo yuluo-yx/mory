@@ -3,7 +3,7 @@ from xml.etree import ElementTree
 
 
 def note_paths(directory):
-    return sorted(path for path in directory.iterdir() if path.suffix in {".md", ".xml"} and path.is_file())
+    return sorted(path for path in directory.iterdir() if path.suffix.lower() in {".md", ".markdown", ".mdx", ".xml"} and path.is_file())
 
 
 def read_note(path):

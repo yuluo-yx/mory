@@ -16,157 +16,21 @@ import (
 	"github.com/yuluo-yx/mory/internal/mathrender"
 )
 
-func (a *app) tableChange(id string, fn func(*blocks.Table) error) {
-	a.captureBlocks()
-	err := a.blockEditor.doc.Transform(id, func(n *blocks.Node) {
-		table := blocks.ReadTable(n)
-		if a.fail(fn(table)) {
-			return
-		}
-		table.Write(n)
-	})
-	a.fail(err)
-	a.captureBlocks()
-}
-
-func (a *app) blockTable(c *ui.Context, n *blocks.Node, readOnly bool, depth int) {
-	s := a.blockEditor
-	t := c.Theme()
-	table, simple := a.tableLayout(n)
-	if simple && table.Rows >= 200 {
-		a.largeTableView(c, n, table, depth)
-		return
-	}
-	selection := blocks.Rect{Top: 0, Left: 0, Bottom: 0, Right: 0}
-	if s.tableID == n.ID {
-		selection = s.cells
-	}
-	selection = table.Expand(selection)
-	if !readOnly {
-		ui.Row(c).Wrap().Gap(5).Padding(4, 0).Children(func() {
-			for _, action := range []struct {
-				label string
-				run   func(*blocks.Table) error
-			}{{"+ Row", func(t *blocks.Table) error { return t.InsertRow(selection.Bottom + 1) }}, {"+ Column", func(t *blocks.Table) error { return t.InsertColumn(selection.Right + 1) }}, {"Merge cells", func(t *blocks.Table) error { return t.Merge(selection) }}, {"Split cell", func(t *blocks.Table) error { return t.Split(selection.Top, selection.Left) }}, {"Delete row", func(t *blocks.Table) error { return t.DeleteRows(selection.Top, selection.Bottom+1) }}, {"Delete column", func(t *blocks.Table) error { return t.DeleteColumns(selection.Left, selection.Right+1) }}} {
-				if ghostButton(c, a.tr(action.label)).FontSize(11).Padding(5, 7).Clicked() {
-					s.tableID = n.ID
-					a.tableChange(n.ID, action.run)
-				}
-			}
-			if ghostButton(c, a.tr("Table options")).FontSize(11).Clicked() {
-				s.tableID = n.ID
-				a.editBlockProperties(n)
-			}
-		})
-	}
-	tracks := make([]ui.Track, table.Columns)
-	total := float32(0)
-	for i, width := range table.Widths {
-		tracks[i] = ui.Fixed(float32(width))
-		total += float32(width)
-	}
-	ui.ScrollHorizontal(c).FillWidth().Children(func() {
-		ui.Column(c).Width(total).Children(func() {
-			if !readOnly {
-				ui.Row(c).Width(total).Children(func() {
-					for column, width := range table.Widths {
-						ui.Row(c.Key(column)).Width(float32(width)).Gap(2).AlignItems(ui.Center).Children(func() {
-							label := fmt.Sprintf("%c", 'A'+rune(column))
-							if ghostButton(c, label).Label(a.tr("Select column ") + label).Grow(1).Clicked() {
-								s.tableID = n.ID
-								s.cells = blocks.Rect{Top: 0, Bottom: table.Rows - 1, Left: column, Right: column}
-							}
-							resize := ui.Box(c).Width(5).Height(24).Background(t.Border).Cursor(ui.CursorResizeEW)
-							if dx, _, dragged := resize.Dragged(); dragged {
-								a.tableChange(n.ID, func(t *blocks.Table) error { return t.Resize(column, width+float64(dx)) })
-							}
-						})
-					}
-				})
-			}
-			ui.Grid(c).ColumnTracks(tracks...).Width(total).Gap(0).Children(func() {
-				for _, cell := range table.Cells {
-					background := t.Background
-					if cell.Node.Kind == "th" {
-						background = a.docTheme.Color("th", "background-color", t.Surface)
-					}
-					if value := cell.Node.Attr("background-color"); value != "" {
-						background = blockColor(value, background)
-					}
-					chosen := s.tableID == n.ID && cell.Row >= selection.Top && cell.Row <= selection.Bottom && cell.Column >= selection.Left && cell.Column <= selection.Right
-					box := ui.Column(c.Key(cell.Node.ID)).ColumnStart(cell.Column+1).RowStart(cell.Row+1).ColumnSpan(cell.Columns).RowSpan(cell.Rows).Padding(7).Gap(2).MinHeight(55).Border(1, t.Border).Background(background)
-					box.BorderColor(a.docTheme.Color("table", "border-color", t.Border))
-					if cell.Node.Attr("vertical-align") == "middle" {
-						box.Justify(ui.Center)
-					} else if cell.Node.Attr("vertical-align") == "bottom" {
-						box.Justify(ui.End)
-					}
-					if chosen && !readOnly {
-						box.Border(1, t.Accent)
-					}
-					box.Children(func() {
-						if !readOnly {
-							button := ghostButton(c, fmt.Sprintf("%c%d", 'A'+rune(cell.Column), cell.Row+1)).Label(a.trf("Select cell %d %d", cell.Row+1, cell.Column+1)).FontSize(9).Padding(1, 3).TextColor(t.TextMuted).KeepFocus()
-							if button.Clicked() {
-								if button.ClickModifiers()&ui.Shift == 0 || s.tableID != n.ID {
-									s.cellAnchor = [2]int{cell.Row, cell.Column}
-								}
-								s.tableID = n.ID
-								s.cells = table.Expand(blocks.Rect{Top: min(s.cellAnchor[0], cell.Row), Left: min(s.cellAnchor[1], cell.Column), Bottom: max(s.cellAnchor[0], cell.Row), Right: max(s.cellAnchor[1], cell.Column)})
-							}
-						}
-						children := blocks.Visible(cell.Node.Children)
-						if len(children) == 0 {
-							ui.Text(c, "")
-						}
-						for _, child := range children {
-							a.blockNode(c, child, readOnly, depth+1)
-						}
-					})
-					if !readOnly {
-						box.PopoverMenu(func(m *ui.Menu) {
-							s.tableID = n.ID
-							if m.Item(a.tr("Merge selected cells")).Chosen() {
-								a.tableChange(n.ID, func(t *blocks.Table) error { return t.Merge(s.cells) })
-							}
-							if m.Item(a.tr("Split cell")).Chosen() {
-								a.tableChange(n.ID, func(t *blocks.Table) error { return t.Split(cell.Row, cell.Column) })
-							}
-							m.Submenu(a.tr("Cell background"), func(m *ui.Menu) {
-								for _, name := range []string{"light-gray", "light-yellow", "light-green", "light-blue", "light-red"} {
-									if m.Item(a.tr(name)).Chosen() {
-										a.fail(s.doc.Transform(cell.Node.ID, func(n *blocks.Node) { n.Set("background-color", name) }))
-									}
-								}
-							})
-							if m.Item(a.tr("Move row up")).Disabled(cell.Row == 0).Chosen() {
-								a.tableChange(n.ID, func(t *blocks.Table) error { return t.MoveRows(cell.Row, cell.Row+1, cell.Row-1) })
-							}
-							if m.Item(a.tr("Move row down")).Disabled(cell.Row == table.Rows-1).Chosen() {
-								a.tableChange(n.ID, func(t *blocks.Table) error { return t.MoveRows(cell.Row, cell.Row+1, cell.Row+2) })
-							}
-							if m.Item(a.tr("Move column left")).Disabled(cell.Column == 0).Chosen() {
-								a.tableChange(n.ID, func(t *blocks.Table) error { return t.MoveColumns(cell.Column, cell.Column+1, cell.Column-1) })
-							}
-							if m.Item(a.tr("Move column right")).Disabled(cell.Column == table.Columns-1).Chosen() {
-								a.tableChange(n.ID, func(t *blocks.Table) error { return t.MoveColumns(cell.Column, cell.Column+1, cell.Column+2) })
-							}
-						})
-					}
-				}
-			})
-		})
-	})
-}
-
 func (a *app) tableLayout(n *blocks.Node) (*blocks.Table, bool) {
 	s := a.blockEditor
-	if cached, ok := s.tables[n.ID]; ok && cached.node == n {
+	if cached, ok := s.tables[n.ID]; ok && cached.node == n && cached.version == s.doc.Version {
 		return cached.table, cached.simple
 	}
 	table := blocks.ReadTable(n)
 	if n.Compact != nil {
-		s.tables[n.ID] = tableCache{node: n, table: table, simple: true, rows: &ui.ListState{}, preview: &markdown.Options{}}
+		cached := s.tables[n.ID]
+		if cached.rows == nil {
+			cached.rows = &ui.ListState{}
+		}
+		if cached.preview == nil {
+			cached.preview = &markdown.Options{}
+		}
+		s.tables[n.ID] = tableCache{node: n, version: s.doc.Version, table: table, simple: true, rows: cached.rows, preview: cached.preview}
 		return table, true
 	}
 	simple := len(table.Cells) == table.Rows*table.Columns
@@ -178,9 +42,19 @@ func (a *app) tableLayout(n *blocks.Node) (*blocks.Table, bool) {
 			}
 		}
 	}
-	cache := tableCache{node: n, table: table, simple: simple}
+	cache := tableCache{node: n, version: s.doc.Version, table: table, simple: simple}
+	cache.cells = make(map[string]int, len(table.Cells))
+	for i, cell := range table.Cells {
+		cache.cells[cell.Node.ID] = i
+	}
 	if simple && table.Rows >= 200 {
-		cache.rows, cache.preview = &ui.ListState{}, &markdown.Options{}
+		cache.rows, cache.preview = s.tables[n.ID].rows, s.tables[n.ID].preview
+		if cache.rows == nil {
+			cache.rows = &ui.ListState{}
+		}
+		if cache.preview == nil {
+			cache.preview = &markdown.Options{}
+		}
 	}
 	s.tables[n.ID] = cache
 	return table, simple
@@ -212,7 +86,33 @@ func (a *app) largeTableView(c *ui.Context, n *blocks.Node, table *blocks.Table,
 				a.changeMode("Source")
 			}
 		})
+		if a.mode == "Write" {
+			ui.Row(c).Gap(4).Children(func() {
+				ghostButton(c, a.tr("Table actions")).KeepFocus().PopoverMenuButton(func(m *ui.Menu) {
+					if n.Compact != nil && !a.expandTable(n.ID) {
+						return
+					}
+					a.tableMenu(m, n.ID, a.blockEditor.cells)
+				})
+				for column := 0; column < table.Columns; column++ {
+					if ghostButton(c, tableColumnName(column)).Label(a.tr("Select column ") + tableColumnName(column)).KeepFocus().Clicked() {
+						a.selectTable(n.ID, blocks.Rect{Top: 0, Bottom: table.Rows - 1, Left: column, Right: column}, "column")
+					}
+				}
+			})
+		}
+		// Selecting a lazy column can materialize the table during this frame.
+		if current := a.blockEditor.doc.Find(n.ID); current != nil {
+			n = current
+			table, _ = a.tableLayout(n)
+		} else {
+			return
+		}
 		scroll := ui.ScrollHorizontal(c).FillWidth().Height(400).Border(1, t.Border)
+		if a.mode == "Write" {
+			scroll.Label(a.tr("Table viewport")).Focusable()
+			a.tableSelectionInput(scroll, n, table, table.Expand(a.blockEditor.cells))
+		}
 		// Small column counts fill the page; wider tables retain horizontal scroll.
 		width := max(total, scroll.LayoutBounds().W-2)
 		scroll.Children(func() {
@@ -222,8 +122,22 @@ func (a *app) largeTableView(c *ui.Context, n *blocks.Node, table *blocks.Table,
 					background = a.docTheme.Color("th", "background-color", t.Surface)
 				}
 				ui.Row(c).Width(width).AlignItems(ui.Stretch).Background(background).Children(func() {
+					if a.mode == "Write" && ghostButton(c, fmt.Sprint(row+1)).Label(a.trf("Select row %d", row+1)).Width(tableRowHandleWidth).KeepFocus().Clicked() {
+						a.selectTable(n.ID, blocks.Rect{Top: row, Bottom: row, Left: 0, Right: table.Columns - 1}, "row")
+					}
 					for column, columnWidth := range table.Widths {
-						cell := ui.Column(c.Key(column)).Width(float32(columnWidth)*width/total).Shrink(0).MinWidth(0).Padding(8).BorderWidth(0, 1, 1, 0).BorderColor(a.docTheme.Color("table", "border-color", t.Border))
+						available := width
+						if a.mode == "Write" {
+							available -= tableRowHandleWidth
+						}
+						cell := ui.Column(c.Key(column)).Width(float32(columnWidth)*available/total).Shrink(0).MinWidth(0).Padding(8).BorderWidth(0, 1, 1, 0).BorderColor(a.docTheme.Color("table", "border-color", t.Border))
+						if table.Compact == nil {
+							cell.Background(blockColor(table.Cells[row*table.Columns+column].Node.Attr("background-color"), background))
+						}
+						s := a.blockEditor
+						if s.tableID == n.ID && s.tableSelection != "" && row >= s.cells.Top && row <= s.cells.Bottom && column >= s.cells.Left && column <= s.cells.Right && a.mode == "Write" {
+							cell.DrawOver(func(p *ui.Painter, r ui.Rect) { p.Fill(r, t.Accent.Alpha(.1), 0) })
+						}
 						cell.Children(func() {
 							if table.Compact != nil {
 								alignment := ui.Start
@@ -234,10 +148,15 @@ func (a *app) largeTableView(c *ui.Context, n *blocks.Node, table *blocks.Table,
 									alignment = ui.End
 								}
 								markdown.View(c, table.Compact.Cells[row*table.Columns+column], options).FillWidth().TextAlign(alignment)
+								if a.mode == "Write" && ghostButton(c, a.tr("Edit cell")).Label(a.trf("Edit cell %d %d", row+1, column+1)).FontSize(10).Padding(2).Clicked() {
+									if a.expandTable(n.ID) {
+										a.focusTableCell(n.ID, row, column, false)
+									}
+								}
 							} else {
 								// Simple expanded tables are row-major and have no spans.
 								for _, child := range blocks.Visible(table.Cells[row*table.Columns+column].Node.Children) {
-									a.blockNode(c, child, true, depth+1)
+									a.blockNode(c, child, a.mode != "Write", depth+1)
 								}
 							}
 						})
@@ -410,6 +329,7 @@ func (a *app) blockOverlays(c *ui.Context) {
 		})
 	})
 	ui.Modal(c, &s.properties, func() {
+		submit := false
 		n := s.doc.Find(s.propertyID)
 		if n == nil {
 			s.properties = false
@@ -482,9 +402,11 @@ func (a *app) blockOverlays(c *ui.Context) {
 					}
 					ui.Text(c, a.tr(label)).Width(180).FontSize(12)
 					value := s.props[key]
-					if ui.TextInput(c, &value).Label(a.tr("Property ") + key).Grow(1).Changed() {
+					input := ui.TextInput(c, &value).Label(a.tr("Property ") + key).Grow(1)
+					if input.Changed() {
 						s.props[key] = value
 					}
+					submit = formSubmitted(input) || submit
 				})
 			}
 			if n.Kind == "img" {
@@ -492,7 +414,7 @@ func (a *app) blockOverlays(c *ui.Context) {
 				a.cropEditor(c, n)
 			}
 			ui.Row(c).Gap(8).Children(func() {
-				if ui.PrimaryButton(c, a.tr("Apply properties")).Clicked() {
+				if ui.PrimaryButton(c, a.tr("Apply properties")).Clicked() || submit {
 					valid := true
 					for _, key := range []string{"width", "height", "width-ratio", "duration"} {
 						if value := s.props[key]; value != "" {

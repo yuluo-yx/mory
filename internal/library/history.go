@@ -90,7 +90,7 @@ func (l *Library) OpenExternal(path string) (*Note, error) {
 	if strings.EqualFold(filepath.Ext(path), ".xml") {
 		format = "xml"
 	}
-	n, err := l.Create(strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), string(b), format)
+	n, err := l.CreateFile(strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)), string(b), format, filepath.Base(path))
 	if err != nil {
 		return nil, err
 	}
@@ -105,9 +105,19 @@ func (l *Library) Reload(id string) error {
 	}
 	b, err := os.ReadFile(l.savedNotePath(n))
 	if errors.Is(err, fs.ErrNotExist) {
-		other := *n
-		other.Deleted = !n.Deleted
-		b, err = os.ReadFile(l.notePath(&other))
+		// Another window may have renamed or trashed the file. Resolve by the
+		// embedded stable ID without replacing this window's other edit buffers.
+		fresh, openErr := Open(l.Dir)
+		if openErr != nil {
+			return openErr
+		}
+		if updated := fresh.Get(id); updated != nil {
+			path := fresh.savedNotePath(updated)
+			b, err = os.ReadFile(path)
+			if err == nil {
+				l.paths[id] = path
+			}
+		}
 	}
 	if err != nil {
 		return err

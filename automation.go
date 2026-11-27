@@ -27,6 +27,15 @@ func (s *e2eWindowStore) SaveWindowStates(states map[string]mygo.WindowState) er
 func init() {
 	mygo.App.SetWindowStateStore(&e2eWindowStore{})
 	if dir := os.Getenv("MORY_E2E_FIXTURES"); dir != "" {
+		// Capture the exact shell boundary while leaving the user's Finder alone.
+		showItemInFolder = func(path string) {
+			if err := os.WriteFile(filepath.Join(dir, "finder-selection.txt"), []byte(path), 0o600); err != nil {
+				panic(err)
+			}
+		}
+		openFolderPath = func(path string) error {
+			return os.WriteFile(filepath.Join(dir, "finder-folder.txt"), []byte(path), 0o600)
+		}
 		openExternal = func(destination string) error {
 			file, err := os.OpenFile(filepath.Join(dir, "opened-links.txt"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 			if err != nil {

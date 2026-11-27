@@ -255,6 +255,7 @@ func (a *app) libraryOverlays(c *ui.Context) {
 	})
 	ui.Modal(c, &a.folderOpen, func() {
 		t := c.Theme()
+		submit := false
 		titleText := a.tr("New folder")
 		if a.folderFrom != "" {
 			titleText = a.tr("Edit folder…")
@@ -269,7 +270,7 @@ func (a *app) libraryOverlays(c *ui.Context) {
 
 			ui.Column(c).Padding(12).Radius(8).Background(t.Surface).Border(1, t.Border.Alpha(0.6)).Gap(6).Children(func() {
 				ui.Text(c, a.tr("Folder title")).FontSize(12).Bold().TextColor(t.TextMuted)
-				ui.TextInput(c, &a.folderName).Label(a.tr("Folder title")).Placeholder(a.tr("e.g. Work, Ideas, Journal…")).FillWidth().AutoFocus()
+				submit = formSubmitted(ui.TextInput(c, &a.folderName).Label(a.tr("Folder title")).Placeholder(a.tr("e.g. Work, Ideas, Journal…")).FillWidth().AutoFocus())
 			})
 
 			ui.Row(c).AlignItems(ui.Center).Gap(8).Children(func() {
@@ -283,7 +284,7 @@ func (a *app) libraryOverlays(c *ui.Context) {
 				if ui.Button(c, a.tr("Cancel")).Padding(5, 12).Radius(6).Clicked() {
 					a.folderOpen = false
 				}
-				if ui.PrimaryButton(c, a.tr("Save folder")).Padding(5, 14).Radius(6).Clicked() && !a.fail(a.lib.RenameFolder(a.folderFrom, a.folderName)) {
+				if (ui.PrimaryButton(c, a.tr("Save folder")).Padding(5, 14).Radius(6).Clicked() || submit) && a.folderOpen && !a.fail(a.lib.RenameFolder(a.folderFrom, a.folderName)) {
 					if a.folderFrom != "" {
 						renamed := strings.TrimSpace(a.folderName)
 						if a.folder == a.folderFrom {

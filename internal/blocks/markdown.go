@@ -33,6 +33,12 @@ func parseCommonMarkdown(source string) (*Node, error) {
 		if block.Kind == parser.Heading && start >= 0 && start < len(source) {
 			end = max(end, lineEnd(source, start))
 		}
+		// The parser ends a table at its last cell's text, before an optional
+		// closing pipe. Keep that delimiter in the table's preserved spelling;
+		// otherwise editing the table leaves a stray pipe in the document.
+		if block.Kind == parser.Table && end > start && end < len(source) && source[end-1] != '\n' {
+			end = lineEnd(source, end)
+		}
 		// Empty quotes have no child range in the parser. Their marker lines
 		// still belong to the quote, otherwise deletion leaves invisible raw
 		// markers that turn back into quotes when the document is reopened.
@@ -204,6 +210,19 @@ func (n *Node) Markdown() string {
 		copy.Children = append(copy.Children, after)
 		return copy.XML() + "\n\n"
 	}
+	if n.Kind == "pre" && n.Attr("caption") != "" {
+		// Ordinary fences cannot carry a property-dialog caption. Preserve it
+		// as XML unless an existing Docusaurus title already encodes it exactly.
+		encodedCaption := ""
+		for _, match := range staticAttribute.FindAllStringSubmatch(n.Attr("code-meta"), -1) {
+			if match[1] == "title" {
+				encodedCaption = match[2] + match[3]
+			}
+		}
+		if n.Attr("caption") != encodedCaption {
+			return n.XML() + "\n\n"
+		}
+	}
 	// Do not manufacture a blank code line between an empty pair of fences.
 	// Fences can only preserve language and code metadata; keep all other
 	// properties and opaque children in the existing XML representation.
@@ -262,7 +281,7 @@ func (n *Node) Markdown() string {
 		}
 		for key := range c.Attrs {
 			switch key {
-			case "background-color", "text-color", "align", "indent", "image.crop", "folded", "width", "height":
+			case "background-color", "text-color", "align", "vertical-align", "indent", "image.crop", "folded", "width", "height":
 				styled = true
 			}
 		}

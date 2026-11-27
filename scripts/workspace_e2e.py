@@ -86,6 +86,119 @@ def exercise_workspace(call, nodes, act, key, root):
         return {note["id"]: (note["title"], note["source"], note.get("folder", ""), note.get("parent", ""))
                 for note in records()}
 
+    # Single-line dialog input must submit the same action as its primary button.
+    # Send text and Enter together to catch stale bound values in native batches.
+    keyboard_folder = "Keyboard Nvidia 网络"
+    pointer("New folder", "button")
+    call("input", events=[dict(type="text", text=keyboard_folder), dict(type="key", key="Enter"),
+                           dict(type="key", key="Enter")])
+    wait("Enter did not close new folder dialog", lambda tree: not any(n.get("label") == "Folder title" for n in tree))
+    assert settings()["folders"].count(keyboard_folder) == 1
+    pointer("Folder " + keyboard_folder, offset=50)
+    control("Search notes")
+    new_note("Keyboard details original", "Preserved form body")
+    sidebar_menu("Keyboard details original")
+    pointer("Rename…")
+    control("Note name", "textField")
+    call("input", events=[dict(type="key", key="Cmd+A"), dict(type="text", text="Keyboard details renamed"),
+                           dict(type="key", key="Enter")])
+    wait("Enter did not close note details", lambda tree: not any(n.get("label") == "Note name" for n in tree))
+    assert stored("Keyboard details renamed")["source"] == "Preserved form body"
+    sidebar_menu("Keyboard details renamed")
+    pointer("Move…")
+    pointer("Folder name", "textField")
+    call("input", events=[dict(type="key", key="Cmd+A"), dict(type="text", text="Keyboard moved folder"),
+                           dict(type="key", key="Enter")])
+    wait("Enter did not close move dialog", lambda tree: not any(n.get("label") == "Folder name" for n in tree))
+    moved = stored("Keyboard details renamed")
+    assert moved["folder"] == "Keyboard moved folder" and moved["source"] == "Preserved form body"
+    home()
+    pointer("New folder", "button")
+    call("input", events=[dict(type="text", text=keyboard_folder), dict(type="key", key="Enter")])
+    control("Dismiss")
+    assert settings()["folders"].count(keyboard_folder) == 1
+    pointer("Dismiss")
+    key("Escape")
+    check("form Enter / batched Unicode input / folder create / note rename / move / validation / no duplicates")
+
+    # Context and more menus address physical files without opening another
+    # editor. Verify the real clipboard by pasting into an ordinary UI field.
+    def copied_path(title, expected, more=False):
+        if more:
+            sidebar_menu(title)
+        else:
+            pointer("Open " + title, offset=50, button="right")
+        pointer("Copy absolute path")
+        pointer("Search notes", "textField")
+        key("Cmd+A")
+        key("Cmd+V")
+        assert control("Search notes", "textField").get("value") == str(expected)
+        replace("Search notes", "")
+
+    def finder_file(title, expected, more=False):
+        if more:
+            sidebar_menu(title)
+        else:
+            pointer("Open " + title, offset=50, button="right")
+        pointer("Show in Finder")
+        log = root / "fixtures" / "finder-selection.txt"
+        wait("Finder received the wrong file", lambda _: log.exists() and log.read_text() == str(expected))
+
+    path_title = "Keyboard details renamed"
+    physical = next(path for path in note_paths(library / "notes") if read_note(path)["title"] == path_title)
+    assert physical.name == path_title + ".md", physical
+    original = physical.read_bytes()
+    copied_path(path_title, physical)
+    finder_file(path_title, physical, more=True)
+    assert physical.read_bytes() == original
+
+    # An empty logical folder opens shared storage, never an invented path
+    # based on the display title. Cover both menu entry points independently.
+    for more in (False, True):
+        log = root / "fixtures" / "finder-folder.txt"
+        log.unlink(missing_ok=True)
+        label = "Folder " + keyboard_folder
+        if more:
+            row = control(label)
+            call("input", events=[event(row, "pointerMove", offset=50)])
+            row = control(label)
+            call("input", events=[event(row, offset=row["bounds"]["width"] - 15)])
+        else:
+            pointer(label, offset=50, button="right")
+        pointer("Open storage folder in Finder")
+        wait("Finder received a virtual folder path", lambda _: log.exists() and log.read_text() == str(library / "notes"))
+
+    call("menu", path=["File", "Open local file"])
+    opened("Fixture import")
+    home()
+    external = (root / "fixtures" / "Fixture import.md").resolve()
+    original = external.read_bytes()
+    copied_path("Fixture import", external, more=True)
+    finder_file("Fixture import", external)
+    assert external.read_bytes() == original
+    sidebar_menu("Fixture import")
+    pointer("Remove from list")
+    assert external.read_bytes() == original
+    check("path clipboard / Finder selection / internal and external files / empty folder context and more menus")
+
+    # Import copies retain the original basename, independently of the display
+    # title, while repeated imports allocate distinct, readable destinations.
+    for expected in ("Fixture import.md", "Fixture import (2).md"):
+        call("menu", path=["File", "Import…"])
+        opened("Fixture import")
+        home()
+        imported = library / "notes" / expected
+        wait("Import did not retain its basename", lambda _: imported.exists())
+        assert read_note(imported)["fileName"] == expected
+        assert read_note(imported)["source"] == external.read_text()
+    for expected in ("Fixture import.md", "Fixture import (2).md"):
+        sidebar_menu("Fixture import")
+        pointer("Move to Trash")
+    for expected in ("Fixture import.md", "Fixture import (2).md"):
+        assert (library / "trash" / expected).exists()
+        assert not (library / "notes" / expected).exists()
+    check("original import basename / duplicate suffix / renamed document filename / unchanged original")
+
     folder = "Journey workspace"
     pointer("New folder", "button")
     replace("Folder title", folder)

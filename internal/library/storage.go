@@ -24,8 +24,8 @@ func noteExtension(n *Note) string {
 }
 
 func recordFile(name string) bool {
-	switch filepath.Ext(name) {
-	case ".md", ".xml", ".json":
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".md", ".markdown", ".mdx", ".xml", ".json":
 		return true
 	}
 	return false
@@ -34,6 +34,9 @@ func recordFile(name string) bool {
 // Format changes retain the previous file's version check until the new
 // extension has been committed. Missing files still produce a save conflict.
 func (l *Library) savedNotePath(n *Note) string {
+	if path := l.paths[n.ID]; path != "" {
+		return path
+	}
 	path := l.notePath(n)
 	if l.versions[n.ID] != ([32]byte{}) {
 		if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
@@ -52,7 +55,7 @@ func (l *Library) savedNotePath(n *Note) string {
 // XML declaration. A trailing comment keeps metadata in the same atomic write
 // without displaying it in Markdown or changing an XML document's root.
 func marshalNote(n *Note) ([]byte, error) {
-	if !validID(n.ID) || (n.Format != "markdown" && n.Format != "xml") {
+	if !validID(n.ID) || (n.Format != "markdown" && n.Format != "xml") || (n.FileName != "" && !validDocumentName(n.FileName)) {
 		return nil, fmt.Errorf("invalid note identity or format")
 	}
 	metadata, err := xml.MarshalIndent(n, "", "  ")
@@ -108,7 +111,7 @@ func unmarshalNote(data []byte, n *Note) error {
 		}
 		n.Source = string(data[:start])
 	}
-	if !validID(n.ID) || (n.Format != "markdown" && n.Format != "xml") {
+	if !validID(n.ID) || (n.Format != "markdown" && n.Format != "xml") || (n.FileName != "" && !validDocumentName(n.FileName)) {
 		return fmt.Errorf("invalid note identity or format")
 	}
 	return nil

@@ -48,7 +48,7 @@ func (a *app) endLinkHover() {
 	}
 }
 
-func (a *app) hoverDocumentLink(c *ui.Context, ed ui.Element, doc *richtext.Document, font ui.Font, theme *richtext.Theme) {
+func (a *app) hoverDocumentLink(c *ui.Context, ed ui.Element, doc *richtext.Document, font ui.Font, theme *richtext.Theme, padding ...float32) {
 	if c.Modifiers() != ui.Ctrl || a.linkHover.pressed || a.current == nil {
 		return
 	}
@@ -56,7 +56,15 @@ func (a *app) hoverDocumentLink(c *ui.Context, ed ui.Element, doc *richtext.Docu
 	if !over || ed.Dragging() {
 		return
 	}
-	link := richLinkAt(doc, font, theme, ed.LayoutBounds().W, x, y)
+	var inset float32
+	if len(padding) != 0 {
+		inset = padding[0]
+	}
+	width := ed.LayoutBounds().W - 2*inset
+	if x < inset || x >= inset+width {
+		return
+	}
+	link := richLinkAt(doc, font, theme, width, x-inset, y)
 	if link == "" || strings.HasPrefix(link, "mory-inline:") {
 		return
 	}

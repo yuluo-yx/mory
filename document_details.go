@@ -78,6 +78,10 @@ const documentCoverHeight, documentCoverBottomGap float32 = 180, 16
 
 func (a *app) sourceEditor(c *ui.Context) ui.Element {
 	ed := editor.View(c.Key(a.current.ID), a.code).Label(a.tr("Source editor"))
+	if a.modeCycleFocus {
+		ed.Focus()
+		a.modeCycleFocus = false
+	}
 	if a.sourceListDraft != nil && !ed.Focused() {
 		a.sourceListDraft = nil
 		c.AnimationFrame()
@@ -230,6 +234,9 @@ func (a *app) documentHeader(c *ui.Context) {
 			})
 		}
 		title := ui.TextInput(c, &n.Title).Label(a.tr("Document title")).Placeholder(a.tr("Untitled")).PlaceholderColor(t.TextMuted).Font(typography.Display).FontSize(32).Bold().LetterSpacing(-0.5).Grow(1).Background(ui.Transparent).Border(0, ui.Transparent)
+		if title.Focused() && a.blockEditor != nil {
+			a.blockEditor.tableSelection = ""
+		}
 		title.OnTextKey(func(k ui.TextKey) bool {
 			if k.Key != ui.KeyEnter || k.Mods != 0 || a.mode == "Read" {
 				return false

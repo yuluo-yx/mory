@@ -16,6 +16,7 @@ from editor_e2e import exercise_editor
 from clipboard_e2e import exercise_clipboard
 from workspace_e2e import exercise_workspace
 from writing_e2e import exercise_writing
+from table_e2e import exercise_tables
 from library_records import note_paths, read_note
 
 
@@ -66,7 +67,7 @@ def exercise(binary, root, suite="all"):
                                     # An active process can still have no key window after
                                     # native menus. Raise the window without changing its
                                     # focused editor or caret under test.
-                                    "-e", 'perform action "AXRaise" of first window of testProcess',
+                                    "-e", 'if (count of windows of testProcess) > 0 then perform action "AXRaise" of first window of testProcess',
                                     "-e", 'end tell'], check=True)
                     deadline = time.monotonic() + 5
                     while not content_focused():
@@ -149,6 +150,8 @@ def exercise(binary, root, suite="all"):
             exercise_writing(call, nodes, act, key, root, fixtures)
         if suite == "editor":
             exercise_editor(call, nodes, act, key, root, fixtures, native_space)
+        if suite in {"all", "table"}:
+            exercise_tables(call, nodes, act, key, root, fixtures)
         if suite != "all":
             call("menu", path=["Mory", "Quit Mory"])
             process.wait(timeout=10)
@@ -189,8 +192,8 @@ def exercise(binary, root, suite="all"):
         act("Toggle focus mode")
         act("Document actions")
         act("Move to Trash")
-        active_path = root / "library" / "notes" / (note["id"] + ".md")
-        trash_path = root / "library" / "trash" / (note["id"] + ".md")
+        active_path = root / "library" / "notes" / note["fileName"]
+        trash_path = root / "library" / "trash" / note["fileName"]
         assert not active_path.exists() and trash_path.exists(), "Delete did not move the library record"
         assert read_note(trash_path).get("deletedAt"), "Deletion time is missing"
         act("Trash")
@@ -445,7 +448,7 @@ def exercise(binary, root, suite="all"):
         call("menu", path=["Mory", "Quit Mory"])
         process.wait(timeout=10)
         assert process.returncode == 0, process.communicate()[1].decode()
-        saved = read_note(root / "library" / "notes" / (note["id"] + ".md"))
+        saved = read_note(root / "library" / "notes" / note["fileName"])
         assert not saved.get("deleted", False) and saved["starred"]
         print("Native E2E passed: launch, Unicode editing, formatting, save, modes, plugin, favorite, trash file moves, restore, empty quote editing, external removal, settings, native PDF, quit.")
     finally:
@@ -470,7 +473,7 @@ def exercise(binary, root, suite="all"):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("binary", type=Path)
-    parser.add_argument("--suite", choices=["all", "workspace", "writing", "editor"], default="all")
+    parser.add_argument("--suite", choices=["all", "workspace", "writing", "editor", "table"], default="all")
     args = parser.parse_args()
     binary = args.binary.resolve()
     output = Path(".test-output")

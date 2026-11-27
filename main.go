@@ -206,7 +206,7 @@ func (a *app) buildMenu(updateItem *mygo.MenuItem) *mygo.Menu {
 		{Label: a.tr("File"), Submenu: []*mygo.MenuItem{action("New note"), action("Import"), action("Open local file"), action("Save"), action("Quick note"), action("Open in new window"), action("Print"), action("Export"), role("Close window", mygo.RoleClose)}},
 		{Label: a.tr("Edit"), Submenu: []*mygo.MenuItem{role("Undo", mygo.RoleUndo), role("Redo", mygo.RoleRedo), mygo.Separator(), role("Cut", mygo.RoleCut), role("Copy", mygo.RoleCopy), role("Paste", mygo.RolePaste), role("Select all", mygo.RoleSelectAll), mygo.Separator(), action("Find"), action("Replace")}},
 		{Label: a.tr("Format"), Submenu: formats},
-		{Label: a.tr("View"), Submenu: []*mygo.MenuItem{action("Library"), action("Focus mode"), action("Formatting toolbar"), action("Outline"), action("Outline on Left"), action("Outline on Right"), action("Write mode"), action("Read mode"), action("Source mode"), action("Split mode"), action("Insert block"), role("Full screen", mygo.RoleToggleFullScreen)}},
+		{Label: a.tr("View"), Submenu: []*mygo.MenuItem{action("Library"), action("Focus mode"), action("Formatting toolbar"), action("Outline"), action("Outline on Left"), action("Outline on Right"), action("Cycle editor mode"), action("Write mode"), action("Read mode"), action("Source mode"), action("Split mode"), action("Insert block"), role("Full screen", mygo.RoleToggleFullScreen)}},
 		{Role: mygo.RoleWindowMenu}, {Label: a.tr("Help"), Submenu: []*mygo.MenuItem{action("Open welcome guide"), action("Shortcuts")}},
 	})
 	// MyGo fills role defaults during construction; explicitly clear disabled keys afterwards.

@@ -38,7 +38,8 @@ func (a *app) insertActions(query string) []insertAction {
 	for _, name := range []string{"Heading", "Bullet list", "To-do list", "Quote", "Code block", "Callout"} {
 		item(name, func() { a.insertEmptyBlock(name) })
 	}
-	for _, b := range []struct{ name, source string }{{"Table", "\n| Column A | Column B |\n| --- | --- |\n| Value | Value |\n"}, {"Math", "\n$$\nE = mc^2\n$$\n"}, {"Divider", "\n---\n"}} {
+	item("Table", func() { a.insertOpen = false; a.tablePickerOpen = true; a.tableInsertRows, a.tableInsertColumns = 3, 3 })
+	for _, b := range []struct{ name, source string }{{"Math", "\n$$\nE = mc^2\n$$\n"}, {"Divider", "\n---\n"}} {
 		item(b.name, func() { a.insert(b.source) })
 	}
 	item("Image or attachment…", func() { a.insertOpen = false; a.chooseAttachment() })
@@ -158,19 +159,7 @@ func (a *app) insertEmptyBlock(name string) {
 	if a.current == nil {
 		return
 	}
-	if a.slashPending {
-		if a.blockEditor != nil {
-			if f := a.blockEditor.fields[a.blockEditor.active]; f != nil && f.doc != nil {
-				f.doc.SetSelection(0, f.doc.Text().Len())
-				f.doc.InsertText("")
-			}
-		} else {
-			a.doc.SetSelection(a.slashOffset, a.slashOffset+1)
-			a.doc.InsertText("")
-		}
-		a.capture()
-		a.slashPending = false
-	}
+	a.consumeSlash()
 	text := blocks.New("p")
 	node := text
 	switch name {
@@ -206,5 +195,21 @@ func (a *app) insertEmptyBlock(name string) {
 				s.doc.Coalesce()
 			}
 		}
+	}
+}
+
+func (a *app) consumeSlash() {
+	if a.slashPending {
+		if a.blockEditor != nil {
+			if f := a.blockEditor.fields[a.blockEditor.active]; f != nil && f.doc != nil {
+				f.doc.SetSelection(0, f.doc.Text().Len())
+				f.doc.InsertText("")
+			}
+		} else {
+			a.doc.SetSelection(a.slashOffset, a.slashOffset+1)
+			a.doc.InsertText("")
+		}
+		a.capture()
+		a.slashPending = false
 	}
 }

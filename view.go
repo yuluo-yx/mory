@@ -362,6 +362,9 @@ func (a *app) treeFolder(c *ui.Context, folder string, depth int, seen map[strin
 						a.folderName = folder
 						a.folderOpen = true
 					}
+					if m.Item(a.tr("Open storage folder in Finder")).Chosen() {
+						a.openStorageInFinder()
+					}
 					m.Separator()
 					if m.Item(a.tr("Delete folder…")).Chosen() {
 						a.folderDeleteTarget, a.folderDeleteOpen = folder, true
@@ -380,6 +383,9 @@ func (a *app) treeFolder(c *ui.Context, folder string, depth int, seen map[strin
 			a.folderFrom = folder
 			a.folderName = folder
 			a.folderOpen = true
+		}
+		if m.Item(a.tr("Open storage folder in Finder")).Chosen() {
+			a.openStorageInFinder()
 		}
 		m.Separator()
 		if m.Item(a.tr("Delete folder…")).Chosen() {
@@ -904,6 +910,12 @@ func (a *app) noteMenu(m *ui.Menu, n *library.Note) {
 	if m.Item(a.tr("Open in new window")).Chosen() {
 		a.openWindow(n)
 	}
+	if m.Item(a.tr("Copy absolute path")).Chosen() {
+		a.copyDocumentPath(n)
+	}
+	if m.Item(a.tr("Show in Finder")).Chosen() {
+		a.showDocumentInFinder(n)
+	}
 	if m.Item(a.tr("Rename…")).Chosen() {
 		a.openNoteActions(n)
 	}
@@ -1033,8 +1045,12 @@ func (a *app) editorView(c *ui.Context) {
 	if a.current == nil {
 		return
 	}
-	if a.showToolbar && a.mode == "Write" && a.doc != nil {
-		a.toolbar(c)
+	if a.mode == "Write" && a.doc != nil {
+		if n, _ := a.tableSelectedCells(); n != nil {
+			a.tableSelectionToolbar(c)
+		} else if a.showToolbar || a.tableTextSelected() {
+			a.toolbar(c)
+		}
 	}
 	if a.findOpen && a.mode == "Write" {
 		a.findBar(c)
@@ -1056,15 +1072,13 @@ func (a *app) editorView(c *ui.Context) {
 			if a.outline && !a.focus && a.mode != "Split" && outlineSide == "Left" {
 				a.outlineView(c)
 			}
-			column := ui.Column(c).Grow(1).MinWidth(0).Padding(32, 40, 16)
+			// Scope the page theme through painting as well as widget creation,
+			// so native text editors resolve the same scrollbar style they use.
+			column := ui.Themed(c, a.pageTheme(c.Theme())).Grow(1).MinWidth(0).Padding(32, 40, 16)
 			if width := a.documentPageWidth(); width > 0 && a.mode != "Split" {
 				column.MaxWidth(width)
 			}
 			column.Children(func() {
-				base := c.Theme()
-				c.SetTheme(a.pageTheme(base))
-				defer c.SetTheme(base)
-				column.Background(c.Theme().Background)
 				a.documentHeader(c)
 				switch a.mode {
 				case "Write":
@@ -1081,14 +1095,14 @@ func (a *app) editorView(c *ui.Context) {
 					ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Gap(22).Children(func() {
 						a.sourceEditor(c).Grow(1).MinWidth(0).MinHeight(0)
 						ui.Box(c).Width(1).Shrink(0).Background(t.Border)
-						ui.Column(c).Grow(1).MinWidth(0).MinHeight(0).Clip().Children(func() { a.splitPreview(c) })
+						ui.Column(c).Grow(1).MinWidth(0).MinHeight(0).Margin(0, -documentScrollGutter, 0, 0).Padding(0, documentScrollGutter, 0, 0).Clip().Children(func() { a.splitPreview(c) })
 					})
 				case "Read":
 					if a.blockEditor != nil {
 						a.blockView(c, true)
 					} else {
 						a.preview.Theme = &markdown.Theme{CodeFont: a.writingFont("pre").Family, ListIndent: a.docTheme.ListIndent(a.writingFont(".page")) / c.Theme().FontSize}
-						ui.Scroll(c).Grow(1).Children(func() { markdown.View(c, a.markdownSource(), &a.preview).FillWidth() })
+						documentScroll(c).Children(func() { markdown.View(c, a.markdownSource(), &a.preview).FillWidth() })
 					}
 				}
 			})
@@ -1306,12 +1320,12 @@ func pText(p richtext.Paragraph) string {
 
 func (a *app) findBar(c *ui.Context) {
 	ui.Row(c).Padding(8, 28).Gap(8).Children(func() {
-		ui.TextInput(c, &a.findText).Label(a.tr("Find text")).Placeholder(a.tr("Find…")).Width(180)
-		ui.TextInput(c, &a.replaceText).Label(a.tr("Replace text")).Placeholder(a.tr("Replace with…")).Width(180)
-		if ui.Button(c, a.tr("Next")).Clicked() {
+		find := formSubmitted(ui.TextInput(c, &a.findText).Label(a.tr("Find text")).Placeholder(a.tr("Find…")).Width(180))
+		replace := formSubmitted(ui.TextInput(c, &a.replaceText).Label(a.tr("Replace text")).Placeholder(a.tr("Replace with…")).Width(180))
+		if ui.Button(c, a.tr("Next")).Clicked() || find {
 			a.findNext()
 		}
-		if ui.Button(c, a.tr("Replace")).Clicked() {
+		if ui.Button(c, a.tr("Replace")).Clicked() || replace {
 			anchor, caret := a.doc.Selection()
 			start, end := min(anchor, caret), max(anchor, caret)
 			r := []rune(a.doc.Text().String())

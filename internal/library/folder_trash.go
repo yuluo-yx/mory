@@ -85,6 +85,11 @@ func (l *Library) TrashFolder(folder string) error {
 		Deleted: true, DeletedAt: now, Created: now, Updated: now,
 	}
 	root.TrashRoot = root.ID
+	filename, err := l.availableFilename(readableFilename(root.Title, ".md"), root.ID)
+	if err != nil {
+		return err
+	}
+	root.FileName = filename
 	data, err := marshalNote(root)
 	if err != nil {
 		return err
@@ -98,6 +103,7 @@ func (l *Library) TrashFolder(folder string) error {
 	}
 	l.Notes = append(l.Notes, root)
 	l.versions[root.ID] = sha256.Sum256(data)
+	l.paths[root.ID] = l.notePath(root)
 	for _, n := range removals {
 		next := *n
 		next.TrashRoot = root.ID

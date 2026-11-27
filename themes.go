@@ -51,6 +51,7 @@ func (a *app) reloadTheme() {
 
 func (a *app) pageTheme(base *ui.Theme) *ui.Theme {
 	t := *base
+	t.ScrollbarStyle = documentScrollbar(&t)
 	if a.docTheme == nil {
 		return &t
 	}
@@ -66,6 +67,7 @@ func (a *app) pageTheme(base *ui.Theme) *ui.Theme {
 		t.Border = ui.Hex("#454a46")
 		t.Surface = ui.Hex("#2c302c")
 	}
+	t.ScrollbarStyle = documentScrollbar(&t)
 	return &t
 }
 
@@ -132,7 +134,7 @@ func (a *app) themeOverlay(c *ui.Context) {
 	ui.Modal(c, &a.cssOpen, func() {
 		ui.Column(c).Width(720).MaxHeight(700).Gap(12).Children(func() {
 			ui.Text(c, a.tr("Document stylesheet")).FontSize(24)
-			ui.TextInput(c, &a.cssName).Label(a.tr("Theme name")).FillWidth()
+			submit := formSubmitted(ui.TextInput(c, &a.cssName).Label(a.tr("Theme name")).FillWidth())
 			a.stylesheetField(c)
 			parsed := doctheme.Parse(a.cssText)
 			ui.Scroll(c).MaxHeight(100).Children(func() {
@@ -141,7 +143,7 @@ func (a *app) themeOverlay(c *ui.Context) {
 				}
 			})
 			ui.Row(c).Gap(10).Children(func() {
-				if ui.PrimaryButton(c, a.tr("Apply stylesheet")).Clicked() {
+				if ui.PrimaryButton(c, a.tr("Apply stylesheet")).Clicked() || submit {
 					name := strings.TrimSpace(a.cssName)
 					if name == "" || filepath.Base(name) != name || strings.ContainsAny(name, "/\\") {
 						a.problem = "Use a simple theme name."

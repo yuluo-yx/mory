@@ -55,6 +55,7 @@ type app struct {
 	services                                                                        ui.Services
 	textFocused                                                                     bool
 	bodyFocus                                                                       bool
+	modeCycleFocus                                                                  bool
 	richEditor                                                                      ui.Handle
 	bodyInput                                                                       string
 	submittedTitle                                                                  string
@@ -109,6 +110,8 @@ type app struct {
 	renameTitle, moveFolder, moveParent                                             string
 	target                                                                          *library.Note
 	insertQuery                                                                     string
+	tablePickerOpen                                                                 bool
+	tableInsertRows, tableInsertColumns                                             int
 }
 
 type structuredHeading struct {
@@ -350,6 +353,7 @@ func (a *app) loadEditors() {
 	n := a.current
 	a.blockEditor = nil
 	a.bodyFocus = false
+	a.modeCycleFocus = false
 	a.bodyInput = ""
 	a.submittedTitle = ""
 	a.sourceListDraft = nil
@@ -424,6 +428,11 @@ func (a *app) changeMode(mode string) {
 				a.structuredHeadings = nil
 			}
 		} else {
+			if a.blockEditor != nil {
+				// Block fields replace a.doc while Split/Read renders. Rebuild the
+				// whole-document buffer before returning to the ordinary editor.
+				a.richSource = "\x00"
+			}
 			a.blockEditor = nil
 		}
 		if a.blockEditor == nil {
@@ -513,6 +522,12 @@ func (a *app) importFile(path string) {
 }
 
 func (a *app) importFileFrom(path, root string) {
+	a.importFileWithTitle(path, root, "")
+}
+
+// Indexed imports know the display title before creation. Supplying it here
+// keeps that metadata update from being mistaken for a user filename rename.
+func (a *app) importFileWithTitle(path, root, importedTitle string) {
 	if !a.save() {
 		return
 	}
@@ -541,6 +556,9 @@ func (a *app) importFileFrom(path, root string) {
 			title = t
 		}
 	}
+	if importedTitle != "" {
+		title = importedTitle
+	}
 	source, err := document.RewriteAssets(string(b), format, func(asset string) (string, error) {
 		absolute := filepath.Join(filepath.Dir(path), filepath.FromSlash(asset))
 		if filepath.IsAbs(asset) {
@@ -559,7 +577,7 @@ func (a *app) importFileFrom(path, root string) {
 	if a.fail(err) {
 		return
 	}
-	n, err := a.lib.Create(title, source, format)
+	n, err := a.lib.CreateFile(title, source, format, filepath.Base(path))
 	if a.fail(err) {
 		return
 	}

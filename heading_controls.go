@@ -110,6 +110,10 @@ func (a *app) richDocumentEditor(c *ui.Context) {
 	font := a.writingFont(".page")
 	doc := a.doc
 	richTheme := a.docTheme.Rich(c.Theme(), font)
+	// EditorBase paints its scrollbar over the full text width. The styled
+	// editor's internal padding also participates in native hit testing, IME,
+	// selection and wrapping; negative margins keep the text aligned as before.
+	richTheme.Padding = [2]float32{documentScrollGutter, 1}
 	placeholder := ""
 	style := doc.Text().ParagraphStyleAt(0)
 	// The native placeholder ignores paragraph indentation and top spacing.
@@ -118,8 +122,8 @@ func (a *app) richDocumentEditor(c *ui.Context) {
 		placeholder = a.tr("Start writing…")
 	}
 	// Borrow the page's left padding for controls, keeping the text stationary.
-	ui.Box(c).Grow(1).MinHeight(0).Margin(0, 0, 0, -headingGutterWidth).Padding(0, 0, 0, headingGutterWidth).Children(func() {
-		ed := richtext.EditorBase(c.Key(a.current.ID), doc, richtext.EditorOptions{
+	ui.Box(c).Grow(1).MinHeight(0).Margin(0, -documentScrollGutter, 0, -headingGutterWidth).Padding(0, 0, 0, headingGutterWidth-documentScrollGutter).Children(func() {
+		ed := richtext.Editor(c.Key(a.current.ID), doc, richtext.EditorOptions{
 			Label: a.tr("Document editor"), Placeholder: placeholder, Font: font,
 			OnLink: a.openLink, OnLinkCommand: func() { a.linkURL = doc.Formatting().Link; a.linkOpen = true },
 			Theme: richTheme,
@@ -141,8 +145,13 @@ func (a *app) richDocumentEditor(c *ui.Context) {
 				}
 				return false
 			},
-		}).Bind(&a.richEditor).Fill()
-		a.hoverDocumentLink(c, ed, doc, font, richTheme)
+		}).Bind(&a.richEditor).Fill().MinHeight(0).
+			Border(0, ui.Transparent).Background(ui.Transparent).Radius(0).FocusRing(false)
+		if a.modeCycleFocus {
+			ed.Focus()
+			a.modeCycleFocus = false
+		}
+		a.hoverDocumentLink(c, ed, doc, font, richTheme, documentScrollGutter)
 		if a.bodyFocus {
 			doc.SetSelection(0, 0)
 			if a.bodyInput != "" {

@@ -33,7 +33,7 @@ type Node struct {
 
 // CompactTable indexes every cell as an immutable slice of the Markdown source.
 // Readers can render arbitrary rows without expanding a rich node tree. Clones
-// share this read-only data; editing remains an explicit Source-mode operation.
+// share this read-only data; ExpandTable materializes rich cells on first edit.
 type CompactTable struct {
 	Rows, Columns int
 	Widths        []float64
@@ -257,6 +257,18 @@ func ParseXML(source string) (*Node, error) {
 			}
 			n := stack[len(stack)-1]
 			n.raw = wrapped[starts[len(starts)-1]:after]
+			// HTML-style cells may contain inline text or be self-closing.
+			// Give them an editable paragraph while preserving their raw bytes
+			// as the unchanged baseline, just like ordinary DocxXML cells.
+			if n.Kind == "td" || n.Kind == "th" {
+				hasBlock := false
+				for _, child := range n.Children {
+					hasBlock = hasBlock || IsBlock(child)
+				}
+				if !hasBlock {
+					n.Children = []*Node{New("p", n.Children...)}
+				}
+			}
 			n.baseline = n.signature()
 			stack = stack[:len(stack)-1]
 			starts = starts[:len(starts)-1]

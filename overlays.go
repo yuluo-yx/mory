@@ -45,21 +45,22 @@ func (a *app) overlays(c *ui.Context) {
 		})
 	})
 	a.insertMenu(c)
-	if !a.insertOpen {
+	a.tablePicker(c)
+	if !a.insertOpen && !a.tablePickerOpen {
 		a.slashPending = false
 	}
 	ui.Modal(c, &a.linkOpen, func() {
 		ui.Column(c).Width(380).Gap(14).Children(func() {
 			ui.Text(c, a.tr("Add a link")).FontSize(22)
-			ui.TextInput(c, &a.linkURL).Label(a.tr("Link URL")).Placeholder("https://example.com").FillWidth().AutoFocus()
+			submit := formSubmitted(ui.TextInput(c, &a.linkURL).Label(a.tr("Link URL")).Placeholder("https://example.com").FillWidth().AutoFocus())
 			ui.Row(c).Gap(8).Children(func() {
-				if ui.PrimaryButton(c, a.tr("Apply link")).Clicked() && a.doc != nil {
-					a.doc.SetLink(strings.TrimSpace(a.linkURL))
+				if (ui.PrimaryButton(c, a.tr("Apply link")).Clicked() || submit) && a.doc != nil {
+					a.applyLink(strings.TrimSpace(a.linkURL))
 					a.linkOpen = false
 					a.capture()
 				}
 				if ui.Button(c, a.tr("Remove link")).Clicked() && a.doc != nil {
-					a.doc.SetLink("")
+					a.applyLink("")
 					a.linkOpen = false
 					a.capture()
 				}
@@ -67,6 +68,7 @@ func (a *app) overlays(c *ui.Context) {
 		})
 	})
 	ui.Modal(c, &a.renameOpen, func() {
+		submit := false
 		if a.target == nil {
 			return
 		}
@@ -82,7 +84,7 @@ func (a *app) overlays(c *ui.Context) {
 			// Note Name Input Card
 			ui.Column(c).Padding(12).Radius(8).Background(t.Surface).Border(1, t.Border.Alpha(0.6)).Gap(6).Children(func() {
 				ui.Text(c, a.tr("Note name")).FontSize(12).Bold().TextColor(t.TextMuted)
-				ui.TextInput(c, &a.renameTitle).Label(a.tr("Note name")).Placeholder(a.tr("Untitled")).FillWidth().AutoFocus()
+				submit = formSubmitted(ui.TextInput(c, &a.renameTitle).Label(a.tr("Note name")).Placeholder(a.tr("Untitled")).FillWidth().AutoFocus())
 			})
 
 			a.documentControls(c)
@@ -119,7 +121,7 @@ func (a *app) overlays(c *ui.Context) {
 					if ui.Button(c, a.tr("Cancel")).Padding(5, 14).Radius(6).Clicked() {
 						a.renameOpen = false
 					}
-					if ui.PrimaryButton(c, a.tr("Rename")).Padding(5, 16).Radius(6).Clicked() {
+					if (ui.PrimaryButton(c, a.tr("Rename")).Padding(5, 16).Radius(6).Clicked() || submit) && a.renameOpen {
 						if strings.TrimSpace(a.renameTitle) == "" {
 							a.problem = "Give your note a name."
 						} else {
@@ -140,7 +142,7 @@ func (a *app) overlays(c *ui.Context) {
 		ui.Column(c).Width(400).Gap(14).Children(func() {
 			ui.Text(c, a.tr("Move document")).FontSize(24)
 			ui.Text(c, a.tr("Folder (leave empty for the library root)"))
-			ui.TextInput(c, &a.moveFolder).Label(a.tr("Folder name")).FillWidth()
+			submit := formSubmitted(ui.TextInput(c, &a.moveFolder).Label(a.tr("Folder name")).FillWidth().AutoFocus())
 			ui.Text(c, a.tr("Parent document"))
 			choices := []string{a.tr("None")}
 			ids := map[string]string{"None": ""}
@@ -163,7 +165,7 @@ func (a *app) overlays(c *ui.Context) {
 				a.moveOpen, a.batchMove = false, false
 				a.moveFolder, a.moveParent = "", ""
 			}
-			if ui.PrimaryButton(c, a.tr("Move")).Clicked() {
+			if (ui.PrimaryButton(c, a.tr("Move")).Clicked() || submit) && a.moveOpen {
 				if a.batchMove {
 					a.batch("Move")
 					a.batchMove = false

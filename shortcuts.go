@@ -20,9 +20,22 @@ func (a *app) actions() []shortcut {
 	edit := func(fn func(*richtext.Document)) func() {
 		return func() {
 			if a.current != nil && a.mode == "Write" && a.doc != nil {
+				if n, _ := a.tableSelectedCells(); n != nil {
+					a.formatTableSelection(fn)
+					return
+				}
 				fn(a.doc)
 				a.capture()
 			}
+		}
+	}
+	toggle := func(name string, fn func(*richtext.Document)) func() {
+		return func() {
+			if n, _ := a.tableSelectedCells(); n != nil {
+				a.toggleTableFormat(name)
+				return
+			}
+			edit(fn)()
 		}
 	}
 	items := []shortcut{
@@ -43,7 +56,8 @@ func (a *app) actions() []shortcut {
 		{"Focus mode", "Cmd+Shift+L", func() { a.focus = !a.focus }},
 		{"Insert block", "Cmd+P", func() { a.insertOpen = true; a.insertQuery = "" }},
 		{"Settings", "Cmd+,", func() { a.settingsOpen = true }},
-		{"Shortcuts", "Cmd+/", func() { a.helpOpen = true }},
+		{"Shortcuts", "", func() { a.helpOpen = true }},
+		{"Cycle editor mode", "Cmd+/", a.cycleEditorMode},
 		{"Find", "Cmd+F", func() {
 			if a.current != nil {
 				a.findOpen = true
@@ -60,12 +74,16 @@ func (a *app) actions() []shortcut {
 		{"Split mode", "Cmd+Alt+4", func() { a.changeMode("Split") }},
 		{"Outline", "Cmd+Shift+H", func() { a.outline = !a.outline }},
 		{"Formatting toolbar", "Cmd+Shift+T", func() { a.showToolbar = !a.showToolbar }},
-		{"Bold", "Cmd+B", edit((*richtext.Document).ToggleBold)},
-		{"Italic", "Cmd+I", edit((*richtext.Document).ToggleItalic)},
-		{"Underline", "Cmd+U", edit((*richtext.Document).ToggleUnderline)},
-		{"Strikethrough", "Cmd+Shift+X", edit((*richtext.Document).ToggleStrikethrough)},
-		{"Inline code", "Cmd+Ctrl+C", edit((*richtext.Document).ToggleCode)},
-		{"Link", "Cmd+K", edit(func(d *richtext.Document) { a.linkURL = d.Formatting().Link; a.linkOpen = true })},
+		{"Bold", "Cmd+B", toggle("Bold", (*richtext.Document).ToggleBold)},
+		{"Italic", "Cmd+I", toggle("Italic", (*richtext.Document).ToggleItalic)},
+		{"Underline", "Cmd+U", toggle("Underline", (*richtext.Document).ToggleUnderline)},
+		{"Strikethrough", "Cmd+Shift+X", toggle("Strikethrough", (*richtext.Document).ToggleStrikethrough)},
+		{"Inline code", "Cmd+Ctrl+C", toggle("Inline code", (*richtext.Document).ToggleCode)},
+		{"Link", "Cmd+K", func() {
+			if a.current != nil && a.mode == "Write" && a.doc != nil {
+				a.linkURL, a.linkOpen = a.doc.Formatting().Link, true
+			}
+		}},
 		{"Bullets", "Cmd+Shift+8", edit(func(d *richtext.Document) { d.ToggleList(richtext.Bullets) })},
 		{"Numbers", "Cmd+Shift+7", edit(func(d *richtext.Document) { d.ToggleList(richtext.Numbers) })},
 		{"Tasks", "Cmd+Shift+9", edit(func(d *richtext.Document) { d.ToggleList(richtext.Tasks) })},
@@ -112,10 +130,37 @@ func (a *app) actions() []shortcut {
 }
 
 func (a *app) keyFor(name, fallback string) string {
+	// Older settings saved every default, including Cmd+/ for help. Reassign
+	// that default until the user explicitly configures the new cycle action.
+	if name == "Shortcuts" {
+		if _, configured := a.lib.Settings.Keys["Cycle editor mode"]; !configured {
+			if key, _ := canonicalKey(a.lib.Settings.Keys[name]); key == "Cmd+/" {
+				return ""
+			}
+		}
+	}
 	if key, ok := a.lib.Settings.Keys[name]; ok {
 		return key
 	}
 	return fallback
+}
+
+// Keep switching on the normal capture/flush path so unsaved edits in either
+// editor are visible immediately in the next mode. Source-only guards remain.
+func (a *app) cycleEditorMode() {
+	if a.current == nil || a.settingsOpen || a.helpOpen || a.cssOpen {
+		return
+	}
+	previous := a.mode
+	next := map[string]string{"Write": "Source", "Source": "Read", "Read": "Split", "Split": "Write"}[previous]
+	if next == "" {
+		next = "Write"
+	}
+	a.changeMode(next)
+	a.modeCycleFocus = a.mode != previous && a.mode != "Read"
+	if a.modeCycleFocus && a.mode == "Write" && a.blockEditor != nil && a.blockEditor.active == "" {
+		a.focusAfterBlockRemoval(0)
+	}
 }
 
 func parseKey(source string) (ui.Modifiers, ui.Key, error) {
@@ -206,6 +251,10 @@ func isTextAction(name string) bool {
 
 func (a *app) setHeading(level int) {
 	if a.current == nil || a.doc == nil || a.mode != "Write" {
+		return
+	}
+	if n, _ := a.tableSelectedCells(); n != nil {
+		a.formatTableSelection(func(d *richtext.Document) { d.SetHeading(min(6, level)) })
 		return
 	}
 	if level > 6 && a.blockEditor == nil {

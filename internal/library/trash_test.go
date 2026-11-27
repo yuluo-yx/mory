@@ -27,7 +27,7 @@ func TestTrashMovesAndRestoresDeletionGroups(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, n := range []*Note{parent, child, independent} {
-		if _, err := os.Stat(filepath.Join(l.Dir, "notes", n.ID+".md")); !os.IsNotExist(err) {
+		if _, err := os.Stat(filepath.Join(l.Dir, "notes", n.FileName)); !os.IsNotExist(err) {
 			t.Fatal("active copy remains", err)
 		}
 		if _, err := os.Stat(l.notePath(n)); err != nil {
@@ -73,7 +73,7 @@ func TestTrashRetentionAndMigration(t *testing.T) {
 	n.Deleted = true
 	n.Updated = time.Now().Add(-365 * 24 * time.Hour)
 	b, _ := json.Marshal(n)
-	if err := os.Remove(filepath.Join(l.Dir, "notes", n.ID+".md")); err != nil {
+	if err := os.Remove(filepath.Join(l.Dir, "notes", n.FileName)); err != nil {
 		t.Fatal(err)
 	}
 	mustWrite(t, filepath.Join(l.Dir, "notes", n.ID+".json"), b)
@@ -99,8 +99,8 @@ func TestInterruptedTrashMoves(t *testing.T) {
 		for _, both := range []bool{false, true} {
 			l := mustLibrary(t)
 			n := mustNote(t, l, "Interrupted")
-			from := filepath.Join(l.Dir, "notes", n.ID+".md")
-			to := filepath.Join(l.Dir, "trash", n.ID+".md")
+			from := filepath.Join(l.Dir, "notes", n.FileName)
+			to := filepath.Join(l.Dir, "trash", n.FileName)
 			if !deleted {
 				from, to = to, from
 				if err := os.Rename(to, from); err != nil {
@@ -140,7 +140,7 @@ func TestTrashConflictsNeverOverwrite(t *testing.T) {
 	l := mustLibrary(t)
 	n := mustNote(t, l, "Conflict")
 	original, _ := os.ReadFile(l.notePath(n))
-	target := filepath.Join(l.Dir, "trash", n.ID+".md")
+	target := filepath.Join(l.Dir, "trash", n.FileName)
 	mustWrite(t, target, []byte("occupied"))
 	if err := l.TrashTree(n, true); !errors.Is(err, ErrConflict) || n.Deleted {
 		t.Fatal("target conflict ignored", err)

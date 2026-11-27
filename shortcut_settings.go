@@ -45,6 +45,7 @@ func canonicalKey(value string) (string, error) {
 }
 
 func (a *app) validateShortcuts(keys map[string]string, quick string) (map[string]string, string, error) {
+	keys = migrateModeCycleKey(keys)
 	result, used := map[string]string{}, map[string]string{}
 	validate := func(name, value string) (string, error) {
 		key, err := canonicalKey(value)
@@ -73,6 +74,18 @@ func (a *app) validateShortcuts(keys map[string]string, quick string) (map[strin
 	}
 	key, err := validate("Global quick note", quick)
 	return result, key, err
+}
+
+// Migrate the former help default in memory; normal settings saves persist it.
+// Explicit cycle bindings (including disabled) and custom help keys survive.
+func migrateModeCycleKey(keys map[string]string) map[string]string {
+	if _, configured := keys["Cycle editor mode"]; !configured {
+		if key, _ := canonicalKey(keys["Shortcuts"]); key == "Cmd+/" {
+			keys = maps.Clone(keys)
+			keys["Shortcuts"], keys["Cycle editor mode"] = "", "Cmd+/"
+		}
+	}
+	return keys
 }
 
 var quickKey string
@@ -143,8 +156,9 @@ func (a *app) saveShortcuts() bool {
 }
 
 func (a *app) shortcutSettings(c *ui.Context) {
+	submit := false
 	if a.shortcutDraft == nil {
-		a.shortcutDraft = maps.Clone(a.lib.Settings.Keys)
+		a.shortcutDraft = maps.Clone(migrateModeCycleKey(a.lib.Settings.Keys))
 		a.quickDraft = a.lib.Settings.QuickNote
 	}
 	ui.Column(c).Grow(1).MinHeight(0).FillWidth().Gap(12).Children(func() {
@@ -167,6 +181,7 @@ func (a *app) shortcutSettings(c *ui.Context) {
 				input := ui.TextInput(c, &a.quickDraft).Label(a.tr("Global quick note shortcut"))
 				input.Placeholder(a.tr("Enter a shortcut, for example: Ctrl+Alt+Space"))
 				input.Disabled(!enabled).Grow(1)
+				submit = formSubmitted(input) || submit
 			})
 		})
 		ui.Scroll(c).Grow(1).MinHeight(0).FillWidth().Gap(6).Children(func() {
@@ -177,9 +192,11 @@ func (a *app) shortcutSettings(c *ui.Context) {
 					if !ok {
 						value = action.Key
 					}
-					if ui.TextInput(c, &value).Label(a.tr("Shortcut ") + a.tr(action.Name)).Width(190).Changed() {
+					input := ui.TextInput(c, &value).Label(a.tr("Shortcut ") + a.tr(action.Name)).Width(190)
+					if input.Changed() {
 						a.shortcutDraft[action.Name] = value
 					}
+					submit = formSubmitted(input) || submit
 				})
 			}
 		})
@@ -188,7 +205,7 @@ func (a *app) shortcutSettings(c *ui.Context) {
 				a.shortcutDraft = map[string]string{}
 				a.quickDraft = ""
 			}
-			if ui.PrimaryButton(c, a.tr("Save shortcuts")).Clicked() {
+			if ui.PrimaryButton(c, a.tr("Save shortcuts")).Clicked() || submit {
 				if a.saveShortcuts() {
 					a.helpOpen, a.settingsOpen = false, false
 				}

@@ -169,7 +169,7 @@ func TestHistoryIOErrors(t *testing.T) {
 	if _, err := l.OpenExternal(filepath.Join(l.Dir, "missing")); err == nil {
 		t.Fatal("missing external file")
 	}
-	path := filepath.Join(l.Dir, "notes", n.ID+".md")
+	path := l.notePath(n)
 	mustWrite(t, path, []byte("bad json"))
 	if err := l.Reload(n.ID); err == nil {
 		t.Fatal("corrupt note accepted")
@@ -200,7 +200,7 @@ func TestHistoryIOErrors(t *testing.T) {
 	c.Parent = p.ID
 	third.Save(c)
 	b, _ := json.Marshal(map[string]string{"changed": "outside"})
-	mustWrite(t, filepath.Join(third.Dir, "notes", c.ID+".md"), b)
+	mustWrite(t, third.notePath(c), b)
 	if err := third.Move(c, "folder", ""); err == nil || c.Parent != p.ID {
 		t.Fatal("failed move did not rollback")
 	}
@@ -306,7 +306,7 @@ func TestLegacyHistoryRetentionAndIsolation(t *testing.T) {
 	if err != nil || len(h) != 2 || h[0].Note.Source != "legacy 0" || h[1].Note.Source != "legacy 300" {
 		t.Fatalf("legacy coalescing: %+v, %v", h, err)
 	}
-	for _, path := range []string{otherPath, unknown, l.recoveryPath(n), filepath.Join(l.Dir, "notes", n.ID+".md")} {
+	for _, path := range []string{otherPath, unknown, l.recoveryPath(n), l.notePath(n)} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatal("retention touched unrelated data", path, err)
 		}

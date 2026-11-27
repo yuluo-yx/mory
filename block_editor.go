@@ -51,6 +51,9 @@ type blockSession struct {
 	tableID                string
 	cells                  blocks.Rect
 	cellAnchor             [2]int
+	tableSelection         string // Empty while editing text; otherwise cell/range/row/column/table.
+	tableSelectionFocus    bool
+	tableResize            tableResizeState
 	properties             bool
 	propertyID             string
 	props                  map[string]string
@@ -82,10 +85,12 @@ const maxCachedBlockFields = 256
 
 type tableCache struct {
 	node    *blocks.Node
+	version uint64
 	table   *blocks.Table
 	simple  bool
 	rows    *ui.ListState
 	preview *markdown.Options
+	cells   map[string]int
 }
 
 func newBlockSession(source, format string, sourceRevision uint64) (*blockSession, error) {
@@ -121,7 +126,7 @@ func (a *app) splitPreview(c *ui.Context) {
 	if a.current.Format == "xml" || len(a.blockEditor.doc.Root.Children) > 0 {
 		a.blockView(c, true)
 	} else {
-		ui.Scroll(c).Grow(1).Children(func() { markdown.View(c, a.current.Source, &a.preview).FillWidth() })
+		documentScroll(c).Children(func() { markdown.View(c, a.current.Source, &a.preview).FillWidth() })
 	}
 }
 func (a *app) enableBlocks() bool {
@@ -264,6 +269,7 @@ func (a *app) blockUndo(redo bool) {
 	}
 	a.captureBlocks()
 	active, caret := s.active, 0
+	selectedTable, selectedRange, selectedKind := s.tableID, s.cells, s.tableSelection
 	if field := s.fields[active]; field != nil {
 		if field.doc != nil {
 			_, caret = field.doc.Selection()
@@ -286,6 +292,9 @@ func (a *app) blockUndo(redo bool) {
 	s.numberingReplay = true
 	a.captureBlocks()
 	s.numberingReplay = false
+	if selectedKind != "" && s.doc.Find(selectedTable) != nil {
+		a.selectTable(selectedTable, selectedRange, selectedKind)
+	}
 }
 
 func (a *app) blockField(n *blocks.Node, color ui.Color) *blockField {
@@ -295,6 +304,21 @@ func (a *app) blockField(n *blocks.Node, color ui.Color) *blockField {
 		return f
 	}
 	text := blocks.ToRich(n, blocks.RichOptions{Color: func(name string) ui.Color { return a.namedColor("color", name, color) }, Background: func(name string) ui.Color { return a.namedColor("highlight", name, ui.Transparent) }, Object: func(object *blocks.Node) *richtext.Attachment { return a.inlineObject(object, color) }})
+	if n.Attr("align") == "" {
+		if _, cell := a.tableCell(n.ID); cell != nil && cell.Node.Attr("align") != "" {
+			var paragraphs []richtext.Paragraph
+			for _, p := range text.Paragraphs() {
+				switch cell.Node.Attr("align") {
+				case "center":
+					p.Style.Align = ui.Center
+				case "right":
+					p.Style.Align = ui.End
+				}
+				paragraphs = append(paragraphs, p)
+			}
+			text = richtext.TextOf(paragraphs...)
+		}
+	}
 	if parent, _ := s.doc.Parent(n.ID); parent != nil && parent.Kind == "ol" {
 		var paragraphs []richtext.Paragraph
 		for _, p := range text.Paragraphs() {
@@ -597,7 +621,7 @@ func (a *app) blockListView(c *ui.Context, readOnly bool) {
 		}
 	}
 	if syncSplit {
-		list.FillWidth().Padding(4, 0, 48).TrackScroll(&s.split.scroll).Draw(func(_ *ui.Painter, r ui.Rect) {
+		list.FillWidth().Margin(0, -documentScrollGutter, 0, 0).Padding(4, documentScrollGutter, 48, 0).TrackScroll(&s.split.scroll).Draw(func(_ *ui.Painter, r ui.Rect) {
 			s.split.viewport = r
 			clear(s.split.rows)
 		}).DrawOver(func(_ *ui.Painter, _ ui.Rect) {
@@ -609,7 +633,7 @@ func (a *app) blockListView(c *ui.Context, readOnly bool) {
 			}
 		})
 	} else {
-		list.Margin(0, 0, 0, -headingGutterWidth).Padding(4, 0, 48, headingGutterWidth)
+		list.Margin(0, -documentScrollGutter, 0, -headingGutterWidth).Padding(4, documentScrollGutter, 48, headingGutterWidth)
 	}
 	if !readOnly && !s.foldPresentation && s.chosen.Len() > 0 {
 		ui.Row(c).Gap(8).Padding(6).Children(func() {
@@ -793,18 +817,65 @@ func (a *app) blockText(c *ui.Context, n *blocks.Node, readOnly bool) {
 		richTheme.Headings[5].Size = a.docTheme.Length(n.Kind, "font-size", font.Size, font.Size, font.Size) / font.Size
 	}
 	ed := richtext.EditorBase(c.Key("text"), field.doc, richtext.EditorOptions{
-		Label: "Block text " + n.ID, ReadOnly: readOnly, Font: font, Theme: richTheme,
+		Label: "Block text " + n.ID, ReadOnly: readOnly, Font: font, Theme: richTheme, NoScrollbar: true,
 		OnLink: a.openLink, OnLinkCommand: func() { a.doc = field.doc; a.linkURL = field.doc.Formatting().Link; a.linkOpen = true },
+		Menu: func(m *ui.Menu) {
+			m.EditItems()
+			if table, cell := a.tableCell(n.ID); cell != nil && !readOnly {
+				m.Separator()
+				if m.Item(a.tr("Select row")).Chosen() {
+					a.selectTable(table.ID, blocks.Rect{Top: cell.Row, Bottom: cell.Row + cell.Rows - 1, Left: 0, Right: blocks.ReadTable(table).Columns - 1}, "row")
+				}
+				if m.Item(a.tr("Select column")).Chosen() {
+					a.selectTable(table.ID, blocks.Rect{Top: 0, Bottom: blocks.ReadTable(table).Rows - 1, Left: cell.Column, Right: cell.Column + cell.Columns - 1}, "column")
+				}
+				if m.Item(a.tr("Select cell")).Chosen() {
+					a.selectTable(table.ID, blocks.Rect{Top: cell.Row, Bottom: cell.Row, Left: cell.Column, Right: cell.Column}, "cell")
+				}
+			}
+		},
 		OnKey: func(key ui.Key, mods ui.Modifiers) bool {
 			if readOnly {
 				return false
+			}
+			// New fields created by a structural edit have no local undo stack.
+			// Route the native editor's defaults to the document-wide history.
+			if key == ui.KeyZ && (mods == ui.Cmd || mods == ui.Cmd|ui.Shift) {
+				a.blockUndo(mods&ui.Shift != 0)
+				return true
+			}
+			if key == ui.KeyV && (mods == ui.Cmd || mods == ui.Ctrl) && a.pasteTableCells(n.ID, a.services.ReadClipboard()) {
+				return true
+			}
+			if s.tableSelection != "" {
+				return a.tableSelectionKey(key, mods)
+			}
+			if s.insideTable(n.ID) && isBlockDeleteKey(key, mods) {
+				anchor, caret := field.doc.Selection()
+				if anchor == caret && (key == ui.KeyBackspace && caret == 0 || key == ui.KeyDelete && caret == field.doc.Text().Len()) {
+					return true
+				}
 			}
 			if isBlockDeleteKey(key, mods) && a.exitEmptyBlock(n.ID) {
 				return true
 			}
 			return key == ui.KeyEnter && mods == 0 && a.exitEmptyList(n.ID)
 		},
+		OnCommand: func(command string) bool {
+			if !readOnly && command == "paste" {
+				return a.pasteTableCells(n.ID, a.services.ReadClipboard())
+			}
+			if !readOnly && (command == "undo" || command == "redo") {
+				a.blockUndo(command == "redo")
+				return true
+			}
+			return false
+		},
 	}).FillWidth()
+	if a.modeCycleFocus && !readOnly && s.active == n.ID {
+		ed.Focus()
+		a.modeCycleFocus = false
+	}
 	a.hoverDocumentLink(c, ed, field.doc, font, richTheme)
 	width := ed.LayoutBounds().W
 	if width < 80 {
@@ -870,6 +941,9 @@ func (a *app) blockText(c *ui.Context, n *blocks.Node, readOnly bool) {
 		// List navigation must not consume Enter, arrows, or Select All in an editor.
 		s.list.Selection = nil
 		s.chosen.Clear()
+		if s.tableSelection == "" {
+			a.trackTableCaret(n.ID)
+		}
 	}
 	if s.focus == n.ID {
 		ed.Focus()
@@ -884,23 +958,33 @@ func (a *app) blockText(c *ui.Context, n *blocks.Node, readOnly bool) {
 		s.focus = ""
 	}
 	if !readOnly {
-		a.bodyIndentShortcuts(ed, field.doc)
+		if s.insideTable(n.ID) {
+			a.tableCellShortcuts(ed, n, field)
+		} else {
+			a.bodyIndentShortcuts(ed, field.doc)
+		}
 		a.headingStartEnter(ed, field.doc)
 		// Ctrl+A is also supported on macOS, where the native binding is Cmd+A.
 		if ed.Shortcut(ui.Ctrl, ui.KeyA) {
 			field.doc.SetSelection(0, field.doc.Text().Len())
 		}
-		ed.OnPaste(func(text string) bool { a.queueInlineCode(field.doc, text); return false })
+		ed.OnPaste(func(text string) bool {
+			if a.pasteTableCells(n.ID, text) {
+				return true
+			}
+			a.queueInlineCode(field.doc, text)
+			return false
+		})
 		ed.ObserveInput(func(event ui.InputEvent) {
+			if event.Kind == ui.InputPointerDown {
+				s.tableSelection = ""
+				a.trackTableCaret(n.ID)
+			}
 			if s.blankDeletionInput != nil {
 				a.captureBlocks()
 			}
 			a.observeBlockSelectAll(n.ID, event)
 			a.observeCodeFence(field.doc, event)
-			if event.Kind == ui.InputCommand && (event.Text == "undo" || event.Text == "redo") {
-				a.blockUndo(event.Text == "redo")
-				return
-			}
 			if event.Kind != ui.InputKeyDown {
 				return
 			}
@@ -913,6 +997,9 @@ func (a *app) blockText(c *ui.Context, n *blocks.Node, readOnly bool) {
 				return
 			}
 			if a.calloutBoundaryInput(n.ID, field, event) {
+				return
+			}
+			if s.insideTable(n.ID) && a.tableBoundaryInput(n, field, event) {
 				return
 			}
 			if event.Key == ui.KeyBackspace && caret == 0 && event.Mods == 0 {
@@ -1169,6 +1256,10 @@ func (a *app) blockCode(c *ui.Context, n *blocks.Node, readOnly bool) {
 	}
 	lines := strings.Count(f.code.Buffer.String(), "\n") + 1
 	ed := editor.View(c.Key("code"), f.code).Height(float32(min(24, max(3, lines)))*22 + 12).FillWidth().Label(a.tr("Code editor"))
+	if a.modeCycleFocus && !readOnly && s.active == n.ID {
+		ed.Focus()
+		a.modeCycleFocus = false
+	}
 	if ed.Focused() {
 		s.active = n.ID
 		a.textFocused = true

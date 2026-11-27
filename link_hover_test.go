@@ -40,7 +40,11 @@ func TestControlHoverOpensDocumentLinkWithoutEditing(t *testing.T) {
 				if dir := os.Getenv("MORY_TEST_IMAGES"); dir != "" && !structured && mode == "Write" {
 					saveImage(t, tt, filepath.Join(dir, "hyperlink-color.png"))
 				}
-				tt.Move(r.X+10, r.Y+10)
+				x := r.X + 10
+				if !structured && mode == "Write" {
+					x += documentScrollGutter
+				}
+				tt.Move(x, r.Y+10)
 				tt.Frame()
 				if a.current != original {
 					t.Fatal("ordinary hover opened a link")

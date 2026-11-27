@@ -35,7 +35,27 @@ The editable feature tour is available from **Help → Open welcome guide**. A n
 
 Press Enter in a document's title to move the caret to the start of its body in Write, Source, or Split mode. Existing body text is preserved.
 
+Press **Cmd+/** to cycle **Write → Source → Read → Split → Write** while preserving pending edits. **View → Cycle editor mode** runs the same action; its key can be changed in shortcut settings. Shortcut help remains available from **Help → Shortcuts**. Older saved Cmd+/ help defaults migrate to mode cycling when no explicit cycle binding exists; custom help bindings remain unchanged.
+
+Enter in a single-line form submits its primary action: folder creation/editing, note rename/move, links, block properties, theme names, and shortcut settings. Find advances to the next match; Replace replaces the selected match and advances. Existing validation also applies to keyboard submissions. IME candidate confirmation does not submit, and multiline equation and stylesheet editors retain Enter for newlines.
+
 Sidebar rows keep a fixed height and reserve space for their actions, so hovering does not move surrounding rows or change title truncation. Actions appear on hover, keyboard focus, or selection; hover over a title to see its full name. Sidebar labels and settings controls use 15-point text, independently of document and outline font preferences.
+
+Document scrollbars use a slim rounded thumb in the page's right whitespace, leaving line endings, caret placement, and links clear of the scroll track. Write, Read, and split previews keep this separation; structured blocks use the outer document scrollbar instead of drawing a second one over their text. The text width and title alignment remain stable when the scrollbar appears.
+
+Document context and more menus offer **Copy absolute path** and **Show in Finder**. These use the actual saved Markdown/XML file, or the original file for an externally opened document. Copying a path preserves pending edits and also works when the file is missing; Finder reports a missing file without recreating it. Sidebar folders are logical groups, so **Open storage folder in Finder** opens the library's shared `notes/` directory, including for empty or imported groups. Group names do not imply physical subdirectories. These actions do not change the storage layout.
+
+## Editing tables
+
+Type `/` on an empty paragraph, choose **Table**, and select a size in the 9 × 9 picker. Arrow keys adjust the size and Enter confirms it. Insertion removes the slash, focuses the first cell, and preserves neighboring paragraphs. Cancel leaves the document intact. Wide tables scroll horizontally inside the document without widening the page.
+
+- **Tab / Shift+Tab** move between cells. Tab from the final cell adds a row; Enter creates another paragraph within the cell; **Cmd+Enter** moves to the paragraph after the table.
+- Select text to format only those words using the toolbar or keyboard shortcuts. The text toolbar appears for a cell selection even when the persistent formatting toolbar is hidden.
+- Click a row number or column letter to select it. Shift-click extends the selection; the small corner handles select cell ranges. The selection toolbar applies bold, italic, underline, strike, inline code, paragraph styles, text color, highlight, cell background and horizontal/vertical alignment to the selected cells together.
+- **Table actions** and cell context menus insert, delete or move rows and columns, merge/split cells, toggle the header row, open properties, or delete the table. Backspace/Delete on a selected range clears its contents while retaining the grid. At an empty cell boundary these keys preserve the table structure.
+- Drag the boundary beside a column letter to resize it. Copy/Cut/Paste support tab-separated cell grids, including quoted multiline values. Paste grows the table when necessary, up to 1,000 rows and 100 columns; split merged destination cells before pasting a grid. Structural edits and grid paste each form one undo step.
+
+Large simple tables retain a bounded row viewport with pinned headers. Choose **Edit cell** to materialize a compact Markdown table, then edit normally or select a row/column for formatting. Entering editing alone preserves the original source and does not mark the document dirty. Unchanged tables retain their original Markdown; edited tables use Mory's existing XML table representation when needed to preserve widths, formatting and structure. No storage migration is required for these table changes.
 
 ## Get started
 
@@ -65,6 +85,10 @@ The default library is `~/Documents/Mory`. Set `MORY_LIBRARY` to use another dir
 | `themes/` | Custom document themes and CSS |
 | `plugins/` | Local JavaScript transforms |
 | `settings.json` | Preferences and keyboard shortcuts |
+
+Document filenames are readable in Finder. Imports retain the original basename and extension (including `.mdx`, `.markdown`, and extension casing), even when an XML document has a different display title. New notes use their title, and renaming a library note updates its filename. Duplicate names receive ` (2)`, ` (3)`, and so on; the check includes Trash, case variants, and Unicode normalization variants. External originals keep their own filenames. Internal IDs remain in metadata for references and history.
+
+On first opening an older library, ID-based filenames migrate to readable names without changing source text, timestamps, folder relationships, or document IDs. Older imports did not retain the original filename, so migration uses the current title; the exact former name and extension cannot always be recovered. Existing named files and interrupted migrations are handled without overwriting another document. Back up the library before upgrading: older releases require their original ID filenames, so rollback requires restoring that backup along with the old application.
 
 Local asset files use the SHA-256 digest of their content as the filename prefix, so the document stores a stable relative reference such as `assets/6cbb4a435a30b8abe4bb23b1.png`. A single inserted or imported asset may be up to 32 MiB.
 

@@ -20,6 +20,7 @@ var ErrConflict = errors.New("file changed on disk; reload or save a copy before
 
 // Note contains both the exact source and library metadata in one commit unit.
 type Note struct {
+	FileName       string    `json:"fileName,omitempty" xml:"fileName,omitempty"`
 	Icon           string    `json:"icon,omitempty" xml:"icon,omitempty"`
 	Cover          string    `json:"cover,omitempty" xml:"cover,omitempty"`
 	CoverX         float32   `json:"coverX,omitempty" xml:"coverX,omitempty"`
@@ -76,11 +77,12 @@ type Library struct {
 	Notes           []*Note
 	Settings        Settings
 	versions        map[string][32]byte
+	paths           map[string]string
 	settingsVersion [32]byte
 }
 
 func Open(dir string) (*Library, error) {
-	l := &Library{Dir: dir, versions: make(map[string][32]byte), Settings: Settings{Theme: "Craft", Appearance: "System", FontSize: 17}}
+	l := &Library{Dir: dir, versions: make(map[string][32]byte), paths: make(map[string]string), Settings: Settings{Theme: "Craft", Appearance: "System", FontSize: 17}}
 	for _, child := range []string{"notes", "trash", "plugins", "assets", "history", "recovery", "themes"} {
 		if err := os.MkdirAll(filepath.Join(dir, child), 0o755); err != nil {
 			return nil, err
@@ -132,8 +134,14 @@ func (l *Library) Get(id string) *Note {
 }
 
 func (l *Library) Create(title, source, format string) (*Note, error) {
+	return l.CreateFile(title, source, format, "")
+}
+
+// CreateFile preserves an imported basename independently of its display title.
+// Conflicts receive a numeric suffix under the same lock as the initial write.
+func (l *Library) CreateFile(title, source, format, filename string) (*Note, error) {
 	now := time.Now()
-	n := &Note{ID: strings.ToLower(rand.Text()), Title: title, Source: source, Format: format, Created: now, Updated: now}
+	n := &Note{ID: strings.ToLower(rand.Text()), Title: title, Source: source, Format: format, FileName: filename, Created: now, Updated: now}
 	if err := l.Save(n); err != nil {
 		return nil, err
 	}
@@ -160,19 +168,60 @@ func (l *Library) save(n *Note, forceHistory bool, now time.Time) error {
 	if n.Format != "markdown" && n.Format != "xml" {
 		return errors.New("unsupported note format")
 	}
+	if n.FileName != "" && !validDocumentName(n.FileName) {
+		return errors.New("invalid document filename")
+	}
 	unlock, err := l.lock()
 	if err != nil {
 		return err
 	}
 	defer unlock()
-	path := l.notePath(n)
 	from := l.savedNotePath(n)
-	if err := checkVersion(from, l.versions[n.ID]); err != nil {
-		return err
+	if l.versions[n.ID] != ([32]byte{}) {
+		if err := checkVersion(from, l.versions[n.ID]); err != nil {
+			return err
+		}
+	}
+	previousName := n.FileName
+	committed := false
+	defer func() {
+		if !committed {
+			n.FileName = previousName
+		}
+	}()
+	preferred := storageFilename(n)
+	allocate := l.versions[n.ID] == ([32]byte{}) || n.FileName == ""
+	if n.FileName == "" {
+		preferred = readableFilename(n.Title, noteExtension(n))
+	}
+	if !allocate {
+		data, err := os.ReadFile(from)
+		if err != nil {
+			return err
+		}
+		var old Note
+		if err := unmarshalNote(data, &old); err != nil {
+			return err
+		}
+		if old.Title != n.Title && n.External == "" && !n.FolderTrash {
+			preferred = readableFilename(n.Title, filepath.Ext(preferred))
+			allocate = true
+		}
+	}
+	if allocate {
+		preferred, err = l.availableFilename(preferred, n.ID)
+		if err != nil {
+			return err
+		}
+	}
+	n.FileName = preferred
+	path := l.notePath(n)
+	if l.versions[n.ID] == ([32]byte{}) {
+		from = path
 	}
 	if from != path {
-		if _, err := os.Lstat(path); !errors.Is(err, fs.ErrNotExist) {
-			return fmt.Errorf("format destination already exists: %w", ErrConflict)
+		if _, err := os.Lstat(path); !errors.Is(err, fs.ErrNotExist) && !sameFilenameAlias(from, path) {
+			return fmt.Errorf("document destination already exists: %w", ErrConflict)
 		}
 	}
 	if err := l.beforeSave(n, from, forceHistory, now); err != nil {
@@ -182,7 +231,7 @@ func (l *Library) save(n *Note, forceHistory bool, now time.Time) error {
 	if err != nil {
 		return err
 	}
-	// Persist the new format in the old location first, just like trash moves.
+	// Persist the new name/format in the old location first, like trash moves.
 	// loadNotes can finish the rename after a crash between these operations.
 	var original []byte
 	if from != path {
@@ -191,7 +240,12 @@ func (l *Library) save(n *Note, forceHistory bool, now time.Time) error {
 			return err
 		}
 	}
-	if err = AtomicWrite(from, b); err != nil {
+	if l.versions[n.ID] == ([32]byte{}) {
+		err = writeNewRecord(from, b)
+	} else {
+		err = AtomicWrite(from, b)
+	}
+	if err != nil {
 		return err
 	}
 	if from != path {
@@ -200,6 +254,8 @@ func (l *Library) save(n *Note, forceHistory bool, now time.Time) error {
 		}
 	}
 	l.versions[n.ID] = sha256.Sum256(b)
+	l.paths[n.ID] = path
+	committed = true
 	_ = os.Remove(filepath.Join(l.Dir, "recovery", n.ID+noteExtension(n)))
 	_ = os.Remove(filepath.Join(l.Dir, "recovery", n.ID+".json"))
 	_ = os.Remove(l.recoveryPath(n))
@@ -310,6 +366,7 @@ func (l *Library) purgeOne(n *Note) error {
 		}
 	}
 	delete(l.versions, n.ID)
+	delete(l.paths, n.ID)
 	return nil
 }
 

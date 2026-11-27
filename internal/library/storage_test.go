@@ -105,6 +105,7 @@ func TestLegacyMigrationIncludesTrashHistoryAndRecovery(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, want := range []*Note{n, &deleted} {
+				want.FileName = l.Get(want.ID).FileName
 				if !reflect.DeepEqual(l.Get(want.ID), want) {
 					t.Fatalf("migration changed note: %+v", l.Get(want.ID))
 				}

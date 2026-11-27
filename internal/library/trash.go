@@ -19,7 +19,7 @@ func (l *Library) notePath(n *Note) string {
 	if n.Deleted {
 		dir = "trash"
 	}
-	return filepath.Join(l.Dir, dir, n.ID+noteExtension(n))
+	return filepath.Join(l.Dir, dir, storageFilename(n))
 }
 
 // loadNotes also completes interrupted moves. Each file carries its own state,
@@ -55,7 +55,7 @@ func (l *Library) loadNotes() error {
 			if err := unmarshalNote(b, &n); err != nil {
 				return fmt.Errorf("read %s: %w", path, err)
 			}
-			if entry.Name() != n.ID+filepath.Ext(entry.Name()) {
+			if filepath.Ext(entry.Name()) == ".json" && entry.Name() != n.ID+".json" {
 				return fmt.Errorf("invalid note ID in %s", path)
 			}
 			records = append(records, record{&n, path, b})
@@ -94,7 +94,28 @@ func (l *Library) loadNotes() error {
 		if l.Get(n.ID) != nil {
 			continue
 		}
+		original := r.data
+		l.paths[n.ID] = r.path
+		changed := false
+		if n.FileName == "" {
+			preferred := readableFilename(n.Title, noteExtension(n))
+			if n.External != "" {
+				preferred = filepath.Base(n.External)
+				if !validDocumentName(preferred) {
+					preferred = readableFilename(n.Title, noteExtension(n))
+				}
+			}
+			n.FileName, err = l.availableFilename(preferred, n.ID)
+			if err != nil {
+				return err
+			}
+			changed = true
+		}
 		target := l.notePath(n)
+		if n.Deleted && n.DeletedAt.IsZero() {
+			n.DeletedAt = now
+			changed = true
+		}
 		if r.path != target {
 			if err := moveNoteFile(r.path, target); err != nil {
 				return err
@@ -103,19 +124,16 @@ func (l *Library) loadNotes() error {
 		// Interrupted format and trash moves can leave equivalent files at more
 		// than one path. Remove only copies validated in the locked scan above.
 		for _, copyPath := range paths[n.ID] {
-			if copyPath == target {
+			if copyPath == target || sameFilenameAlias(copyPath, target) {
 				continue
 			}
 			if err := os.Remove(copyPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
 				return err
 			}
 		}
-		r.data, err = os.ReadFile(target)
-		if err != nil {
-			return err
-		}
-		if n.Deleted && n.DeletedAt.IsZero() {
-			n.DeletedAt = now
+		// Only update metadata after equivalent interrupted copies are gone.
+		// A crash before this write is retryable from the original metadata.
+		if changed {
 			r.data, err = marshalNote(n)
 			if err != nil {
 				return err
@@ -123,9 +141,12 @@ func (l *Library) loadNotes() error {
 			if err := AtomicWrite(target, r.data); err != nil {
 				return err
 			}
+		} else {
+			r.data = original
 		}
 		l.Notes = append(l.Notes, n)
 		l.versions[n.ID] = sha256.Sum256(r.data)
+		l.paths[n.ID] = target
 	}
 	return nil
 }
@@ -133,6 +154,9 @@ func (l *Library) loadNotes() error {
 // Both paths belong to this library. Link/unlink never overwrites a competing
 // destination. Unsupported or cross-device links fail with the source intact.
 func moveNoteFile(from, to string) error {
+	if sameFilenameAlias(from, to) {
+		return os.Rename(from, to)
+	}
 	if err := os.Link(from, to); err != nil {
 		if !errors.Is(err, fs.ErrExist) {
 			return err
@@ -204,6 +228,7 @@ func (l *Library) setDeleted(n *Note, next Note, deleted bool, now time.Time) er
 	}
 	*n = next
 	l.versions[n.ID] = sha256.Sum256(data)
+	l.paths[n.ID] = to
 	return nil
 }
 
@@ -372,5 +397,6 @@ func (l *Library) forget(n *Note) error {
 	}
 	l.Notes = slices.DeleteFunc(l.Notes, func(item *Note) bool { return item.ID == n.ID })
 	delete(l.versions, n.ID)
+	delete(l.paths, n.ID)
 	return nil
 }

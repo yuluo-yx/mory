@@ -180,6 +180,9 @@ func TestExternalReloadConflictAndFolderImport(t *testing.T) {
 	if parent == nil || child == nil || child.Parent != parent.ID || !parent.Pinned || !parent.Starred || parent.Width != "Wide" {
 		t.Fatal("indexed metadata not mapped")
 	}
+	if parent.FileName != "p.xml" || child.FileName != "c.md" {
+		t.Fatal("indexed display titles replaced original filenames", parent.FileName, child.FileName)
+	}
 	a.importFolder(filepath.Join(dir, "missing"))
 	if a.problem == "" {
 		t.Fatal("missing folder")
@@ -361,7 +364,11 @@ func TestSafeWindowRefreshKeepsNewLibraryEntries(t *testing.T) {
 		t.Fatal("missing recovery")
 	}
 	data, _ := json.Marshal(map[string]string{"invalid": "data"})
-	if err = os.WriteFile(filepath.Join(a.lib.Dir, "notes", id+".md"), data, 0o644); err != nil {
+	path, err := a.lib.DocumentPath(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -380,9 +387,9 @@ func TestBatchSelectionToggleAndCancel(t *testing.T) {
 			}
 			a.home(section)
 			a.lib.Settings.List = list
-			path := filepath.Join(a.lib.Dir, "notes", one.ID+".md")
-			if section == "Trash" {
-				path = filepath.Join(a.lib.Dir, "trash", one.ID+".md")
+			path, err := a.lib.DocumentPath(one.ID)
+			if err != nil {
+				t.Fatal(err)
 			}
 			before, err := os.ReadFile(path)
 			if err != nil {

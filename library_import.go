@@ -54,12 +54,12 @@ func (a *app) importIndexedLibrary(root string) {
 			continue
 		}
 		old := strings.TrimSuffix(file.Name(), filepath.Ext(file.Name()))
-		a.importFileFrom(filepath.Join(root, "docs", file.Name()), root)
+		meta := index[old]
+		a.importFileWithTitle(filepath.Join(root, "docs", file.Name()), root, meta.Name)
 		if a.problem != "" {
 			return
 		}
 		n := a.current
-		meta := index[old]
 		mapping[old] = n.ID
 		if meta.Name != "" {
 			n.Title = meta.Name

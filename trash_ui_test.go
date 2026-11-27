@@ -123,7 +123,7 @@ func TestTrashActionsNeverExposeDocumentDetails(t *testing.T) {
 			if err := tt.RightClick(a.tr("Note ") + n.Title); err != nil {
 				t.Fatal(err)
 			}
-			for _, label := range []string{"Rename…", "Move…", "Duplicate", "Favorite", "Pin to top", "Move to Trash", "New sub-note"} {
+			for _, label := range []string{"Rename…", "Move…", "Duplicate", "Favorite", "Pin to top", "Move to Trash", "New sub-note", "Copy absolute path", "Show in Finder"} {
 				if err := tt.ChooseMenuItem(a.tr(label)); err == nil {
 					t.Fatalf("trash context menu exposes %q", label)
 				}

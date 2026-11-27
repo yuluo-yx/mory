@@ -17,6 +17,11 @@ import (
 var nativePaste func()
 
 func (a *app) pasteFromMenu() {
+	if a.blockEditor != nil && a.mode == "Write" && (a.textFocused || a.blockEditor.tableSelection != "") && !a.settingsOpen && !a.renameOpen && !a.linkOpen {
+		if a.pasteTableCells(a.blockEditor.active, a.services.ReadClipboard()) {
+			return
+		}
+	}
 	if a.current != nil && a.mode == "Write" && a.textFocused && !a.settingsOpen && !a.renameOpen && !a.linkOpen {
 		// Code blocks retain their text editor's paste behavior.
 		code := false
@@ -81,6 +86,9 @@ func (a *app) storeAsset(data []byte, name string) *blocks.Node {
 
 func (a *app) pasteStructured() {
 	if a.current == nil || a.mode != "Write" {
+		return
+	}
+	if a.blockEditor != nil && a.pasteTableCells(a.blockEditor.active, a.services.ReadClipboard()) {
 		return
 	}
 	data := a.services.ReadClipboardData()

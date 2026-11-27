@@ -465,7 +465,10 @@ func TestNativeTableContextOperations(t *testing.T) {
 	if a.blockEditor.cells.Bottom != 2 {
 		t.Fatal("column selection")
 	}
-	click(t, tt, "Table options")
+	click(t, tt, "Table actions")
+	if err := tt.ChooseMenuItem("Table options"); err != nil {
+		t.Fatal(err)
+	}
 	click(t, tt, "Cancel")
 	table := firstBlock(a, "table")
 	cell := blocks.ReadTable(table).At(0, 0).Node

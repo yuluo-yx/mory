@@ -78,6 +78,92 @@ def exercise_editor(call, nodes, act, key, root, fixtures, native_space):
         finally:
             path.write_bytes(previous)
 
+    # The scroll thumb has its own whitespace beside the text. Dragging it
+    # must preserve the caret and source, and release back to ordinary typing.
+    title = "Editing scrollbar gutter"
+    long_source = "\n\n".join("Paragraph %d 平台原生，体验好，跨平台能力为 0；" % i for i in range(80))
+    imported(title, long_source)
+    pointer(field(label="Document editor"))
+    key("Ctrl+Home")
+    before = field(label="Document editor")
+    selection = before.get("selection")
+    box = before["bounds"]
+    x = box["x"] + box["width"] - 5
+    call("input", events=[dict(type="pointerMove", x=x, y=box["y"]+6),
+                           dict(type="pointerDown", x=x, y=box["y"]+6),
+                           dict(type="pointerMove", x=x, y=box["y"]+box["height"]-10),
+                           dict(type="pointerUp", x=x, y=box["y"]+box["height"]-10)])
+    after = field(label="Document editor")
+    assert after.get("selection") == selection and after.get("value") == before.get("value"), "Scrollbar drag selected or edited text"
+    key("Ctrl+Home")
+    type_text("Still editing ")
+    assert saved(title)["source"] == "Still editing " + long_source
+    reopen(title)
+    assert saved(title)["source"] == "Still editing " + long_source
+    completed.append("scrollbar gutter / pointer drag / caret preservation / continued typing / reopen")
+
+    title = "Editing keyboard link form"
+    new_note(title)
+    type_text("Linked words 世界")
+    key("Cmd+A")
+    key("Cmd+K")
+    control("Link URL")
+    call("input", events=[dict(type="text", text="https://example.com/form"), dict(type="key", key="Enter")])
+    wait("Enter did not apply link", lambda tree: not any(n.get("label") == "Link URL" for n in tree))
+    assert "[Linked words 世界](https://example.com/form)" in saved(title)["source"]
+    reopen(title)
+    field("Linked words 世界")
+    completed.append("link form / text and Enter in one event batch / save / reopen")
+
+    title = "Editing keyboard block properties"
+    imported(title, '<pre lang="go"><code>Keep code</code></pre>')
+    pointer(control("Block actions pre"), "click", button="right")
+    pointer(control("Properties…"))
+    control("Property caption")
+    pointer(control("Property caption"))
+    call("input", events=[dict(type="text", text="Saved caption 世界"), dict(type="key", key="Enter")])
+    wait("Enter did not apply block properties", lambda tree: not any(n.get("label") == "Property caption" for n in tree))
+    source = saved(title)["source"]
+    assert 'caption="Saved caption 世界"' in source and "Keep code" in source, source
+    reopen(title)
+    control("Saved caption 世界")
+    completed.append("block property form / latest typed value / Enter / exact code / reopen")
+
+    # Cycle using the actual shortcut, keeping unsaved edits through each view.
+    # Continued typing after a full loop must retain the entire document.
+    for structured in (False, True):
+        title = "Editing Cmd slash cycle " + str(structured)
+        imported(title, "<p>Body 世界</p>" if structured else "Body 世界")
+        pointer(field("Body 世界"))
+        key("Ctrl+End")
+        type_text(" pending")
+        key("Cmd+/")
+        control("Source editor")
+        key("Cmd+End")
+        type_text("\n\nSource edit 世界")
+        assert "Source edit 世界" in saved(title)["source"]
+        key("Cmd+/")
+        assert not any(n.get("label") == "Source editor" for n in nodes()), "Source did not cycle to Read"
+        assert not any(n.get("label") == "Shortcut New note" for n in nodes()), "Cmd+/ opened shortcut help"
+        key("Cmd+/")
+        control("Source editor")
+        field("Source edit 世界")
+        key("Cmd+/")
+        assert not any(n.get("label") == "Source editor" for n in nodes()), "Split did not cycle to Write"
+        type_text("Continue")
+        content = saved(title)["source"]
+        assert all(text in content for text in ("pending", "Source edit 世界", "Continue")), content
+        for _ in range(4):
+            key("Cmd+/")
+        assert saved(title)["source"] == content, "Second cycle changed saved content"
+        # The native menu shares the action and accelerator registration.
+        call("menu", path=["View", "Cycle editor mode"])
+        control("Source editor")
+        assert saved(title)["source"] == content
+        reopen(title)
+        assert saved(title)["source"] == content
+        completed.append("Cmd+/ cycle / unsaved rich and source edits / continued typing / native menu / reopen: " + str(structured))
+
     # Control-hover uses real pointer modifiers and actual document navigation.
     # No accessibility activation or selection repair may open the destination.
     target_title = "Editing hyperlink destination"
@@ -96,13 +182,14 @@ def exercise_editor(call, nodes, act, key, root, fixtures, native_space):
             if mode != "Write":
                 pointer(control(mode))
             box = field("Open destination and preserve this text")["bounds"]
-            call("input", events=[dict(type="pointerMove", x=box["x"]+10, y=box["y"]+12)])
+            text_x = box["x"] + (26 if not structured and mode == "Write" else 10)
+            call("input", events=[dict(type="pointerMove", x=text_x, y=box["y"]+12)])
             assert control("Document title")["value"] == title, "Ordinary hover navigated"
             # Control over blank space must not use nearest-caret hit testing.
             call("input", events=[dict(type="pointerMove", x=box["x"]+box["width"]-5,
                                         y=box["y"]+12, mods=["ctrl"])])
             assert control("Document title")["value"] == title, "Blank space opened nearest link"
-            call("input", events=[dict(type="pointerMove", x=box["x"]+10, y=box["y"]+12, mods=["ctrl"])])
+            call("input", events=[dict(type="pointerMove", x=text_x, y=box["y"]+12, mods=["ctrl"])])
             wait("Control-hover did not navigate", lambda tree: any(n.get("label") == "Document title"
                  and n.get("value") == target_title for n in tree))
             field("Destination body")
@@ -120,12 +207,13 @@ def exercise_editor(call, nodes, act, key, root, fixtures, native_space):
         if mode != "Write":
             pointer(control(mode))
         box = field("Open website and keep editing")["bounds"]
+        text_x = box["x"] + (26 if mode == "Write" else 10)
         before = opened_links.read_text().splitlines() if opened_links.exists() else []
-        call("input", events=[dict(type="pointerMove", x=box["x"]+10, y=box["y"]+12, mods=["ctrl"])])
+        call("input", events=[dict(type="pointerMove", x=text_x, y=box["y"]+12, mods=["ctrl"])])
         wait("External Ctrl hover did not open URL", lambda tree: opened_links.exists()
              and opened_links.read_text().splitlines() == before + [destination])
         for _ in range(3):
-            call("input", events=[dict(type="pointerMove", x=box["x"]+12, y=box["y"]+12, mods=["ctrl"])])
+            call("input", events=[dict(type="pointerMove", x=text_x+2, y=box["y"]+12, mods=["ctrl"])])
         assert opened_links.read_text().splitlines() == before + [destination], "Hover opened duplicate browser tabs"
         call("input", events=[dict(type="pointerMove", x=box["x"]+10, y=box["y"]+12)])
         assert saved(title)["source"] == original
@@ -846,8 +934,8 @@ def exercise_editor(call, nodes, act, key, root, fixtures, native_space):
         act("Trash")
         pointer(control("Note " + title))
         act("Delete permanently")
-        assert not (root / "library" / "trash" / (note["id"] + ".md")).exists()
-        assert not (root / "library" / "notes" / (note["id"] + ".md")).exists()
+        assert not (root / "library" / "trash" / note["fileName"]).exists()
+        assert not (root / "library" / "notes" / note["fileName"]).exists()
         completed.append("trash actions / restore content / permanent removal: " + layout)
 
     # Enter in the document title must hand typing to the body without a click.
