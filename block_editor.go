@@ -54,6 +54,7 @@ type blockSession struct {
 	tableSelection         string // Empty while editing text; otherwise cell/range/row/column/table.
 	tableSelectionFocus    bool
 	tableResize            tableResizeState
+	tableInsert            *tableInsertRequest
 	properties             bool
 	propertyID             string
 	props                  map[string]string

@@ -32,6 +32,10 @@ def exercise_tables(call, nodes, act, key, root, fixtures):
 
     def save(title):
         call("menu", path=["File", "Save"])
+        # Native menu actions can schedule a new field and a focus transfer.
+        # Observe the completed frame before sending the next dependent key.
+        nodes()
+        call("idle", timeout=5000)
         return next(read_note(p)["source"] for p in note_paths(root / "library" / "notes")
                     if read_note(p)["title"] == title)
 
@@ -56,6 +60,40 @@ def exercise_tables(call, nodes, act, key, root, fixtures):
         pointer(control("Back to library"))
         act("All notes")
         act("Note " + title)
+
+    # Edge controls must accept real pointer clicks without moving the table or
+    # requiring a second click to focus the new cell. Names remain accessible
+    # although spreadsheet row/column labels are no longer painted.
+    title = "Table native hover insertion"
+    imported(title, "Before\n\n| Name | Status |\n| --- | --- |\n| Alpha | Ready |\n| Beta | Draft |\n\nAfter")
+    first = control("Table cell 1 1")["bounds"]
+    call("input", events=[dict(type="pointerMove", x=4, y=4)])
+    call("input", events=[dict(type="pointerMove", x=first["x"]+40, y=first["y"]+20)])
+    assert control("Table cell 1 1")["bounds"] == first, "Table hover changed geometry"
+    for kind, at, marker in [("column", 2, "Middle column"), ("row", 2, "Middle row"),
+                             ("column", 1, "First column"), ("row", 1, "First row"),
+                             ("column", 3, "Last column"), ("row", 4, "Last row")]:
+        before = save(title)
+        button = control(f"Insert {kind} at {at}")
+        b = button["bounds"]
+        call("input", events=[dict(type="pointerMove", x=b["x"]+b["width"]/2, y=b["y"]+b["height"]/2)])
+        pointer(button)
+        text(marker)
+        field(marker)
+        source = save(title)
+        assert all(word in source for word in [marker, "Name", "Alpha", "Ready", "Beta", "Draft", "Before", "After"]), source
+        key("Cmd+Z")
+        key("Cmd+Z")
+        assert save(title) == before, "Edge insertion or typing did not undo cleanly"
+        key("Cmd+Shift+Z")
+        key("Cmd+Shift+Z")
+        assert marker in save(title), "Edge insertion did not redo"
+        key("Cmd+Z")
+        key("Cmd+Z")
+    before = save(title)
+    reopen(title)
+    assert save(title) == before
+    print("Native table edges passed: hover geometry, first/middle/last row and column insertion, immediate typing, single-operation undo/redo, source preservation and reopen.", flush=True)
 
     title = "Table native keyboard"
     new(title)

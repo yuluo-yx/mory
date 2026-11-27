@@ -567,5 +567,9 @@
   "Edit cell": "编辑单元格",
   "Edit cell %d %d": "编辑单元格 %d %d",
   "Select row %d": "选择第 %d 行",
-  "Table cell %d %d": "表格单元格 %d %d"
+  "Table cell %d %d": "表格单元格 %d %d",
+  "Table area": "表格区域",
+  "Table toolbar": "表格工具栏",
+  "Insert column at %d": "在第 %d 列位置插入列",
+  "Insert row at %d": "在第 %d 行位置插入行"
 }

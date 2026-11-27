@@ -11,35 +11,27 @@ const tableRowHandleWidth float32 = 24
 
 func (a *app) blockTable(c *ui.Context, n *blocks.Node, readOnly bool, depth int) {
 	s := a.blockEditor
-	table, simple := a.tableLayout(n)
-	if simple && table.Rows >= 200 {
-		a.largeTableView(c, n, table, depth)
-		return
+	if pending := s.tableInsert; pending != nil && pending.id == n.ID {
+		s.tableInsert = nil
+		a.insertTableEdge(pending.id, pending.row, pending.at)
+		n = s.doc.Find(n.ID)
 	}
+	table, simple := a.tableLayout(n)
+	surface := ui.Column(c.Key("table-surface")).FillWidth().Label(a.tr("Table area"))
+	surface.Children(func() {
+		if simple && table.Rows >= 200 {
+			a.largeTableView(c, surface, n, table, depth)
+		} else {
+			a.tableGrid(c, surface, n, table, readOnly, depth)
+		}
+	})
+}
+
+func (a *app) tableGrid(c *ui.Context, surface ui.Element, n *blocks.Node, table *blocks.Table, readOnly bool, depth int) {
+	s := a.blockEditor
 	selection := table.Expand(s.cells)
 	if !readOnly {
-		ui.Row(c).Gap(5).Padding(3, 0).AlignItems(ui.Center).Children(func() {
-			if ghostButton(c, "+").Label(a.tr("+ Row")).Tooltip(a.tr("+ Row")).KeepFocus().Clicked() {
-				at := table.Rows
-				if s.tableID == n.ID {
-					at = selection.Bottom + 1
-				}
-				if a.tableChange(n.ID, func(t *blocks.Table) error { return t.InsertRow(at) }) {
-					a.focusTableCell(n.ID, at, 0, false)
-				}
-			}
-			if ghostButton(c, "+ │").Label(a.tr("+ Column")).Tooltip(a.tr("+ Column")).KeepFocus().Clicked() {
-				at := table.Columns
-				if s.tableID == n.ID {
-					at = selection.Right + 1
-				}
-				if a.tableChange(n.ID, func(t *blocks.Table) error { return t.InsertColumn(at) }) {
-					a.focusTableCell(n.ID, 0, at, false)
-				}
-			}
-			ghostButton(c, "•••").Label(a.tr("Table actions")).Tooltip(a.tr("Table actions")).KeepFocus().PopoverMenuButton(func(m *ui.Menu) { a.tableMenu(m, n.ID, selection) })
-			ui.Text(c, fmt.Sprintf("%d × %d", table.Rows, table.Columns)).FontSize(11).TextColor(c.Theme().TextMuted)
-		})
+		a.tableToolbar(c, surface, n, table)
 	}
 	// A toolbar command may have replaced the table during this frame.
 	if fresh := s.doc.Find(n.ID); fresh != nil {
@@ -63,7 +55,7 @@ func (a *app) blockTable(c *ui.Context, n *blocks.Node, readOnly bool, depth int
 		tracks = append(tracks, ui.Fixed(float32(width)))
 		total += float32(width)
 	}
-	scroll := ui.ScrollHorizontal(c).FillWidth().Padding(0, 0, 12).Label(a.tr("Table viewport")).Focusable()
+	scroll := ui.ScrollHorizontal(c).FillWidth().Padding(0, 12, 12, 0).Label(a.tr("Table viewport")).Focusable()
 	if !readOnly {
 		a.tableSelectionInput(scroll, n, table, selection)
 	}
@@ -72,71 +64,27 @@ func (a *app) blockTable(c *ui.Context, n *blocks.Node, readOnly bool, depth int
 			rowOffset := 0
 			if !readOnly {
 				rowOffset = 1
-				if ghostButton(c, "⋮").Label(a.tr("Select table")).ColumnStart(1).RowStart(1).Height(22).KeepFocus().Clicked() {
-					a.selectTable(n.ID, blocks.Rect{Top: 0, Bottom: table.Rows - 1, Left: 0, Right: table.Columns - 1}, "table")
-				}
-				for col, width := range table.Widths {
-					ui.Row(c.Key(col)).ColumnStart(col + 2).RowStart(1).Height(22).AlignItems(ui.Stretch).Children(func() {
-						button := ghostButton(c, tableColumnName(col)).Label(a.tr("Select column ") + tableColumnName(col)).FontSize(10).Grow(1).Padding(0).KeepFocus()
-						if s.tableID == n.ID && s.tableSelection == "column" && col >= selection.Left && col <= selection.Right {
-							button.Background(c.Theme().Accent.Alpha(.18))
-						}
-						if button.Clicked() {
-							start := col
-							if button.ClickModifiers()&ui.Shift != 0 && s.tableID == n.ID && s.tableSelection == "column" {
-								start = s.cellAnchor[1]
-							}
-							a.selectTable(n.ID, blocks.Rect{Top: 0, Bottom: table.Rows - 1, Left: min(start, col), Right: max(start, col)}, "column")
-						}
-						resize := ui.Box(c.Key("resize")).Width(6).Height(22).Label(a.tr("Resize column ") + tableColumnName(col)).Cursor(ui.CursorResizeEW).Focusable()
-						if resize.Hovered() || resize.Pressed() {
-							resize.Background(c.Theme().Accent.Alpha(.35))
-						}
-						if resize.Focused() {
-							a.textFocused = true
-						}
-						dx, _, held := resize.Dragged()
-						if resize.PressCanceled() {
-							s.tableResize.active = false
-						} else if held {
-							if !s.tableResize.active {
-								s.tableResize = tableResizeState{id: n.ID, column: col, width: width, active: true}
-							}
-							s.tableResize.delta += float64(dx)
-							resize.Focus(ui.FocusOptions{PreventScroll: true})
-						}
-						if s.tableResize.active && s.tableResize.id == n.ID && s.tableResize.column == col && !held {
-							value := s.tableResize.width + s.tableResize.delta
-							s.tableResize.active = false
-							a.tableChange(n.ID, func(t *blocks.Table) error { return t.Resize(col, max(64, value)) })
-						}
-					})
+				a.tableCornerControl(c, n, table).ColumnStart(1).RowStart(1).Width(12).Height(12).Margin(0, 12, 8, 0)
+				for col := range table.Widths {
+					strip := ui.Box(c.Key(fmt.Sprintf("column-%d", col))).ColumnStart(col + 2).RowStart(1).Height(tableColumnHandleHeight).ZIndex(3)
+					strip.Children(func() { a.tableColumnControls(c, n, table, col, selection) })
 				}
 				for row := 0; row < table.Rows; row++ {
-					button := ghostButton(c, fmt.Sprint(row+1)).Label(a.trf("Select row %d", row+1)).ColumnStart(1).RowStart(row + 2).FontSize(10).Padding(0).KeepFocus()
-					if s.tableID == n.ID && s.tableSelection == "row" && row >= selection.Top && row <= selection.Bottom {
-						button.Background(c.Theme().Accent.Alpha(.18))
-					}
-					if button.Clicked() {
-						start := row
-						if button.ClickModifiers()&ui.Shift != 0 && s.tableID == n.ID && s.tableSelection == "row" {
-							start = s.cellAnchor[0]
-						}
-						a.selectTable(n.ID, blocks.Rect{Top: min(start, row), Bottom: max(start, row), Left: 0, Right: table.Columns - 1}, "row")
-					}
+					strip := ui.Box(c.Key(fmt.Sprintf("row-%d", row))).ColumnStart(1).RowStart(row + 2).ZIndex(2)
+					strip.Children(func() { a.tableRowControls(c, n, table, row, selection) })
 				}
 			}
 			for _, cell := range table.Cells {
 				background := c.Theme().Background
 				if cell.Node.Kind == "th" {
-					background = a.docTheme.Color("th", "background-color", c.Theme().Surface)
+					background = a.tableHeaderColor(c.Theme())
 				}
 				if value := cell.Node.Attr("background-color"); value != "" {
 					background = blockColor(value, background)
 				}
 				chosen := s.tableID == n.ID && cell.Row >= selection.Top && cell.Row <= selection.Bottom && cell.Column >= selection.Left && cell.Column <= selection.Right
 				box := ui.Column(c.Key(cell.Node.ID)).ColumnStart(cell.Column+1+offset).RowStart(cell.Row+1+rowOffset).ColumnSpan(cell.Columns).RowSpan(cell.Rows).MinWidth(0).MinHeight(42).Padding(6, 10).Gap(2).Background(background).
-					BorderWidth(0, 1, 1, 0).BorderColor(a.docTheme.Color("table", "border-color", c.Theme().Border)).Label(a.trf("Table cell %d %d", cell.Row+1, cell.Column+1))
+					BorderWidth(0, 1, 1, 0).BorderColor(a.tableBorderColor(c.Theme())).Label(a.trf("Table cell %d %d", cell.Row+1, cell.Column+1))
 				if cell.Row == 0 {
 					box.BorderWidth(1, 1, 1, 0)
 				}
@@ -160,10 +108,13 @@ func (a *app) blockTable(c *ui.Context, n *blocks.Node, readOnly bool, depth int
 					box.Justify(ui.End)
 				}
 				box.Children(func() {
+					if !readOnly && cell.Row == 0 {
+						a.tableResizeControl(c, n.ID, cell.Column+cell.Columns-1, table.Widths[cell.Column+cell.Columns-1]).Absolute().Top(12).Bottom(0).Right(-3).Width(6).ZIndex(2)
+					}
 					// The cell selector lives in the corner instead of taking a text row.
 					if !readOnly {
-						button := ghostButton(c, "").Label(a.trf("Select cell %d %d", cell.Row+1, cell.Column+1)).Absolute().Top(0).Right(0).Width(8).Height(8).Padding(0).KeepFocus()
-						if box.Hovered() {
+						button := ghostButton(c, "").Label(a.trf("Select cell %d %d", cell.Row+1, cell.Column+1)).Absolute().Top(0).Right(10).Width(8).Height(8).Padding(0).KeepFocus()
+						if button.Hovered() {
 							button.Background(c.Theme().Accent.Alpha(.18))
 						}
 						if button.Clicked() {

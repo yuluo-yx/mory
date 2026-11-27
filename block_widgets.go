@@ -62,7 +62,7 @@ func (a *app) tableLayout(n *blocks.Node) (*blocks.Table, bool) {
 
 // A bounded viewport lets the list measure only nearby rows, including wrapped
 // cells. The source-backed cell index avoids retaining offscreen rich editors.
-func (a *app) largeTableView(c *ui.Context, n *blocks.Node, table *blocks.Table, depth int) {
+func (a *app) largeTableView(c *ui.Context, surface ui.Element, n *blocks.Node, table *blocks.Table, depth int) {
 	t := c.Theme()
 	state := a.blockEditor.tables[n.ID].rows
 	state.Header = func(row int) bool {
@@ -80,26 +80,8 @@ func (a *app) largeTableView(c *ui.Context, n *blocks.Node, table *blocks.Table,
 	options.Math, options.InlineMath = a.preview.Math, a.preview.InlineMath
 	options.Theme = &markdown.Theme{Font: font.Family, FontSize: font.Size, CodeFont: a.writingFont("pre").Family}
 	ui.Column(c).FillWidth().Gap(6).Children(func() {
-		ui.Row(c).FillWidth().AlignItems(ui.Center).Children(func() {
-			ui.Textf(c, a.tr("Large table: %d rows × %d columns"), table.Rows, table.Columns).FontSize(12).TextColor(t.TextMuted).Grow(1)
-			if ghostButton(c, a.tr("Open Source mode")).FontSize(11).Clicked() {
-				a.changeMode("Source")
-			}
-		})
 		if a.mode == "Write" {
-			ui.Row(c).Gap(4).Children(func() {
-				ghostButton(c, a.tr("Table actions")).KeepFocus().PopoverMenuButton(func(m *ui.Menu) {
-					if n.Compact != nil && !a.expandTable(n.ID) {
-						return
-					}
-					a.tableMenu(m, n.ID, a.blockEditor.cells)
-				})
-				for column := 0; column < table.Columns; column++ {
-					if ghostButton(c, tableColumnName(column)).Label(a.tr("Select column ") + tableColumnName(column)).KeepFocus().Clicked() {
-						a.selectTable(n.ID, blocks.Rect{Top: 0, Bottom: table.Rows - 1, Left: column, Right: column}, "column")
-					}
-				}
-			})
+			a.tableToolbar(c, surface, n, table)
 		}
 		// Selecting a lazy column can materialize the table during this frame.
 		if current := a.blockEditor.doc.Find(n.ID); current != nil {
@@ -108,61 +90,82 @@ func (a *app) largeTableView(c *ui.Context, n *blocks.Node, table *blocks.Table,
 		} else {
 			return
 		}
-		scroll := ui.ScrollHorizontal(c).FillWidth().Height(400).Border(1, t.Border)
+		scroll := ui.ScrollHorizontal(c).FillWidth().Height(432).Padding(0, 12, 12, 0)
 		if a.mode == "Write" {
 			scroll.Label(a.tr("Table viewport")).Focusable()
 			a.tableSelectionInput(scroll, n, table, table.Expand(a.blockEditor.cells))
 		}
 		// Small column counts fill the page; wider tables retain horizontal scroll.
 		width := max(total, scroll.LayoutBounds().W-2)
+		lastWidth := ui.Local(scroll, "measured-width", func() float32 { return 0 })
+		if *lastWidth != width || scroll.LayoutBounds().W == 0 {
+			*lastWidth = width
+			// LayoutBounds is from the preceding frame. Finish the initial
+			// measurement before the first pointer press can move its target.
+			c.AnimationFrame()
+		}
 		scroll.Children(func() {
-			ui.List(c.Key(n.ID), state, table.Rows, func(row int) {
-				background := t.Background
-				if state.Header(row) {
-					background = a.docTheme.Color("th", "background-color", t.Surface)
+			ui.Column(c.Key("table-content")).Width(width).Gap(0).Children(func() {
+				if a.mode == "Write" {
+					ui.Row(c.Key("column-controls")).Width(width).Height(tableColumnHandleHeight).Gap(0).ZIndex(3).Children(func() {
+						a.tableCornerControl(c, n, table).Width(12).Height(12).Margin(0, 12, 8, 0)
+						for column, columnWidth := range table.Widths {
+							ui.Box(c.Key(column)).Width(float32(columnWidth) * (width - tableRowHandleWidth) / total).Height(tableColumnHandleHeight).Children(func() {
+								a.tableColumnControls(c, n, table, column, table.Expand(a.blockEditor.cells))
+							})
+						}
+					})
 				}
-				ui.Row(c).Width(width).AlignItems(ui.Stretch).Background(background).Children(func() {
-					if a.mode == "Write" && ghostButton(c, fmt.Sprint(row+1)).Label(a.trf("Select row %d", row+1)).Width(tableRowHandleWidth).KeepFocus().Clicked() {
-						a.selectTable(n.ID, blocks.Rect{Top: row, Bottom: row, Left: 0, Right: table.Columns - 1}, "row")
+				ui.List(c.Key(n.ID), state, table.Rows, func(row int) {
+					background := t.Background
+					if state.Header(row) {
+						background = a.tableHeaderColor(t)
 					}
-					for column, columnWidth := range table.Widths {
-						available := width
+					ui.Row(c).Width(width).AlignItems(ui.Stretch).Background(background).Children(func() {
 						if a.mode == "Write" {
-							available -= tableRowHandleWidth
+							ui.Box(c.Key("row-control")).Width(tableRowHandleWidth).Shrink(0).ZIndex(2).Children(func() {
+								a.tableRowControls(c, n, table, row, table.Expand(a.blockEditor.cells))
+							})
 						}
-						cell := ui.Column(c.Key(column)).Width(float32(columnWidth)*available/total).Shrink(0).MinWidth(0).Padding(8).BorderWidth(0, 1, 1, 0).BorderColor(a.docTheme.Color("table", "border-color", t.Border))
-						if table.Compact == nil {
-							cell.Background(blockColor(table.Cells[row*table.Columns+column].Node.Attr("background-color"), background))
-						}
-						s := a.blockEditor
-						if s.tableID == n.ID && s.tableSelection != "" && row >= s.cells.Top && row <= s.cells.Bottom && column >= s.cells.Left && column <= s.cells.Right && a.mode == "Write" {
-							cell.DrawOver(func(p *ui.Painter, r ui.Rect) { p.Fill(r, t.Accent.Alpha(.1), 0) })
-						}
-						cell.Children(func() {
-							if table.Compact != nil {
-								alignment := ui.Start
-								switch table.Compact.Align[column] {
-								case "center":
-									alignment = ui.Center
-								case "right":
-									alignment = ui.End
-								}
-								markdown.View(c, table.Compact.Cells[row*table.Columns+column], options).FillWidth().TextAlign(alignment)
-								if a.mode == "Write" && ghostButton(c, a.tr("Edit cell")).Label(a.trf("Edit cell %d %d", row+1, column+1)).FontSize(10).Padding(2).Clicked() {
-									if a.expandTable(n.ID) {
-										a.focusTableCell(n.ID, row, column, false)
+						for column, columnWidth := range table.Widths {
+							available := width
+							if a.mode == "Write" {
+								available -= tableRowHandleWidth
+							}
+							cell := ui.Column(c.Key(column)).Width(float32(columnWidth)*available/total).Shrink(0).MinWidth(0).Padding(8).BorderWidth(0, 1, 1, 0).BorderColor(a.tableBorderColor(t))
+							if table.Compact == nil {
+								cell.Background(blockColor(table.Cells[row*table.Columns+column].Node.Attr("background-color"), background))
+							}
+							s := a.blockEditor
+							if s.tableID == n.ID && s.tableSelection != "" && row >= s.cells.Top && row <= s.cells.Bottom && column >= s.cells.Left && column <= s.cells.Right && a.mode == "Write" {
+								cell.DrawOver(func(p *ui.Painter, r ui.Rect) { p.Fill(r, t.Accent.Alpha(.1), 0) })
+							}
+							cell.Children(func() {
+								if table.Compact != nil {
+									alignment := ui.Start
+									switch table.Compact.Align[column] {
+									case "center":
+										alignment = ui.Center
+									case "right":
+										alignment = ui.End
+									}
+									markdown.View(c, table.Compact.Cells[row*table.Columns+column], options).FillWidth().TextAlign(alignment)
+									if a.mode == "Write" && ghostButton(c, a.tr("Edit cell")).Label(a.trf("Edit cell %d %d", row+1, column+1)).FontSize(10).Padding(2).Clicked() {
+										if a.expandTable(n.ID) {
+											a.focusTableCell(n.ID, row, column, false)
+										}
+									}
+								} else {
+									// Simple expanded tables are row-major and have no spans.
+									for _, child := range blocks.Visible(table.Cells[row*table.Columns+column].Node.Children) {
+										a.blockNode(c, child, a.mode != "Write", depth+1)
 									}
 								}
-							} else {
-								// Simple expanded tables are row-major and have no spans.
-								for _, child := range blocks.Visible(table.Cells[row*table.Columns+column].Node.Children) {
-									a.blockNode(c, child, a.mode != "Write", depth+1)
-								}
-							}
-						})
-					}
-				})
-			}).Width(width).Height(400).Label(a.tr("Table rows"))
+							})
+						}
+					})
+				}).Width(width).Height(400).Label(a.tr("Table rows"))
+			})
 		})
 	})
 }
