@@ -28,6 +28,8 @@ func (a *app) settingsContent(c *ui.Context) {
 				}
 				a.themeControls(c)
 			})
+		case "About":
+			a.aboutSettings(c)
 		default:
 			a.generalSettings(c)
 		}
@@ -63,11 +65,33 @@ func (a *app) generalSettings(c *ui.Context) {
 			ui.Text(c, a.associationStatus).FontSize(c.Theme().FontSize - 1).TextColor(c.Theme().Accent)
 		}
 	})
-	version := mygo.App.Version()
-	if version == "" {
-		version = "dev"
-	}
-	ui.Text(c, a.trf("Mory %s · Made for macOS", version)).FontSize(c.Theme().FontSize - 1).TextColor(c.Theme().TextMuted)
+}
+
+func (a *app) aboutSettings(c *ui.Context) {
+	ui.Row(c).Gap(20).AlignItems(ui.Center).Padding(8, 0, 16).Children(func() {
+		ui.Image(c, appIcon()).Width(88).Height(88).Radius(20).Clip().Fit(ui.Contain).Label(a.tr("Mory app icon"))
+		ui.Column(c).Grow(1).MinWidth(0).Gap(8).Children(func() {
+			ui.Text(c, "Mory").FontSize(32).Bold()
+			ui.Text(c, a.tr("A calm, local writing space for macOS.")).TextColor(c.Theme().TextMuted)
+			version := mygo.App.Version()
+			if version == "" {
+				version = "dev"
+			}
+			ui.Text(c, a.trf("Version %s", version)).Label(a.tr("Application version")).Value(version).FontSize(13).TextColor(c.Theme().TextMuted)
+		})
+	})
+	settingsCard(c, a.tr("Made for your writing"), func() {
+		ui.Text(c, a.tr("Write and organize Markdown, MDX and DocxXML documents in a native macOS app. Switch between Write, Source, Split and Read to suit your work."))
+	})
+	settingsCard(c, a.tr("Your work stays local"), func() {
+		ui.Text(c, a.tr("Your library and document history stay on this Mac. No account or background server is required. Import existing files and export your work whenever you need it."))
+	})
+	ui.Row(c).AlignItems(ui.Center).Gap(16).Children(func() {
+		if ui.Button(c, a.tr("Project on GitHub")).Clicked() {
+			a.fail(openExternal("https://github.com/yuluo-yx/mory"))
+		}
+		ui.Text(c, a.tr("Open source · MIT License")).FontSize(13).TextColor(c.Theme().TextMuted)
+	})
 }
 
 func (a *app) editorSettings(c *ui.Context) {

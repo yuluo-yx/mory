@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import socket
+import signal
 import subprocess
 import sys
 import tempfile
@@ -51,41 +52,42 @@ def exercise(binary, root, suite="all"):
         stream = channel.makefile("rwb")
 
         def call(method, **params):
-            if method == "input":
-                # Synthetic surface events do not activate an inactive macOS
-                # window. Wait for OS focus without changing the editor caret.
+            if method in {"input", "act", "menu", "tree", "capture"}:
+                # Synthetic input and native menu commands both need a key
+                # window. Activate by PID so language changes do not break
+                # focus restoration and other Mory instances stay untouched.
+                # Observation also needs activation: macOS hides accessibility
+                # focus while a window is inactive, even with the caret intact.
                 def content_focused():
                     return any(w["kind"] == "content" and w["focused"] for w in call("windows")["windows"])
 
                 if not content_focused():
-                    call("menu", path=["Window", "Bring All to Front"])
-                    # Ordering windows does not activate a background app on
-                    # macOS. Target the test process, not another Mory instance.
-                    subprocess.run(["osascript", "-e", 'tell application "System Events"',
-                                    "-e", f'set testProcess to first application process whose unix id is {process.pid}',
-                                    "-e", 'set frontmost of testProcess to true',
-                                    # An active process can still have no key window after
-                                    # native menus. Raise the window without changing its
-                                    # focused editor or caret under test.
-                                    "-e", 'if (count of windows of testProcess) > 0 then perform action "AXRaise" of first window of testProcess',
-                                    "-e", 'end tell'], check=True)
+                    # The e2e-only signal handler calls App.Focus/Window.Focus;
+                    # it never selects a document or repairs an editor's caret.
+                    os.kill(process.pid, signal.SIGUSR1)
                     deadline = time.monotonic() + 5
+                    next_activation = time.monotonic() + 0.25
                     while not content_focused():
                         if time.monotonic() > deadline:
-                            raise AssertionError(f"Native content window did not activate before input: {call('windows')}")
+                            raise AssertionError(f"Native content window did not activate: {call('windows')}")
+                        if time.monotonic() >= next_activation:
+                            os.kill(process.pid, signal.SIGUSR1)
+                            next_activation = time.monotonic() + 0.25
                         time.sleep(0.02)
             stream.write((json.dumps(dict(id=1, method=method, params=params)) + "\n").encode())
             stream.flush()
             result = json.loads(stream.readline())
             if "error" in result:
                 raise RuntimeError(result["error"])
+            if method == "menu" and params.get("path") == ["Mory", "Quit Mory"]:
+                return result.get("result", {})
             # Input is consumed during rendering. Force a native frame even
             # when the window is occluded before the next command reads or saves.
-            if method in {"act", "input"}:
+            if method in {"act", "input", "menu"}:
                 call("capture")
-            if method == "input":
-                # Input can schedule another frame to transfer focus. Wait for
-                # the native surface to settle before sending dependent input.
+            if method in {"act", "input", "menu"}:
+                # Actions can schedule another frame to transfer focus or
+                # update undo history; observe that frame before asserting.
                 call("idle", timeout=5000)
             return result.get("result", {})
 

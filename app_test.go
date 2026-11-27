@@ -259,7 +259,7 @@ func TestViewsAndOverlays(t *testing.T) {
 	click(t, tt, "Editor")
 	click(t, tt, "Larger text")
 	click(t, tt, "Smaller text")
-	click(t, tt, "Done")
+	click(t, tt, "Back from settings")
 	click(t, tt, "List view")
 	click(t, tt, "Grid view")
 	click(t, tt, "Plugins")
@@ -288,7 +288,7 @@ func TestViewsAndOverlays(t *testing.T) {
 	click(t, tt, "Apply link")
 	a.helpOpen = true
 	tt.Frame()
-	click(t, tt, "Done")
+	click(t, tt, "Back from settings")
 	a.target = a.current
 	a.renameTitle = "Renamed"
 	a.renameOpen = true

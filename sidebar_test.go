@@ -23,13 +23,12 @@ func TestSidebarHoverKeepsLayoutStable(t *testing.T) {
 			a.current.Title = "Child document"
 			a.createNote("Sibling body", "Another long document title for navigation")
 			a.home("All notes")
-			a.settingsOpen, a.settingsTab = true, "Keyboard shortcuts"
 			tt := ui.NewTester(a.view, 1000, 820)
 			labels := []string{
 				"Folder Development-and-Cloud", "Development-and-Cloud", "Folder Work", "Work",
 				"Open " + parent.Title, parent.Title, "Open Child document", "Child document",
 				"Open Another long document title for navigation", "Another long document title for navigation",
-				"Global quick note", "Shortcut Settings", "Save shortcuts",
+				"Settings", "Search notes",
 			}
 			bounds := make(map[string]ui.Rect, len(labels))
 			for _, label := range labels {
@@ -56,7 +55,7 @@ func TestSidebarHoverKeepsLayoutStable(t *testing.T) {
 				}
 			}
 			tt.Move(800, 100)
-			if _, ok := tt.Find("Actions " + parent.Title); ok {
+			if rect, ok := tt.Find("Actions " + parent.Title); ok && rect.X < a.preferredSidebarWidth() {
 				t.Fatal("document actions remain visible after leaving the sidebar")
 			}
 			for _, row := range rows[2:] {
@@ -155,6 +154,7 @@ func TestFolderNavigationClearsSettingsAndSearch(t *testing.T) {
 	a.query = "unrelated search"
 	a.shortcutDraft = map[string]string{"New note": "Cmd+Alt+9"}
 	tt := ui.NewTester(a.view, 1000, 620)
+	click(t, tt, "Back from settings")
 	click(t, tt, "Folder Work")
 	if a.current != nil || a.settingsOpen || a.helpOpen || a.query != "" || a.folder != "Work" || a.shortcutDraft != nil {
 		t.Fatalf("folder navigation left stale state: current=%v settings=%t help=%t query=%q folder=%q draft=%v", a.current, a.settingsOpen, a.helpOpen, a.query, a.folder, a.shortcutDraft)

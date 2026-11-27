@@ -4,40 +4,84 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
+var settingsCategories = []struct {
+	name string
+	icon func() *ui.SVG
+}{
+	{"General", iconSliders},
+	{"Editor", iconFileText},
+	{"Themes", iconImage},
+	{"Keyboard shortcuts", iconKeyboard},
+	{"About", iconInfo},
+}
+
+func (a *app) closeSettings() {
+	a.settingsOpen, a.helpOpen = false, false
+	a.shortcutDraft = nil
+}
+
+// Preferences replace library navigation without changing the current document,
+// editor mode, focus mode or the user's collapsed-sidebar preference.
+func (a *app) settingsNavigation(c *ui.Context) {
+	t := c.Theme()
+	back := ghostButton(c, "").Label(a.tr("Back from settings")).FillWidth().Padding(9, 10).Radius(7)
+	if back.Hovered() {
+		back.Background(t.SurfaceHover)
+	}
+	back.Children(func() {
+		ui.Row(c).FillWidth().Gap(10).AlignItems(ui.Center).Children(func() {
+			ui.Icon(c, iconChevronLeft()).Width(16).Height(16).TextColor(t.TextMuted)
+			ui.Text(c, a.tr("Back to workspace")).FontSize(sidebarFontSize)
+		})
+	})
+	if back.Clicked() {
+		a.closeSettings()
+	}
+	ui.Text(c, a.tr("Settings")).FontSize(22).Bold().Padding(18, 10, 14)
+	selected := 0
+	for i, category := range settingsCategories {
+		if a.settingsTab == category.name {
+			selected = i
+		}
+	}
+	tabs := ui.TabsBase(c, &selected, len(settingsCategories))
+	tabs.List.Column().FillWidth().Gap(4).Orientation(ui.Vertical).FocusGroup(ui.Vertical).
+		Label(a.tr("Settings categories")).Children(func() {
+		for i, category := range settingsCategories {
+			tab := tabs.Tab(i).Label(a.tr(category.name)).FillWidth().Padding(11, 12).Radius(8).
+				Gap(12).AlignItems(ui.Center).Cursor(ui.CursorPointer)
+			color := t.TextMuted
+			if selected == i {
+				tab.Background(t.Accent.Alpha(0.14))
+				color = t.Accent
+			} else if tab.Hovered() {
+				tab.Background(t.SurfaceHover)
+			}
+			tab.Children(func() {
+				ui.Icon(c, category.icon()).Width(18).Height(18).TextColor(color)
+				text := ui.Text(c, a.tr(category.name)).FontSize(sidebarFontSize).SingleLine().Grow(1).MinWidth(0)
+				if selected == i {
+					text.TextColor(t.Accent).Bold()
+				}
+			})
+		}
+	})
+	a.settingsTab = settingsCategories[selected].name
+	if tabs.List.Changed() {
+		a.helpOpen = false
+		a.settingsOpen = true
+	}
+}
+
 // Preferences occupy the workspace, retaining the document and its edit buffer.
 func (a *app) settingsPage(c *ui.Context) {
-	if !a.cssOpen && c.Shortcut(0, ui.KeyEscape) {
-		a.settingsOpen, a.helpOpen = false, false
-		a.shortcutDraft = nil
-	}
-	if a.helpOpen {
-		a.settingsTab = "Keyboard shortcuts"
-	}
 	// Scope larger interface text to preferences, leaving document typography intact.
 	settingsTheme := *c.Theme()
 	settingsTheme.FontSize += 2
-	ui.Themed(c, &settingsTheme).Column().Fill().MinHeight(0).Padding(48, 32, 20).Gap(20).Children(func() {
-		ui.Row(c).AlignItems(ui.Center).Gap(12).Children(func() {
-			ui.Text(c, a.tr("Settings")).FontSize(30).Bold().Grow(1)
-			if ui.Button(c, a.tr("Done")).Label(a.tr("Back from settings")).Clicked() {
-				a.settingsOpen, a.helpOpen = false, false
-				a.shortcutDraft = nil
-			}
-		})
-		ui.Row(c).Gap(8).Shrink(0).Children(func() {
-			for _, tab := range []string{"General", "Editor", "Themes", "Keyboard shortcuts"} {
-				button := ghostButton(c, a.tr(tab)).Label(a.tr(tab)).Padding(8, 14)
-				if a.settingsTab == tab || a.settingsTab == "" && tab == "General" {
-					button.Background(c.Theme().SurfaceHover)
-				}
-				if button.Clicked() {
-					a.settingsTab = tab
-					a.helpOpen = false
-				}
-			}
-		})
+	ui.Themed(c, &settingsTheme).Column().Fill().MinHeight(0).Padding(48, 32, 20).Gap(24).Label(a.tr("Settings content")).Children(func() {
+		ui.Text(c, a.tr(a.settingsTab)).Label(a.tr("Settings section title")).Value(a.tr(a.settingsTab)).FontSize(30).Bold().Shrink(0)
 		if a.settingsTab == "Keyboard shortcuts" {
-			a.shortcutSettings(c)
+			ui.Column(c).FillWidth().MaxWidth(840).Grow(1).MinHeight(0).Children(func() { a.shortcutSettings(c) })
 		} else {
 			// Each category keeps its own scroll position.
 			ui.Scroll(c.Key(a.settingsTab)).Grow(1).MinHeight(0).FillWidth().Children(func() { a.settingsContent(c) })

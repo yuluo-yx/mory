@@ -220,7 +220,7 @@ func TestThemesShortcutsAndDocumentControls(t *testing.T) {
 	a.settingsOpen = true
 	tt.Frame()
 	click(t, tt, "Reset theme")
-	click(t, tt, "Done")
+	click(t, tt, "Back from settings")
 	a.lib.Settings.Theme = "Craft"
 	a.lib.Settings.Appearance = "Dark"
 	tt.Frame()

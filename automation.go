@@ -4,8 +4,10 @@ package main
 
 import (
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
+	"syscall"
 
 	"github.com/egoist/mygo"
 	_ "github.com/egoist/mygo/plugins/automation"
@@ -77,6 +79,28 @@ func init() {
 	}
 	nativeReadyHook = func(a *app) {
 		if dir := os.Getenv("MORY_E2E_FIXTURES"); dir != "" {
+			// A test harness may activate its own native window without relying
+			// on translated menus or changing the editor's focused field/caret.
+			activation := make(chan os.Signal, 1)
+			done := make(chan struct{})
+			signal.Notify(activation, syscall.SIGUSR1)
+			mygo.App.OnWillQuit(func(*mygo.QuitEvent) { signal.Stop(activation); close(done) })
+			go func() {
+				for {
+					select {
+					case <-done:
+						return
+					case <-activation:
+						mygo.RunOnMain(func() {
+							mygo.App.Focus()
+							if !a.win.IsDestroyed() {
+								a.win.Show()
+								a.win.Focus()
+							}
+						})
+					}
+				}
+			}()
 			// Observe actual OS transitions; a resized frame can arrive before
 			// macOS finishes entering its full-screen Space.
 			a.win.OnEnterFullScreen(func() { _ = os.WriteFile(filepath.Join(dir, "fullscreen-state"), []byte("entered"), 0o600) })

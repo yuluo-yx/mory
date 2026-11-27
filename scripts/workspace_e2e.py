@@ -252,9 +252,11 @@ def exercise_workspace(call, nodes, act, key, root):
     assert control("Document editor").get("value") == "First body preserved on switch"
     check("title-to-body typing / immediate document switch / save / reopen")
 
-    # Settings must yield to a navigation click and keep the pending document.
+    # Preferences replace the document tree, then restore its navigation.
     pointer("Settings")
     pointer("Keyboard shortcuts")
+    assert not any(node.get("label", "").startswith(("Folder ", "Open Journey")) for node in nodes())
+    pointer("Back from settings")
     pointer("Folder " + folder, offset=50)
     control("Search notes")
     assert not any(node.get("label") == "Back from settings" for node in nodes())
@@ -316,7 +318,7 @@ def exercise_workspace(call, nodes, act, key, root):
     # regardless of which navigation control dismissed the previous draft.
     pointer("Open " + first, offset=50)
     opened(first)
-    for exit_path in ("cancel", "escape", "done", "sidebar-note", "sidebar-folder", "sidebar-settings"):
+    for exit_path in ("cancel", "escape", "back"):
         pointer("Settings")
         pointer("Keyboard shortcuts")
         original = control("Shortcut New note", "textField").get("value", "")
@@ -325,14 +327,8 @@ def exercise_workspace(call, nodes, act, key, root):
             pointer("Cancel", "button")
         elif exit_path == "escape":
             key("Escape")
-        elif exit_path == "done":
-            pointer("Back from settings")
-        elif exit_path == "sidebar-note":
-            pointer("Open " + first, offset=50)
-        elif exit_path == "sidebar-folder":
-            pointer("Folder " + renamed, offset=50)
         else:
-            pointer("Settings")
+            pointer("Back from settings")
         assert settings().get("keys", {}).get("New note", "Cmd+N") == original
         pointer("Settings")
         pointer("Keyboard shortcuts")
@@ -340,21 +336,39 @@ def exercise_workspace(call, nodes, act, key, root):
         pointer("Back from settings")
         pointer("Open " + first, offset=50)
         opened(first)
-    check("shortcut draft cancellation through six exit paths / no persisted changes")
+    check("shortcut draft cancellation through all settings exit paths / no persisted changes")
 
     pointer("Settings")
     pointer("Keyboard shortcuts")
+    categories = ("General", "Editor", "Themes", "Keyboard shortcuts", "About")
     protected = {node["label"]: node["bounds"] for node in nodes()
-                 if node.get("label") in {"Global quick note shortcut", "Save shortcuts", "Back from settings"}
-                 or node.get("label", "").startswith(("Folder Journey", "Open Journey"))}
-    assert len(protected) >= 6, protected
-    for label in ("Folder " + renamed, "Open " + first, "Open " + second):
-        for offset in (50, 200, 50):
+                 if node.get("label") in {"Global quick note shortcut", "Save shortcuts", "Back from settings", *categories}}
+    assert len(protected) == 8, protected
+    for label in categories:
+        for offset in (50, 180, 50):
             call("input", events=[event(control(label), "pointerMove", offset=offset)])
             actual = {node.get("label"): node["bounds"] for node in nodes() if node.get("label") in protected}
             assert actual == protected, (label, offset, protected, actual)
+    for label, expected in (("General", "Application language"), ("Editor", "Outline text size"),
+                            ("Themes", "Writing style"), ("About", "Application version")):
+        pointer(label, "tab")
+        control(expected)
+        title = control("Settings section title")["bounds"]
+        tab = control(label, "tab")
+        assert tab["bounds"]["x"] + tab["bounds"]["width"] < title["x"], (label, tab, title)
+        # The native automation bridge exposes the selected tab as checked.
+        assert "checked" in tab.get("states", []), tab
+        assert not any(node.get("label", "").startswith(("Folder ", "Open Journey")) for node in nodes())
+    control("Project on GitHub")
+    key("Home")
+    control("Application language")
+    key("Down")
+    control("Outline text size")
+    key("End")
+    control("Application version")
     pointer("Back from settings")
-    check("native folder and note hover / action boundaries / stable settings geometry")
+    opened(first)
+    check("settings sidebar replacement / five categories / stable hover / keyboard navigation / about / return to document")
 
     # Cancel a bulk move without changing records, then leave selection mode.
     home()

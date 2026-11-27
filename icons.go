@@ -6,6 +6,8 @@ import (
 )
 
 var (
+	keyboardSVG      = []byte(`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M7 15h10"/></svg>`)
+	infoSVG          = []byte(`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></svg>`)
 	sidebarRightSVG  = []byte(`<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M15 3v18"/></svg>`)
 	chevronRightSVG  = []byte(`<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`)
 	chevronDownSVG   = []byte(`<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`)
@@ -43,6 +45,8 @@ var (
 )
 
 var (
+	iconKeyboard      = sync.OnceValue(func() *ui.SVG { return ui.MustParseSVG(keyboardSVG) })
+	iconInfo          = sync.OnceValue(func() *ui.SVG { return ui.MustParseSVG(infoSVG) })
 	iconSidebarRight  = sync.OnceValue(func() *ui.SVG { return ui.MustParseSVG(sidebarRightSVG) })
 	iconChevronRight  = sync.OnceValue(func() *ui.SVG { return ui.MustParseSVG(chevronRightSVG) })
 	iconChevronDown   = sync.OnceValue(func() *ui.SVG { return ui.MustParseSVG(chevronDownSVG) })

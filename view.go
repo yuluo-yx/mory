@@ -90,6 +90,12 @@ func (a *app) view(c *ui.Context) {
 		}
 	}
 	a.handleShortcuts(c)
+	if (a.settingsOpen || a.helpOpen) && !a.cssOpen && c.Shortcut(0, ui.KeyEscape) {
+		a.closeSettings()
+	}
+	if a.helpOpen {
+		a.settingsTab = "Keyboard shortcuts"
+	}
 	a.textFocused = false
 
 	vibrant := c.Vibrancy()
@@ -144,11 +150,20 @@ func (a *app) sidebar(c *ui.Context) ui.Element {
 	}
 
 	windowWidth, _ := c.Size()
-	sideCol := ui.Column(c).Width(a.visibleSidebarWidth(windowWidth)).Shrink(0).Background(sideBg).BorderWidth(0, 1, 0, 0).BorderColor(t.Border).Padding(topPadding, 12, 12).Gap(6)
+	// Separate navigation trees retain their own scroll and keyboard state.
+	navigationKey := "library-sidebar"
+	if a.settingsOpen || a.helpOpen {
+		navigationKey = "settings-sidebar"
+	}
+	sideCol := ui.Column(c.Key(navigationKey)).Width(a.visibleSidebarWidth(windowWidth)).Shrink(0).Background(sideBg).BorderWidth(0, 1, 0, 0).BorderColor(t.Border).Padding(topPadding, 12, 12).Gap(6)
 	if bar.Height > 0 {
 		sideCol.DragWindow()
 	}
 	sideCol.Children(func() {
+		if a.settingsOpen || a.helpOpen {
+			a.settingsNavigation(c)
+			return
+		}
 		// Window control placeholder & sidebar toggle
 		ui.Row(c).Height(24).AlignItems(ui.Center).Justify(ui.End).Padding(0, 6).Children(func() {
 			btn := ghostButton(c, "").Label(a.tr("Toggle sidebar")).Tooltip(a.tr("Toggle sidebar")).Padding(3, 5).Radius(5)
@@ -246,11 +261,7 @@ func (a *app) sidebar(c *ui.Context) ui.Element {
 				})
 			})
 			if settingsBtn.Clicked() {
-				a.settingsOpen = !a.settingsOpen
-				if !a.settingsOpen {
-					a.helpOpen = false
-					a.shortcutDraft = nil
-				}
+				a.settingsOpen = true
 			}
 		})
 
