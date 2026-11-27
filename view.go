@@ -957,13 +957,13 @@ func (a *app) editorView(c *ui.Context) {
 		}
 	}
 
-	header := ui.Row(c).Height(headerHeight).Shrink(0).Padding(0, 20, 0, leftPad).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1).BorderColor(t.Border)
+	header := ui.Row(c).FillWidth().Height(headerHeight).Shrink(0).Padding(0, 20, 0, leftPad).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1).BorderColor(t.Border).Label(a.tr("Document header"))
 	if bar.Height > 0 {
 		header.DragWindow()
 	}
 	header.Children(func() {
 		if a.focus || a.sidebarHidden {
-			btnSidebar := ghostButton(c, "").Label(a.tr("Toggle sidebar")).Tooltip(a.tr("Toggle sidebar")).Padding(4, 6).Radius(5)
+			btnSidebar := ghostButton(c, "").Label(a.tr("Toggle sidebar")).Tooltip(a.tr("Toggle sidebar")).Padding(4, 6).Radius(5).Shrink(0)
 			btnSidebar.Children(func() {
 				ui.Icon(c, iconSidebar()).Width(15).Height(15).TextColor(t.TextMuted)
 			})
@@ -972,7 +972,7 @@ func (a *app) editorView(c *ui.Context) {
 			}
 		}
 
-		btnBack := ghostButton(c, "").Label(a.tr("Back to library")).Padding(5, 8).Radius(6)
+		btnBack := ghostButton(c, "").Label(a.tr("Back to library")).Padding(5, 8).Radius(6).Shrink(0)
 		btnBack.Children(func() {
 			ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
 				ui.Icon(c, iconChevronLeft()).Width(16).Height(16).TextColor(t.Text)
@@ -982,64 +982,69 @@ func (a *app) editorView(c *ui.Context) {
 			a.home("All notes")
 		}
 
-		ui.Text(c, a.displayTitle(n.Title)).MaxWidth(220).MaxHeight(24).Clip().FontSize(14).Bold().LetterSpacing(-0.2).TextColor(t.Text).Grow(1)
+		location := a.documentLocation(n)
+		// The path takes only the remaining room. The action group keeps its
+		// intrinsic width against the trailing edge, including in full screen.
+		ui.Text(c, location).Label(a.tr("Document location")).Value(location).Tooltip(location).Grow(1).MinWidth(0).SingleLine().TruncateMiddle().FontSize(14).TextColor(t.TextMuted)
 
-		ui.Row(c).Padding(2).Radius(7).Background(t.Surface).Gap(2).Children(func() {
-			for _, mode := range []string{"Write", "Source", "Split", "Read"} {
-				b := ghostButton(c, a.tr(mode)).Padding(4, 9).FontSize(12).Radius(5)
-				if a.mode == mode {
-					b.Background(t.Background).TextColor(t.Text).Bold().Shadow(0, 1, 3, 0, ui.RGBA(0, 0, 0, 0.08))
-				} else {
-					b.TextColor(t.TextMuted)
+		ui.Row(c.Key("header-actions")).Shrink(0).Gap(10).AlignItems(ui.Center).Label(a.tr("Document header actions")).Children(func() {
+			ui.Row(c).Padding(2).Radius(7).Background(t.Surface).Gap(2).Children(func() {
+				for _, mode := range []string{"Write", "Source", "Split", "Read"} {
+					b := ghostButton(c, a.tr(mode)).Padding(4, 9).FontSize(12).Radius(5)
+					if a.mode == mode {
+						b.Background(t.Background).TextColor(t.Text).Bold().Shadow(0, 1, 3, 0, ui.RGBA(0, 0, 0, 0.08))
+					} else {
+						b.TextColor(t.TextMuted)
+					}
+					if b.Clicked() {
+						a.changeMode(mode)
+					}
 				}
-				if b.Clicked() {
-					a.changeMode(mode)
+			})
+
+			btnStar := ghostButton(c, "").Label(a.tr("Toggle favorite")).Radius(6).Padding(5, 7)
+			btnStar.Children(func() {
+				starCol := t.TextMuted
+				if n.Starred {
+					starCol = ui.Hex("#ff9500")
 				}
+				ui.Icon(c, iconStar()).Width(15).Height(15).TextColor(starCol)
+			})
+			if btnStar.Clicked() {
+				a.mutate(n, func() { n.Starred = !n.Starred })
 			}
-		})
 
-		btnStar := ghostButton(c, "").Label(a.tr("Toggle favorite")).Radius(6).Padding(5, 7)
-		btnStar.Children(func() {
-			starCol := t.TextMuted
-			if n.Starred {
-				starCol = ui.Hex("#ff9500")
-			}
-			ui.Icon(c, iconStar()).Width(15).Height(15).TextColor(starCol)
-		})
-		if btnStar.Clicked() {
-			a.mutate(n, func() { n.Starred = !n.Starred })
-		}
-
-		btnOutline := ghostButton(c, "").Label(a.tr("Toggle outline")).Radius(6).Padding(5, 7)
-		if a.outline {
-			btnOutline.Background(t.Accent.Alpha(0.12))
-		}
-		btnOutline.Children(func() {
-			outlineCol := t.TextMuted
+			btnOutline := ghostButton(c, "").Label(a.tr("Toggle outline")).Radius(6).Padding(5, 7)
 			if a.outline {
-				outlineCol = t.Accent
+				btnOutline.Background(t.Accent.Alpha(0.12))
 			}
-			ui.Icon(c, iconOutline()).Width(15).Height(15).TextColor(outlineCol)
-		})
-		if btnOutline.Clicked() {
-			a.outline = !a.outline
-		}
+			btnOutline.Children(func() {
+				outlineCol := t.TextMuted
+				if a.outline {
+					outlineCol = t.Accent
+				}
+				ui.Icon(c, iconOutline()).Width(15).Height(15).TextColor(outlineCol)
+			})
+			if btnOutline.Clicked() {
+				a.outline = !a.outline
+			}
 
-		btnExport := ghostButton(c, "").Label(a.tr("Export note")).Radius(6).Padding(5, 7)
-		btnExport.Children(func() {
-			ui.Icon(c, iconShare()).Width(15).Height(15).TextColor(t.TextMuted)
-		})
-		if btnExport.Clicked() {
-			a.exportMenuOpen()
-		}
+			btnExport := ghostButton(c, "").Label(a.tr("Export note")).Radius(6).Padding(5, 7)
+			btnExport.Children(func() {
+				ui.Icon(c, iconShare()).Width(15).Height(15).TextColor(t.TextMuted)
+			})
+			if btnExport.Clicked() {
+				a.exportMenuOpen()
+			}
 
-		btnActions := ghostButton(c, "").Label(a.tr("Document actions")).Radius(6).Padding(5, 7)
-		btnActions.Children(func() {
-			ui.Icon(c, iconMore()).Width(15).Height(15).TextColor(t.TextMuted)
+			btnActions := ghostButton(c, "").Label(a.tr("Document actions")).Radius(6).Padding(5, 7)
+			btnActions.Children(func() {
+				ui.Icon(c, iconMore()).Width(15).Height(15).TextColor(t.TextMuted)
+			})
+			if btnActions.Clicked() {
+				a.openNoteActions(n)
+			}
 		})
-		if btnActions.Clicked() {
-			a.openNoteActions(n)
-		}
 	})
 
 	if a.current == nil {

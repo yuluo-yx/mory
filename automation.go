@@ -76,6 +76,12 @@ func init() {
 		}
 	}
 	nativeReadyHook = func(a *app) {
+		if dir := os.Getenv("MORY_E2E_FIXTURES"); dir != "" {
+			// Observe actual OS transitions; a resized frame can arrive before
+			// macOS finishes entering its full-screen Space.
+			a.win.OnEnterFullScreen(func() { _ = os.WriteFile(filepath.Join(dir, "fullscreen-state"), []byte("entered"), 0o600) })
+			a.win.OnLeaveFullScreen(func() { _ = os.WriteFile(filepath.Join(dir, "fullscreen-state"), []byte("left"), 0o600) })
+		}
 		if os.Getenv("MORY_E2E_FIXTURES") != "" {
 			// Native clipboard tests replace the system pasteboard temporarily.
 			if data, err := mygo.Clipboard.Read(); err == nil {

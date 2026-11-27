@@ -571,5 +571,8 @@
   "Table area": "表格区域",
   "Table toolbar": "表格工具栏",
   "Insert column at %d": "在第 %d 列位置插入列",
-  "Insert row at %d": "在第 %d 行位置插入行"
+  "Insert row at %d": "在第 %d 行位置插入行",
+  "Document header": "文稿顶栏",
+  "Document location": "文稿路径",
+  "Document header actions": "文稿顶栏操作"
 }

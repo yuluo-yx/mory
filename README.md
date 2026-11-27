@@ -35,6 +35,8 @@ The editable feature tour is available from **Help → Open welcome guide**. A n
 
 Press Enter in a document's title to move the caret to the start of its body in Write, Source, or Split mode. Existing body text is preserved.
 
+The document header shows its library location, including folders, parent documents and the saved filename (for example `/test/test1/test.md`). External files show their absolute path. Long paths stay on one line with a middle ellipsis; hover to see the full path. Mode switches and document actions remain aligned to the window's right edge, including full screen and when the sidebar is hidden.
+
 Press **Cmd+/** to cycle **Write → Source → Read → Split → Write** while preserving pending edits. **View → Cycle editor mode** runs the same action; its key can be changed in shortcut settings. Shortcut help remains available from **Help → Shortcuts**. Older saved Cmd+/ help defaults migrate to mode cycling when no explicit cycle binding exists; custom help bindings remain unchanged.
 
 Enter in a single-line form submits its primary action: folder creation/editing, note rename/move, links, block properties, theme names, and shortcut settings. Find advances to the next match; Replace replaces the selected match and advances. Existing validation also applies to keyboard submissions. IME candidate confirmation does not submit, and multiline equation and stylesheet editors retain Enter for newlines.

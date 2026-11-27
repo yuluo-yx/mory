@@ -112,6 +112,38 @@ def exercise_workspace(call, nodes, act, key, root):
     wait("Enter did not close move dialog", lambda tree: not any(n.get("label") == "Folder name" for n in tree))
     moved = stored("Keyboard details renamed")
     assert moved["folder"] == "Keyboard moved folder" and moved["source"] == "Preserved form body"
+    expected_location = "/Keyboard moved folder/" + moved["fileName"]
+    assert control("Document location").get("value") == expected_location
+
+    def header_geometry():
+        header = control("Document header")["bounds"]
+        location = control("Document location")["bounds"]
+        actions = control("Document header actions")["bounds"]
+        last = control("Document actions")["bounds"]
+        assert abs(last["x"]+last["width"]-(header["x"]+header["width"]-20)) <= 1, (header, last)
+        assert location["height"] <= 24 and location["x"]+location["width"] <= actions["x"]-9, (location, actions)
+        assert control("Document location").get("value") == expected_location
+        return header["width"]
+
+    normal_width = header_geometry()
+    pointer("Toggle sidebar")
+    header_geometry()
+    # Exercise the real native full-screen transition, beyond wide-window
+    # geometry in unit tests. Restore it before other desktop scenarios run.
+    call("menu", path=["View", "Toggle Full Screen"])
+    fullscreen_state = root / "fixtures" / "fullscreen-state"
+    wait("Native full-screen entry did not finish", lambda tree: fullscreen_state.exists() and fullscreen_state.read_text() == "entered")
+    wait("Window did not enter full screen", lambda tree: next((node for node in tree
+         if node.get("label") == "Document header" and node["bounds"]["width"] > normal_width+400), None))
+    header_geometry()
+    call("menu", path=["View", "Toggle Full Screen"])
+    wait("Native full-screen exit did not finish", lambda tree: fullscreen_state.read_text() == "left")
+    wait("Window did not leave full screen", lambda tree: next((node for node in tree
+         if node.get("label") == "Document header" and node["bounds"]["width"] < normal_width+400), None))
+    header_geometry()
+    pointer("Toggle sidebar")
+    header_geometry()
+    check("header right alignment / logical path / sidebar toggle / native full screen / no wrapping")
     home()
     pointer("New folder", "button")
     call("input", events=[dict(type="text", text=keyboard_folder), dict(type="key", key="Enter")])
