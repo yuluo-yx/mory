@@ -195,6 +195,7 @@ func newApp(dir string) (*app, error) {
 	// persists the selection without rewriting documents or custom styles.
 	l.Settings.Theme = doctheme.ResolveName(filepath.Join(l.Dir, "themes"), l.Settings.Theme)
 	a := &app{lib: l, section: "All notes", order: "Modified", mode: "Write", status: "All changes saved", outline: true, showToolbar: true, selected: map[string]bool{}, collapsedFolders: map[string]bool{}, collapsedNotes: map[string]bool{}}
+	a.restoreSidebarFolders()
 	a.recoveries, err = l.Recoveries()
 	if err != nil {
 		return nil, err
@@ -336,6 +337,7 @@ func (a *app) openNote(n *library.Note) {
 		return
 	}
 	a.readMetadata()
+	a.revealNoteInSidebar(n)
 	n.Opened = time.Now()
 	a.mode = "Write"
 	if sourceOnlyDocument(n) {

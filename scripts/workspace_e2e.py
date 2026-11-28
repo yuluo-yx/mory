@@ -9,7 +9,7 @@ import time
 from library_records import note_paths, read_note
 
 
-def exercise_workspace(call, nodes, act, key, root):
+def exercise_workspace(call, nodes, act, key, root, restart):
     completed = []
     library = root / "library"
 
@@ -508,4 +508,27 @@ def exercise_workspace(call, nodes, act, key, root):
     assert control("Document editor").get("value") == "Child body survives restore saved before folder deletion"
     check("folder deletion cancellation / pending edits saved / folder trash entry / restore original hierarchy")
     home()
+
+    # Relaunch the actual process. Only the most recently used document's
+    # folder is expanded, regardless of other manually opened folders.
+    before = snapshot()
+    restart()
+    control("Search notes")
+    for name in settings()["folders"]:
+        folder_node = control("Folder " + name)
+        assert ("expanded" in folder_node.get("states", [])) == (name == renamed), folder_node
+    control("Open " + child)
+    assert not any(node.get("label") == "Open Keyboard details renamed" for node in nodes())
+    assert snapshot() == before, "Restart changed document records"
+    pointer("Folder Keyboard moved folder", offset=50)
+    pointer("Note Keyboard details renamed")
+    opened("Keyboard details renamed")
+    control("Open Keyboard details renamed")
+    restart()
+    for name in settings()["folders"]:
+        folder_node = control("Folder " + name)
+        assert ("expanded" in folder_node.get("states", [])) == (name == "Keyboard moved folder"), folder_node
+    assert not any(node.get("label") == "Open " + child for node in nodes())
+    assert snapshot() == before, "Opening or relaunching changed document contents"
+    check("native quit and restart / only last document folder expanded / nested child visible / other folders collapsed")
     return completed

@@ -138,6 +138,28 @@ def exercise(binary, root, suite="all"):
                     raise AssertionError(f"Editor did not receive input: {label}: {field}; focused={focused}")
                 time.sleep(0.05)
 
+        def restart():
+            nonlocal process, channel, stream
+            call("menu", path=["Mory", "Quit Mory"])
+            process.wait(timeout=10)
+            assert process.returncode == 0, process.communicate()[1].decode()
+            stream.close()
+            channel.close()
+            sock_path.unlink(missing_ok=True)
+            process = subprocess.Popen([str(binary)], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            deadline = time.monotonic() + 20
+            while not sock_path.exists():
+                if process.poll() is not None:
+                    raise RuntimeError(process.communicate()[1].decode())
+                if time.monotonic() > deadline:
+                    raise TimeoutError("Native app did not restart")
+                time.sleep(0.05)
+            channel = socket.socket(socket.AF_UNIX)
+            channel.settimeout(20)
+            channel.connect(str(sock_path))
+            stream = channel.makefile("rwb")
+            nodes()
+
         windows = call("windows")["windows"]
         assert any(w["kind"] == "content" for w in windows), "Editor is not a native window"
         pdf_deadline = time.monotonic() + 25
@@ -147,7 +169,7 @@ def exercise(binary, root, suite="all"):
             time.sleep(0.1)
         assert (root / "export.pdf").read_bytes().startswith(b"%PDF-"), "Invalid PDF export"
         if suite in {"all", "workspace"}:
-            exercise_workspace(call, nodes, act, key, root)
+            exercise_workspace(call, nodes, act, key, root, restart)
         if suite in {"all", "writing"}:
             exercise_writing(call, nodes, act, key, root, fixtures)
         if suite == "editor":

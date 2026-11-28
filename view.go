@@ -295,7 +295,7 @@ func (a *app) treeFolder(c *ui.Context, folder string, depth int, seen map[strin
 	isActiveFolder := a.folder == folder
 	leftPad := float32(4 + depth*16)
 
-	btnFolder := ghostButton(c.Key("folder-"+folder), "").Label(a.tr("Folder ")+folder).Tooltip(folder).FillWidth().Height(30).Shrink(0).Scale(1, 1).Radius(6).Padding(4, 6, 4, leftPad)
+	btnFolder := ghostButton(c.Key("folder-"+folder), "").Label(a.tr("Folder ")+folder).Tooltip(folder).Expanded(!isCollapsed).FillWidth().Height(30).Shrink(0).Scale(1, 1).Radius(6).Padding(4, 6, 4, leftPad)
 	showControls := btnFolder.Hovered() || btnFolder.FocusWithin() || isActiveFolder
 	if isActiveFolder {
 		btnFolder.Background(t.Accent.Alpha(0.12))
