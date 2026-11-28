@@ -25,11 +25,13 @@ Mory 是一款原生 macOS 写作应用，支持 Markdown、MDX 和飞书/Lark D
 - 原生支持标题、列表、任务、表格、LaTeX、代码块、提示块、标签页、分栏、图片、附件和文档链接。
 - 支持静态 Docusaurus 和 MDX，包括 front matter、admonition、标题 ID、代码元数据、details 和 tabs。React 组件、JavaScript 表达式及站点专用构建插件会保留为源码，不会执行。
 - 支持文件夹、嵌套文档、收藏、置顶、搜索、手动排序、批量操作、多窗口和快速笔记。
-- 提供五种文档主题、可编辑 CSS、浅色和深色外观，以及英文和简体中文界面。
+- 提供统一的 **yuluo** 内置文档主题、可编辑 CSS、浅色和深色外观，以及英文和简体中文界面。
 - 支持导入文件或文件夹，并导出 Markdown、DocxXML、自包含 HTML 或 PDF。
 - 支持本地和远程图片。本地相对路径资源会保存在文档旁；在线时会渲染 `http(s)` 图片地址，并在文档源码中保留原 URL。
 
 可以从 **帮助 → 打开欢迎指南** 查看完整的功能介绍。新建文档库时会同时创建英文和中文欢迎文档，完整内容见[英文指南](resources/welcome.md)和[中文指南](resources/welcome.zh-CN.md)。
+
+**设置 → 主题** 仅内置 **yuluo**。可以编辑、复制或导入 CSS；存在自定义 CSS 时，会显示样式切换菜单。旧版 Craft、Feishu、Notion、Obsidian 和 Docusaurus 预设会归并到 yuluo；已有的同名用户 CSS 优先加载，文件内容保持不变。下次正常保存设置时会保存归并后的选择。重置主题会保留自定义文件；修改过的 `yuluo.css` 会另存为未占用的 `yuluo-custom-N.css`，然后恢复内置样式。Docusaurus 和 MDX 语法支持不受影响。
 
 ## 快速开始
 

@@ -427,7 +427,7 @@ def exercise(binary, root, suite="all"):
         assert any(n.get("label") == "Make Mory the default Markdown app" for n in nodes())
         act("Themes")
         act("Writing style")
-        act("Docusaurus")
+        act("yuluo")
         act("Back from settings")
         act("Toggle details More")
         assert any(n.get("value", "").strip() == "Hidden detail." for n in nodes())

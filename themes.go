@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,11 +16,49 @@ import (
 	"github.com/yuluo-yx/mory/internal/typography"
 )
 
+// Reset selects the bundled style. Preserve user CSS, including a yuluo
+// override, as a selectable custom file instead of deleting authored work.
+func (a *app) resetTheme() {
+	previous := a.lib.Settings.Theme
+	path := filepath.Join(a.lib.Dir, "themes", doctheme.DefaultName+".css")
+	backup := ""
+	if _, err := os.Stat(path); err == nil {
+		for suffix := 1; ; suffix++ {
+			backup = filepath.Join(a.lib.Dir, "themes", fmt.Sprintf("yuluo-custom-%d.css", suffix))
+			if _, err := os.Stat(backup); os.IsNotExist(err) {
+				break
+			} else if err != nil {
+				a.fail(err)
+				return
+			}
+		}
+		if a.fail(os.Rename(path, backup)) {
+			return
+		}
+	} else if !os.IsNotExist(err) {
+		a.fail(err)
+		return
+	}
+	a.lib.Settings.Theme = doctheme.DefaultName
+	if !a.savePreferences() {
+		a.lib.Settings.Theme = previous
+		if backup != "" {
+			a.fail(os.Rename(backup, path))
+		}
+		return
+	}
+	a.docTheme = nil
+	a.reloadTheme()
+}
+
 func (a *app) reloadTheme() {
+	dir := filepath.Join(a.lib.Dir, "themes")
 	name := a.lib.Settings.Theme
 	if a.docTheme != nil && name == a.themeName && time.Since(a.themeChecked) < time.Second {
 		return
 	}
+	name = doctheme.ResolveName(dir, name)
+	a.lib.Settings.Theme = name
 	a.themeChecked = time.Now()
 	path := filepath.Join(a.lib.Dir, "themes", strings.ToLower(name)+".css")
 	stamp := time.Time{}
@@ -89,10 +128,22 @@ func (a *app) namedColor(kind, name string, fallback ui.Color) ui.Color {
 }
 
 func (a *app) themeControls(c *ui.Context) {
-	if ui.Select(c, &a.lib.Settings.Theme, doctheme.Names(filepath.Join(a.lib.Dir, "themes"))).Label(a.tr("Writing style")).FillWidth().Changed() {
-		a.savePreferences()
-		a.reloadTheme()
+	names := doctheme.Names(filepath.Join(a.lib.Dir, "themes"))
+	if len(names) > 1 {
+		previous := a.lib.Settings.Theme
+		if ui.Select(c, &a.lib.Settings.Theme, names).Label(a.tr("Writing style")).FillWidth().Changed() {
+			if !a.savePreferences() {
+				a.lib.Settings.Theme = previous
+			}
+			a.reloadTheme()
+		}
+	} else {
+		ui.Row(c).FillWidth().Gap(12).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, doctheme.DefaultName).Label(a.tr("Writing style")).Value(doctheme.DefaultName).Bold().Grow(1)
+			ui.Text(c, a.tr("Built-in theme")).FontSize(c.Theme().FontSize - 1).TextColor(c.Theme().TextMuted)
+		})
 	}
+	ui.Text(c, a.tr("Make it yours with CSS. Edit this style or import your own stylesheet.")).FontSize(c.Theme().FontSize - 1).TextColor(c.Theme().TextMuted)
 	ui.Row(c).Gap(8).Children(func() {
 		if ui.Button(c, a.tr("Edit CSS")).Clicked() {
 			a.cssName = a.lib.Settings.Theme
@@ -112,14 +163,7 @@ func (a *app) themeControls(c *ui.Context) {
 	})
 	ui.Row(c).Gap(8).Children(func() {
 		if ui.Button(c, a.tr("Reset theme")).Clicked() {
-			path := filepath.Join(a.lib.Dir, "themes", strings.ToLower(a.lib.Settings.Theme)+".css")
-			err := os.Remove(path)
-			if err == nil || os.IsNotExist(err) {
-				a.docTheme = nil
-				a.reloadTheme()
-			} else {
-				a.fail(err)
-			}
+			a.resetTheme()
 		}
 		if ui.Button(c, a.tr("Open themes folder")).Clicked() {
 			a.reveal(filepath.Join(a.lib.Dir, "themes"))

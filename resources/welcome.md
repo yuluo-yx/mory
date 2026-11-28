@@ -154,7 +154,7 @@ GitHub-style callouts work with quoted markers:
 > This is a note written with `> [!NOTE]`.
 
 :::tip Try a native preview
-Choose **Settings → Themes → Docusaurus** to try the documentation style. The same source also works with Craft, Feishu, Notion, and Obsidian.
+Mory uses **yuluo** as its built-in document style. In **Settings → Themes**, edit or import CSS to customize it. Docusaurus components work with both the default style and custom CSS.
 :::
 
 :::info Keep the source

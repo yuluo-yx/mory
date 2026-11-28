@@ -370,6 +370,36 @@ def exercise_workspace(call, nodes, act, key, root):
     opened(first)
     check("settings sidebar replacement / five categories / stable hover / keyboard navigation / about / return to document")
 
+    # A fresh library has one built-in style. User CSS remains switchable and
+    # survives a reset; presentation changes must never alter document source.
+    before = snapshot()
+    pointer("Settings")
+    pointer("Themes")
+    assert control("Writing style").get("value") == "yuluo"
+    pointer("Edit CSS")
+    assert control("Theme name", "textField").get("value") == "yuluo"
+    replace("Theme name", "Journey custom")
+    css = '.page { font-size: 18px; color: #234567; } a { color: #0969da; }'
+    pointer("Theme CSS")
+    call("input", events=[dict(type="key", key="Cmd+A"), dict(type="text", text=css)])
+    pointer("Apply stylesheet")
+    custom_file = library / "themes" / "journey custom.css"
+    assert custom_file.read_text() == css
+    assert settings()["theme"] == "Journey custom"
+    pointer("Settings")
+    pointer("Writing style")
+    pointer("yuluo")
+    assert settings()["theme"] == "yuluo"
+    pointer("Writing style")
+    pointer("journey custom")
+    assert settings()["theme"] == "journey custom"
+    pointer("Reset theme")
+    assert settings()["theme"] == "yuluo" and custom_file.read_text() == css
+    pointer("Back from settings")
+    opened(first)
+    assert snapshot() == before, "Theme changes rewrote document records"
+    check("single yuluo theme / edit CSS / saved custom style / switching / non-destructive reset / document preservation")
+
     # Cancel a bulk move without changing records, then leave selection mode.
     home()
     replace("Search notes", "Journey")

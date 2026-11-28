@@ -21,6 +21,8 @@ import (
 //go:embed assets/*.css
 var builtins embed.FS
 
+const DefaultName = "yuluo"
+
 type Theme struct {
 	Rules     map[string]map[string]string
 	Variables map[string]string
@@ -29,8 +31,25 @@ type Theme struct {
 }
 
 func Builtin(name string) string {
+	// Legacy preset names remain readable but share the single bundled style.
+	switch strings.ToLower(name) {
+	case "craft", "feishu", "notion", "obsidian", "docusaurus":
+		name = DefaultName
+	}
 	b, _ := builtins.ReadFile("assets/" + strings.ToLower(name) + ".css")
 	return string(b)
+}
+
+// ResolveName maps removed presets and missing selections to the default.
+// A file with a legacy name is user CSS, so it must win over the alias.
+// Read failures are left for Load to report rather than hiding them.
+func ResolveName(dir, name string) string {
+	if name != "" && filepath.Base(name) == name && !strings.ContainsAny(name, "/\\") {
+		if _, err := os.Stat(filepath.Join(dir, strings.ToLower(name)+".css")); !os.IsNotExist(err) {
+			return name
+		}
+	}
+	return DefaultName
 }
 
 func Load(dir, name string) (*Theme, error) {
@@ -41,7 +60,7 @@ func Load(dir, name string) (*Theme, error) {
 	if os.IsNotExist(err) {
 		source := Builtin(name)
 		if source == "" {
-			source = Builtin("Craft")
+			source = Builtin(DefaultName)
 		}
 		return Parse(source), nil
 	}
@@ -52,7 +71,7 @@ func Load(dir, name string) (*Theme, error) {
 }
 
 func Names(dir string) []string {
-	out := []string{"Craft", "Feishu", "Notion", "Obsidian", "Docusaurus"}
+	out := []string{DefaultName}
 	entries, _ := os.ReadDir(dir)
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".css") {
@@ -69,7 +88,7 @@ func Names(dir string) []string {
 			out = append(out, name)
 		}
 	}
-	sort.Strings(out[5:])
+	sort.Strings(out[1:])
 	return out
 }
 

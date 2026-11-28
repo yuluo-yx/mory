@@ -10,8 +10,11 @@ import (
 )
 
 func TestBuiltinsAndCSSCascade(t *testing.T) {
-	for _, name := range []string{"Craft", "Feishu", "Notion", "Obsidian"} {
+	for _, name := range []string{DefaultName, "Craft", "Feishu", "Notion", "Obsidian", "Docusaurus"} {
 		theme := Parse(Builtin(name))
+		if len(theme.Warnings) != 0 || theme.Source != Builtin(DefaultName) {
+			t.Fatal("default and legacy aliases must share a valid stylesheet", name, theme.Warnings)
+		}
 		if theme.Value(".page", "font-size") == "" {
 			t.Fatal(name, "has no body style")
 		}
@@ -109,7 +112,7 @@ func TestThemeFiles(t *testing.T) {
 	if _, err := Load(dir, "../x"); err == nil {
 		t.Fatal("unsafe name")
 	}
-	if theme, err := Load(dir, "Missing"); err != nil || !strings.Contains(theme.Source, "Craft") {
+	if theme, err := Load(dir, "Missing"); err != nil || theme.Source != Builtin(DefaultName) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "custom.css"), []byte(".page{color:#123456}"), 0o644); err != nil {
@@ -118,7 +121,7 @@ func TestThemeFiles(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "craft.css"), []byte(".page{font-size:19px}"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if len(Names(dir)) != 6 {
+	if len(Names(dir)) != 3 {
 		t.Fatal(Names(dir))
 	}
 	theme, err := Load(dir, "Custom")

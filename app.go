@@ -191,6 +191,9 @@ func newApp(dir string) (*app, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Resolve legacy presets in memory; the next normal preferences save
+	// persists the selection without rewriting documents or custom styles.
+	l.Settings.Theme = doctheme.ResolveName(filepath.Join(l.Dir, "themes"), l.Settings.Theme)
 	a := &app{lib: l, section: "All notes", order: "Modified", mode: "Write", status: "All changes saved", outline: true, showToolbar: true, selected: map[string]bool{}, collapsedFolders: map[string]bool{}, collapsedNotes: map[string]bool{}}
 	a.recoveries, err = l.Recoveries()
 	if err != nil {

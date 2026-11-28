@@ -82,7 +82,7 @@ type Library struct {
 }
 
 func Open(dir string) (*Library, error) {
-	l := &Library{Dir: dir, versions: make(map[string][32]byte), paths: make(map[string]string), Settings: Settings{Theme: "Craft", Appearance: "System", FontSize: 17}}
+	l := &Library{Dir: dir, versions: make(map[string][32]byte), paths: make(map[string]string), Settings: Settings{Theme: "yuluo", Appearance: "System", FontSize: 17}}
 	for _, child := range []string{"notes", "trash", "plugins", "assets", "history", "recovery", "themes"} {
 		if err := os.MkdirAll(filepath.Join(dir, child), 0o755); err != nil {
 			return nil, err

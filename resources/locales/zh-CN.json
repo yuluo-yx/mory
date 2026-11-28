@@ -253,6 +253,8 @@
   "Works outside Mory. Disabled by default to avoid launcher conflicts.": "在 Mory 之外也能使用。默认禁用，避免与启动器冲突。",
   "Wrap": "自动换行",
   "Writing style": "写作样式",
+  "Built-in theme": "内置主题",
+  "Make it yours with CSS. Edit this style or import your own stylesheet.": "通过编辑或导入 CSS，自定义文稿样式。",
   "Your edits are still in memory. Export a copy before closing.": "你的修改仍保留在内存中，请在关闭前导出副本。",
   "Your writing workbench": "写作工具箱",
   "↓   Import documents": "↓   导入文稿",

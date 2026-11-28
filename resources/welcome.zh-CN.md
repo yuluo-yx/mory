@@ -146,7 +146,7 @@ $$
 > 这是一个使用 `> [!NOTE]` 写成的提示。
 
 :::tip 试用原生预览
-选择 **设置 → 主题 → Docusaurus**，体验文档风格。同一份源码也适用于 Craft、飞书、Notion 和 Obsidian。
+Mory 使用统一的 **yuluo** 内置文档主题。可以在 **设置 → 主题** 中编辑或导入 CSS，自定义文稿样式。默认主题和自定义 CSS 均支持 Docusaurus 组件。
 :::
 
 :::info 保留源码
