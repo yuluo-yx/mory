@@ -21,19 +21,15 @@ Mory 是一款原生 macOS 写作应用，支持 Markdown、MDX 和飞书/Lark D
 
 ## 主要功能
 
-- 四种编辑模式：**写作**、**源码**、**分屏**和**阅读**。
-- 原生支持标题、列表、任务、表格、LaTeX、代码块、提示块、标签页、分栏、图片、附件和文档链接。
-- 支持静态 Docusaurus 和 MDX，包括 front matter、admonition、标题 ID、代码元数据、details 和 tabs。React 组件、JavaScript 表达式及站点专用构建插件会保留为源码，不会执行。
-- 支持文件夹、嵌套文档、收藏、置顶、搜索、手动排序、批量操作、多窗口和快速笔记。
-- 首页以叠页卡片展示文件夹，以竖向纸张预览展示顶层文稿；点击文件夹浏览下一级内容，通过「返回上级目录」逐级返回。卡片列数随窗口宽度调整，预览保留标题、段落、列表、代码和表格结构。搜索、收藏、最近使用和回收站继续显示平铺结果；批量选择只包含当前范围内可见的文稿。
-- 启动时默认折叠侧栏文件夹，仅展开最近打开或编辑的文稿所在目录；嵌套子文稿的父文稿也会展开。没有打开记录时，所有文件夹保持折叠。本次使用中手动展开的目录不会因打开其他文稿而收起；重启后重新按最近文稿计算，仍从首页进入。
-- 提供统一的 **yuluo** 内置文档主题、可编辑 CSS、浅色和深色外观，以及英文和简体中文界面。
-- 支持导入文件或文件夹，并导出 Markdown、DocxXML、自包含 HTML 或 PDF。
-- 支持本地和远程图片。本地相对路径资源会保存在文档旁；在线时会渲染 `http(s)` 图片地址，并在文档源码中保留原 URL。
+- **写作**、**源码**、**分屏**和**阅读**四种模式，通过 **Cmd+/** 循环切换。
+- 支持标题、列表、任务、表格、代码、LaTeX、提示块、分栏、图片、附件和文档链接。
+- 支持静态 Docusaurus 和 MDX；React 组件与 JavaScript 保留为源码，不会执行。
+- 文件夹卡片、文稿预览、嵌套文稿、搜索、收藏、批量操作和可调整宽度的侧栏。
+- 铺满顶部并随文稿滚动的封面，提供离线图库和本地上传。
+- **yuluo** 主题、自定义 CSS、浅色和深色外观、中英文界面。
+- 导入文件或文件夹，导出 Markdown、DocxXML、自包含 HTML 或 PDF。
 
-可以从 **帮助 → 打开欢迎指南** 查看完整的功能介绍。新建文档库时会同时创建英文和中文欢迎文档，完整内容见[英文指南](resources/welcome.md)和[中文指南](resources/welcome.zh-CN.md)。
-
-**设置 → 主题** 仅内置 **yuluo**。可以编辑、复制或导入 CSS；存在自定义 CSS 时，会显示样式切换菜单。旧版 Craft、Feishu、Notion、Obsidian 和 Docusaurus 预设会归并到 yuluo；已有的同名用户 CSS 优先加载，文件内容保持不变。下次正常保存设置时会保存归并后的选择。重置主题会保留自定义文件；修改过的 `yuluo.css` 会另存为未占用的 `yuluo-custom-N.css`，然后恢复内置样式。Docusaurus 和 MDX 语法支持不受影响。
+从 **帮助 → 打开欢迎指南** 查看编辑器介绍，也可阅读[英文指南](resources/welcome.md)和[中文指南](resources/welcome.zh-CN.md)。编辑器、主题和快捷键均可在 **设置** 中调整。
 
 ## 快速开始
 
@@ -46,7 +42,7 @@ Mory 是一款原生 macOS 写作应用，支持 Markdown、MDX 和飞书/Lark D
 
 [发布说明](https://github.com/yuluo-yx/mory/releases/tag/v0.0.3) · [SHA-256 校验和](https://github.com/yuluo-yx/mory/releases/download/v0.0.3/SHA256SUMS)。打开 DMG，将 Mory 拖入“应用程序”。安装包使用 ad-hoc 签名，尚未经过 Apple 公证；如果 macOS 拦截首次启动，可在 **系统设置 → 隐私与安全性** 中确认“仍要打开”。
 
-打开 Mory 创建本地文档库，然后从英文或中文欢迎指南开始。完整的编辑器介绍和语法参考见 [`resources/welcome.md`](resources/welcome.md) 与 [`resources/welcome.zh-CN.md`](resources/welcome.zh-CN.md)。
+打开 Mory 即可创建本地文档库。字体及美术资源声明见 [THIRD_PARTY.md](THIRD_PARTY.md)。
 
 ## 文档库与恢复
 
@@ -62,15 +58,13 @@ Mory 是一款原生 macOS 写作应用，支持 Markdown、MDX 和飞书/Lark D
 | `plugins/` | 本地 JavaScript 转换插件 |
 | `settings.json` | 偏好设置和快捷键 |
 
-本地资源文件名使用内容的 SHA-256 摘要前缀，因此文档会保存类似 `assets/6cbb4a435a30b8abe4bb23b1.png` 的稳定相对路径。单个插入或导入的资源最大为 32 MiB。
+导入文稿保留原文件名，新文稿使用标题命名；重名时自动添加序号。侧栏文件夹是逻辑分组，「在访达中打开存储文件夹」会打开共享的 `notes/` 目录。
 
-开始编辑后，Mory 会自动保存，并大约每 750 ms 使用原子替换写入变更内容。保存失败时，Mory 会保留编辑缓冲区，并在可能的情况下写入恢复内容；下次启动时会提供恢复选项。
+本地图片和附件复制到 `assets/`，保留原始内容，**每个文件上限为 128 MiB**；远程图片下载上限为 **32 MiB**。Markdown/XML 导出会复制本地资源，HTML/PDF 导出会嵌入本地图片；远程 URL 不会被下载。
 
-**设置 → 编辑器 → 文档历史** 独立控制版本历史和自动保存。默认每 5 分钟创建一次检查点，保留 30 天、最多 100 个版本，每篇文档最多占用 64 MiB。文档保存或打开历史时，旧版本会合并并清理。关闭历史后不会创建新快照或清理旧快照，但已有版本仍然保留。恢复历史版本前，Mory 会先为当前文档创建检查点。
+Mory 在编辑后自动保存，保存失败时提供恢复功能。**设置 → 编辑器 → 文档历史** 控制历史版本，默认每 5 分钟记录一次，保留 30 天、100 个版本，每篇文稿最多 64 MiB。删除的文件夹和文稿在回收站保留 30 天，外部原文件仍留在磁盘上。
 
-导入文档时，本地资源会复制到目标文档库，并改写相对路径。导出 Markdown 和 DocxXML 时，本地资源会复制到 `assets/` 目录；导出 HTML 和 PDF 时，本地图片会嵌入文件。远程 URL 会保持为远程地址，导出时不会下载。
-
-升级前请先备份完整文档库。已有 JSON 文档记录（包括历史版本、恢复内容和废纸篓记录）会自动转换为 Markdown 或 DocxXML 文件，保留源码和元数据；目标文件存在冲突时会停止迁移，不会覆盖。降级时，需要重新安装旧版应用，并恢复迁移前的文档库备份；仅替换应用无法撤销转换，也无法恢复已经清理的历史版本。
+从旧版本升级前，请备份完整文档库。旧版 JSON 记录和 ID 文件名会转换为可读文件名的 Markdown/XML 文件，保留内容和元数据；没有原文件名记录的旧导入文稿使用标题命名。撤销存储迁移时，需要同时恢复旧应用和迁移前的文档库备份。
 
 ## 插件
 
@@ -87,22 +81,9 @@ export function transform({ title, markdown }) {
 
 插件接收 `{ title, markdown }`，可以返回 `{ markdown }`、`{ message }` 或两者。插件在隔离的 `moejs` 运行时中执行。每个源文件最大为 1 MiB，每次运行最长 750 ms，内存上限为 32 MiB，并且不能访问文件、网络、环境变量或 Node.js API。
 
-## 性能概览
+## 性能
 
-Mory 的性能优势是 **输入处理轻量**，以及 **大表格按需渲染、全部行可读**。在 Apple M4、24 GiB 内存的机器上，实测 1 MiB 结构化文档和混合格式文档的输入处理耗时中位数均低于 **0.05 ms**；三类大表格的行跳转、渲染与 PNG 截图合计耗时约为 **35–37 ms**。
-
-<p align="center">
-  <img src="benchmark/performance-overview.svg" alt="Mory Markdown 性能概览">
-</p>
-
-| 写作场景 | 输入处理 | 输入＋渲染＋PNG 截图 | 保存，包含序列化 |
-| --- | ---: | ---: | ---: |
-| 结构化文档，1 MiB | **0.044 ms** | 55.88 ms | 88.56 ms |
-| 混合格式文档，1 MiB | **0.043 ms** | 53.53 ms | 61.99 ms |
-
-大表格阅读测试覆盖 **401–3,206 行**，加载后 RSS 约为 **201–238 MiB**，可以阅读全部行，并提供固定表头和单元格自动换行。编辑测试共完成 36 次独立运行、1,080 次编辑；表格阅读测试共完成 18 次运行、162 次行跳转验证。以上数据为三轮运行的中位数；输入处理不含渲染，截图测量包含 PNG 编码，两者均不等同于按键到屏幕显示的延迟。
-
-对照参考版本为 **ArcMD v0.0.11** 和 **Quiet.md v0.1.11**。Mory 的实测优势及对比范围见 [性能对比说明](benchmark/performance-comparison.md)，不同测试流程的数据不作速度倍数比较。完整结果与原始样本见 [编辑性能数据](benchmark/performance-report.md) 和 [大表格阅读数据](benchmark/large-table-performance-report.md)。
+编辑与大表格场景的实测数据、方法和适用范围见[性能对比](benchmark/performance-comparison.md)、[编辑性能报告](benchmark/performance-report.md)和[大表格阅读报告](benchmark/large-table-performance-report.md)。
 
 ## 从源码构建
 
@@ -123,6 +104,8 @@ mise exec -- make build ARCH=amd64  # Intel app, DMG, and checksum
 ```sh
 mise exec -- python3 scripts/performance.py
 ```
+
+`make check` 执行单元测试、静态检查、原生 E2E 和 90% 合并覆盖率检查，测试使用临时文档库。
 
 ## 许可证
 

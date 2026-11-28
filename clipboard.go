@@ -1,15 +1,15 @@
 package main
 
 import (
-	"crypto/sha256"
-	"fmt"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/egoist/mygo/transfer"
 	"github.com/yuluo-yx/mory/internal/blocks"
-	"github.com/yuluo-yx/mory/internal/library"
+	"github.com/yuluo-yx/mory/internal/document"
 )
 
 // macOS supplies a responder-chain fallback for ordinary text fields. Keeping
@@ -41,7 +41,7 @@ func (a *app) pasteFromMenu() {
 }
 
 func (a *app) attachFile(path string) {
-	data, err := os.ReadFile(path)
+	data, err := document.ReadAsset(path)
 	if a.fail(err) {
 		return
 	}
@@ -51,6 +51,19 @@ func (a *app) attachFile(path string) {
 func (a *app) insertAsset(data []byte, name string) {
 	if n := a.storeAsset(data, name); n != nil {
 		a.insertNodes(n)
+		a.focusAttachments(n)
+	}
+}
+
+// A native file dialog releases the old text field. Select the inserted asset
+// in the document so immediate Undo/Delete works without an extra mouse click.
+func (a *app) focusAttachments(nodes ...*blocks.Node) {
+	if s := a.blockEditor; s != nil {
+		s.chosen.Clear()
+		for _, n := range nodes {
+			s.chosen.Add(n.ID)
+		}
+		s.attachmentFocus = true
 	}
 }
 
@@ -60,20 +73,14 @@ func (a *app) storeAsset(data []byte, name string) *blocks.Node {
 	if a.current == nil {
 		return nil
 	}
-	if len(data) > 32<<20 {
-		a.fail(fmt.Errorf("attachment exceeds 32 MiB"))
-		return nil
-	}
-	sum := sha256.Sum256(data)
 	ext := strings.ToLower(filepath.Ext(name))
-	dest := fmt.Sprintf("%x%s", sum[:12], ext)
-	dir := filepath.Join(a.assetRoot(), "assets")
-	if a.fail(os.MkdirAll(dir, 0o755)) || a.fail(library.AtomicWrite(filepath.Join(dir, dest), data)) {
+	dest, err := document.StoreAsset(data, name, a.assetRoot())
+	if a.fail(err) {
 		return nil
 	}
 	n := blocks.New("source")
 	n.Set("name", name)
-	n.Set("href", "assets/"+dest)
+	n.Set("href", dest)
 	switch ext {
 	case ".png", ".jpeg", ".jpg", ".gif", ".webp":
 		n.Kind = "img"
@@ -118,7 +125,7 @@ func (a *app) pasteObjects(data transfer.Data) bool {
 	if files, err := data.Files(); err == nil && len(files) > 0 {
 		var nodes []*blocks.Node
 		for _, file := range files {
-			data, err := os.ReadFile(file)
+			data, err := document.ReadAsset(file)
 			if a.fail(err) {
 				return true
 			}
@@ -129,6 +136,7 @@ func (a *app) pasteObjects(data transfer.Data) bool {
 			nodes = append(nodes, n)
 		}
 		a.insertNodes(nodes...)
+		a.focusAttachments(nodes...)
 		return true
 	}
 	if png, err := data.Read(transfer.PNG); err == nil && len(png) > 0 {
@@ -144,4 +152,32 @@ func (a *app) pasteHTML(source string) {
 		return
 	}
 	a.insertNodes(nodes.Children...)
+}
+
+// Match the active diagnostic so a dismissed attachment error cannot change
+// the presentation of an unrelated error assigned by another editor action.
+func (a *app) attachmentProblemText() string {
+	e := a.attachmentProblem
+	if e == nil || a.problem != e.Error() {
+		return ""
+	}
+	switch e.Reason {
+	case "too-large":
+		return a.trf("“%s” is %.1f MiB. The limit per attachment is 128 MiB. Resize or compress the file, then try again. The original file has not been changed.", e.Name, float64(e.Size)/(1<<20))
+	case "not-file":
+		return a.trf("“%s” is not a regular file. Choose an image or attachment file instead of a folder.", e.Name)
+	case "write":
+		if errors.Is(e, syscall.ENOSPC) {
+			return a.trf("There is not enough disk space to save “%s”. Free up space on the document's disk, then try again.", e.Name)
+		}
+		return a.trf("Could not save “%s” to the document's assets folder. Check available disk space and folder write permissions, then try again.", e.Name)
+	default:
+		if errors.Is(e, os.ErrNotExist) {
+			return a.trf("“%s” could not be found. It may have been moved or deleted. Select the file again from its current location.", e.Name)
+		}
+		if errors.Is(e, os.ErrPermission) {
+			return a.trf("Mory cannot read “%s”. Check the file's access permissions in Finder, then select it again.", e.Name)
+		}
+		return a.trf("Could not read “%s”. Make sure the file is available on this Mac and can be opened in Finder, then select it again.", e.Name)
+	}
 }

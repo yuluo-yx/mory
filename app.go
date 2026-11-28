@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -86,6 +87,13 @@ type app struct {
 	missingExternal                                                                 string
 	dirtySince                                                                      time.Time
 	status, problem                                                                 string
+	attachmentProblem                                                               *document.AssetError
+	pageScroll                                                                      ui.ScrollState
+	pageHeaderHeight, pageHeaderOffset                                              float32
+	pageViewport                                                                    ui.Rect
+	coverPickerOpen                                                                 bool
+	coverPickerID, coverPickerTab                                                   string
+	coverThumbnails                                                                 map[string]*ui.Bitmap
 	outline, focus, sidebarHidden                                                   bool
 	preview                                                                         markdown.Options
 	previewText                                                                     string
@@ -218,7 +226,15 @@ func (a *app) reloadPlugins() {
 func (a *app) fail(err error) bool {
 	if err != nil {
 		a.problem = err.Error()
-		a.status = "Changes not saved"
+		a.attachmentProblem = nil
+		if errors.As(err, &a.attachmentProblem) {
+			// Attachment failures occur before document edits and do not imply
+			// that the user's existing text failed to save.
+			a.status = "Attachment not added"
+			a.problem = a.attachmentProblem.Error()
+		} else {
+			a.status = "Changes not saved"
+		}
 		return true
 	}
 	return false
@@ -359,6 +375,9 @@ func (a *app) loadEditors() {
 	}
 	n := a.current
 	a.blockEditor = nil
+	a.pageScroll = ui.ScrollState{}
+	a.pageHeaderHeight, a.pageHeaderOffset = 0, 0
+	a.coverPickerOpen = false
 	a.bodyFocus = false
 	a.modeCycleFocus = false
 	a.bodyInput = ""

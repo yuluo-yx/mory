@@ -192,15 +192,7 @@ func (a *app) chooseAttachment() {
 			return
 		}
 		path := paths[0]
-		info, err := os.Stat(path)
-		if err == nil && info.Size() > 32<<20 {
-			err = fmt.Errorf("attachment exceeds 32 MiB")
-		}
-		if err != nil {
-			a.win.Update(func() { a.fail(err) })
-			return
-		}
-		b, err := os.ReadFile(path)
+		b, err := document.ReadAsset(path)
 		if err != nil {
 			a.win.Update(func() { a.fail(err) })
 			return

@@ -14,6 +14,7 @@ import (
 	"github.com/egoist/mygo/transfer"
 	"github.com/egoist/mygo/ui"
 	"github.com/yuluo-yx/mory/internal/blocks"
+	"github.com/yuluo-yx/mory/internal/document"
 )
 
 func xmlApp(t *testing.T, source string) (*app, *ui.Tester) {
@@ -302,7 +303,7 @@ func TestImagesCoverInlineAndExport(t *testing.T) {
 	if !strings.Contains(a.current.Source, "video") {
 		t.Fatal("video insertion")
 	}
-	a.insertAsset(make([]byte, 33<<20), "large.bin")
+	a.insertAsset(make([]byte, document.MaxAssetBytes+1), "large.bin")
 	if a.problem == "" {
 		t.Fatal("oversize asset")
 	}

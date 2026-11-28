@@ -127,6 +127,12 @@ func (a *app) richDocumentEditor(c *ui.Context) {
 			Label: a.tr("Document editor"), Placeholder: placeholder, Font: font,
 			OnLink: a.openLink, OnLinkCommand: func() { a.linkURL = doc.Formatting().Link; a.linkOpen = true },
 			Theme: richTheme,
+			Space: func(paragraph int) float32 {
+				if paragraph == 0 {
+					return a.pageHeaderSpace()
+				}
+				return 0
+			},
 			OnKey: func(key ui.Key, mods ui.Modifiers) bool {
 				if isBlockDeleteKey(key, mods) && exitEmptyRichBlock(doc) {
 					return true

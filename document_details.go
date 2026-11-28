@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -74,7 +73,7 @@ func (a *app) syncMetadata() {
 	a.markDirty()
 }
 
-const documentCoverHeight, documentCoverBottomGap float32 = 180, 16
+const documentCoverHeight, documentCoverBottomGap float32 = 216, 0
 
 func (a *app) sourceEditor(c *ui.Context) ui.Element {
 	ed := editor.View(c.Key(a.current.ID), a.code).Label(a.tr("Source editor"))
@@ -98,8 +97,7 @@ func (a *app) sourceEditor(c *ui.Context) ui.Element {
 	return ed
 }
 
-func (a *app) documentHeader(c *ui.Context) {
-	t := c.Theme()
+func (a *app) documentCover(c *ui.Context) {
 	n := a.current
 	if n == nil {
 		return
@@ -109,7 +107,7 @@ func (a *app) documentHeader(c *ui.Context) {
 	if n.Cover != "" {
 		bitmap := a.loadAssetBitmap(n.Cover)
 		if bitmap != nil {
-			handle := ui.Box(c).FillWidth().Height(documentCoverHeight).Radius(10).Clip().Label(a.tr("Document cover")).Margin(0, 0, documentCoverBottomGap)
+			handle := ui.Box(c).FillWidth().Height(documentCoverHeight).Clip().Label(a.tr("Document cover"))
 			handle.Draw(func(p *ui.Painter, r ui.Rect) {
 				bw, bh := bitmap.Size()
 				w, h := float32(bw), float32(bh)
@@ -118,7 +116,7 @@ func (a *app) documentHeader(c *ui.Context) {
 				}
 				scale := max(r.W/w, r.H/h)
 				dw, dh := w*scale, h*scale
-				p.Clip(r, 10, func() {
+				p.Clip(r, 0, func() {
 					p.Image(bitmap, ui.Rect{X: r.X + (r.W-dw)*(n.CoverX+1)/2, Y: r.Y + (r.H-dh)*(n.CoverY+1)/2, W: dw, H: dh}, ui.Cover)
 				})
 			})
@@ -128,42 +126,41 @@ func (a *app) documentHeader(c *ui.Context) {
 				a.syncMetadata()
 			}
 			handle.Children(func() {
-				if handle.Hovered() {
-					ui.Row(c).Fill().Padding(10, 12).Justify(ui.End).AlignItems(ui.Start).Gap(6).Children(func() {
-						btnChange := ghostButton(c, "").Label(a.tr("Choose cover…")).Tooltip(a.tr("Change cover")).Padding(5, 10).Radius(6).Background(ui.Hex("#000000").Alpha(0.65))
-						btnChange.Children(func() {
-							ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-								ui.Icon(c, iconImage()).Width(13).Height(13).TextColor(ui.Hex("#ffffff"))
-								ui.Text(c, a.tr("Change cover")).FontSize(12).TextColor(ui.Hex("#ffffff"))
-							})
-						})
-						if btnChange.Clicked() {
-							a.chooseCover(n.ID)
-						}
-
-						btnRemove := ghostButton(c, "").Label(a.tr("Remove cover")).Tooltip(a.tr("Remove cover")).Padding(5, 8).Radius(6).Background(ui.Hex("#000000").Alpha(0.65))
-						btnRemove.Children(func() {
-							ui.Icon(c, iconTrash()).Width(13).Height(13).TextColor(ui.Hex("#ffffff"))
-						})
-						if btnRemove.Clicked() {
-							n.Cover = ""
-							a.syncMetadata()
-						}
-					})
-				} else {
-					// Invisible accessibility bridges when not hovered
-					ui.Row(c).Height(1).Width(1).Opacity(0).Background(ui.Transparent).Border(0, ui.Transparent).Padding(0).Children(func() {
-						if b := ui.Button(c, "").Label(a.tr("Choose cover…")).Height(1).Width(1).Background(ui.Transparent).Border(0, ui.Transparent).Padding(0); b.Clicked() {
-							a.chooseCover(n.ID)
-						}
-						if b := ui.Button(c, "").Label(a.tr("Remove cover")).Height(1).Width(1).Background(ui.Transparent).Border(0, ui.Transparent).Padding(0); b.Clicked() {
-							n.Cover = ""
-							a.syncMetadata()
-						}
-					})
+				controls := ui.Row(c).Fill().Padding(10, 12).Justify(ui.End).AlignItems(ui.Start).Gap(6).PassThrough()
+				if !handle.Hovered() && !controls.Hovered() {
+					controls.Opacity(0)
 				}
+				controls.Children(func() {
+					btnChange := ghostButton(c, "").Label(a.tr("Choose cover…")).Tooltip(a.tr("Change cover")).Padding(5, 10).Radius(6).Background(ui.Hex("#000000").Alpha(0.65))
+					btnChange.Children(func() {
+						ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+							ui.Icon(c, iconImage()).Width(13).Height(13).TextColor(ui.Hex("#ffffff"))
+							ui.Text(c, a.tr("Change cover")).FontSize(12).TextColor(ui.Hex("#ffffff"))
+						})
+					})
+					if btnChange.Clicked() {
+						a.openCoverPicker(n.ID)
+					}
+
+					btnRemove := ghostButton(c, "").Label(a.tr("Remove cover")).Tooltip(a.tr("Remove cover")).Padding(5, 8).Radius(6).Background(ui.Hex("#000000").Alpha(0.65))
+					btnRemove.Children(func() {
+						ui.Icon(c, iconTrash()).Width(13).Height(13).TextColor(ui.Hex("#ffffff"))
+					})
+					if btnRemove.Clicked() {
+						n.Cover = ""
+						a.syncMetadata()
+					}
+				})
 			})
 		}
+	}
+}
+
+func (a *app) documentHeader(c *ui.Context) {
+	t := c.Theme()
+	n := a.current
+	if n == nil {
+		return
 	}
 
 	// 2. Hover / Action Bar above title (Add icon / Add cover)
@@ -190,7 +187,7 @@ func (a *app) documentHeader(c *ui.Context) {
 				})
 			})
 			if btnAddCover.Clicked() {
-				a.chooseCover(n.ID)
+				a.openCoverPicker(n.ID)
 			}
 		}
 	})
@@ -334,7 +331,7 @@ func (a *app) documentControls(c *ui.Context) {
 	// 3. Cover & History Actions
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 		if ui.Button(c, a.tr("Choose cover…")).Padding(5, 10).Radius(6).Clicked() {
-			a.chooseCover(n.ID)
+			a.openCoverPicker(n.ID)
 		}
 		if n.Cover != "" && ui.Button(c, a.tr("Remove cover")).Padding(5, 10).Radius(6).Clicked() {
 			n.Cover = ""
@@ -366,24 +363,39 @@ func (a *app) chooseCover(id string) {
 	options := mygo.OpenDialogOptions{Parent: a.win, Title: a.tr("Choose document cover"), Filters: []mygo.FileFilter{{Name: "Images", Extensions: []string{"png", "jpg", "jpeg", "webp"}}}}
 	go func() {
 		paths, err := openDialog(options)
+		var data []byte
+		if err == nil && len(paths) > 0 {
+			data, err = document.ReadAsset(paths[0])
+		}
 		a.win.Update(func() {
 			if a.fail(err) || len(paths) == 0 {
 				return
 			}
-			path := paths[0]
-			source, err := document.CopyAssets("![Cover](<"+filepath.Base(path)+">)", "markdown", filepath.Dir(path), a.assetRoot())
-			if a.fail(err) {
-				return
-			}
-			start, end := strings.Index(source, "("), strings.LastIndex(source, ")")
-			if n := a.lib.Get(id); n != nil && start >= 0 && end > start {
-				n.Cover = source[start+1 : end]
-				if n == a.current {
-					a.syncMetadata()
-				} else {
-					a.fail(a.lib.Save(n))
-				}
-			}
+			a.setCoverAsset(id, data, filepath.Base(paths[0]))
 		})
 	}()
+}
+
+func (a *app) setCoverAsset(id string, data []byte, name string) {
+	n := a.lib.Get(id)
+	if n == nil {
+		return
+	}
+	// A file dialog can outlive navigation. Store against its original document,
+	// not whichever document happens to be open when the dialog completes.
+	root := a.lib.Dir
+	if n.External != "" {
+		root = filepath.Dir(n.External)
+	}
+	path, err := document.StoreAsset(data, name, root)
+	if a.fail(err) {
+		return
+	}
+	n.Cover = path
+	n.CoverX, n.CoverY = 0, 0
+	if n == a.current {
+		a.syncMetadata()
+	} else {
+		a.fail(a.lib.Save(n))
+	}
 }

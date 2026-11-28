@@ -1104,7 +1104,13 @@ func (a *app) editorView(c *ui.Context) {
 	// same outline list twice (first on the left, then again on the right).
 	outlineSide := a.outlineSide()
 	// Find-bar visibility must not replace the editor's identity or keyboard focus.
-	ui.Row(c.Key("document-content")).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Justify(a.pageAlignment()).Children(func() {
+	a.updatePageHeaderOffset(c)
+	content := ui.Row(c.Key("document-content")).Grow(1).MinHeight(0).Clip().AlignItems(ui.Stretch).Justify(a.pageAlignment())
+	content.Draw(func(_ *ui.Painter, r ui.Rect) { a.pageViewport = r })
+	content.Children(func() {
+		// Process the title's native input before the body consumes its focus
+		// handoff. ZIndex keeps the floating header painted above the editor.
+		a.pageHeaderOverlay(c)
 		// Move the outline with the page so wide windows keep navigation nearby.
 		group := ui.Row(c).Grow(1).MinWidth(0).MinHeight(0).AlignItems(ui.Stretch)
 		if width := a.documentPageWidth(); width > 0 && a.mode != "Split" {
@@ -1119,12 +1125,14 @@ func (a *app) editorView(c *ui.Context) {
 			}
 			// Scope the page theme through painting as well as widget creation,
 			// so native text editors resolve the same scrollbar style they use.
-			column := ui.Themed(c, a.pageTheme(c.Theme())).Grow(1).MinWidth(0).Padding(32, 40, 16)
+			column := ui.Themed(c, a.pageTheme(c.Theme())).Grow(1).MinWidth(0).Padding(0, 40, 16)
 			if width := a.documentPageWidth(); width > 0 && a.mode != "Split" {
 				column.MaxWidth(width)
 			}
 			column.Children(func() {
-				a.documentHeader(c)
+				if a.mode == "Source" || a.mode == "Split" {
+					ui.Box(c).Height(max(0, a.pageHeaderSpace()-a.pageHeaderOffset)).Shrink(0)
+				}
 				switch a.mode {
 				case "Write":
 					if a.blockEditor != nil {
@@ -1147,7 +1155,7 @@ func (a *app) editorView(c *ui.Context) {
 						a.blockView(c, true)
 					} else {
 						a.preview.Theme = &markdown.Theme{CodeFont: a.writingFont("pre").Family, ListIndent: a.docTheme.ListIndent(a.writingFont(".page")) / c.Theme().FontSize}
-						documentScroll(c).Children(func() { markdown.View(c, a.markdownSource(), &a.preview).FillWidth() })
+						documentScroll(c).TrackScroll(&a.pageScroll).Padding(a.pageHeaderSpace(), documentScrollGutter, 0, 0).Children(func() { markdown.View(c, a.markdownSource(), &a.preview).FillWidth() })
 					}
 				}
 			})
@@ -1253,10 +1261,11 @@ func (a *app) toolbar(c *ui.Context) {
 func (a *app) outlineView(c *ui.Context) {
 	t := c.Theme()
 	// Start beside the document title, below the cover and its action row.
-	top := float32(60)
+	top := float32(52)
 	if a.current != nil && a.current.Cover != "" && a.loadAssetBitmap(a.current.Cover) != nil {
 		top += documentCoverHeight + documentCoverBottomGap
 	}
+	top = max(16, top-a.pageHeaderOffset)
 	ui.Column(c).Width(a.outlineWidth()).Shrink(0).MinHeight(0).Padding(top, 12, 16).Gap(4).Children(func() {
 		ui.Row(c).AlignItems(ui.Center).Gap(4).Children(func() {
 			ui.Text(c, a.tr("ON THIS PAGE")).FontSize(11).TextColor(t.TextMuted).Grow(1)

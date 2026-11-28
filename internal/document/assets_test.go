@@ -2,6 +2,7 @@ package document
 
 import (
 	"bytes"
+	"errors"
 	"image"
 	"image/png"
 	"os"
@@ -16,6 +17,9 @@ func TestAssetImportExport(t *testing.T) {
 	if err := png.Encode(&data, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
 		t.Fatal(err)
 	}
+	// Exercise the former 32 MiB limit through import, deduplication, export
+	// and embedding in the same resource round trip.
+	data.Write(bytes.Repeat([]byte("x"), 33<<20))
 	if err := os.WriteFile(filepath.Join(from, "hello world.png"), data.Bytes(), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -82,5 +86,51 @@ func TestTaskXML(t *testing.T) {
 	_, out, err := FromXML(source)
 	if err != nil || !strings.Contains(out, "- [x] Done") || !strings.Contains(out, "```go") {
 		t.Fatal(out, err)
+	}
+}
+
+func TestAssetFailureReasons(t *testing.T) {
+	dir := t.TempDir()
+	large := filepath.Join(dir, "large.png")
+	f, err := os.Create(large)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Truncate(MaxAssetBytes + 1); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	for _, test := range []struct{ path, reason string }{{large, "too-large"}, {dir, "not-file"}, {filepath.Join(dir, "missing.png"), "read"}} {
+		_, err := ReadAsset(test.path)
+		var detail *AssetError
+		if !errors.As(err, &detail) || detail.Reason != test.reason || detail.Error() == "" {
+			t.Fatal("missing actionable error", err)
+		}
+		if test.reason == "too-large" && detail.Size != MaxAssetBytes+1 {
+			t.Fatal("incorrect reported size")
+		}
+	}
+	_, err = CopyAssets("![Large](large.png)", "markdown", dir, t.TempDir())
+	var detail *AssetError
+	if !errors.As(err, &detail) || detail.Reason != "too-large" {
+		t.Fatal("import did not share the size limit", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "assets"), []byte("blocked"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = StoreAsset([]byte("image"), "image.png", dir)
+	if !errors.As(err, &detail) || detail.Reason != "write" || errors.Unwrap(detail) == nil {
+		t.Fatal("storage error lost its cause", err)
+	}
+	to := t.TempDir()
+	path, err := StoreAsset([]byte("original"), "image.png", to)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(to, path), []byte("different"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := StoreAsset([]byte("original"), "image.png", to); !errors.As(err, &detail) || detail.Reason != "write" {
+		t.Fatal("asset collision was overwritten", err)
 	}
 }

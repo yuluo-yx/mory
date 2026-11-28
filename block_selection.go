@@ -190,7 +190,13 @@ func (a *app) focusBlock(id string, offset int) {
 	s.revealHeadingParents(top)
 	for i, n := range s.visibleBlocks() {
 		if n.ID == top {
-			s.list.ScrollTo(i, ui.Center)
+			if a.mode != "Split" && a.pageHeaderOffset < a.pageHeaderSpace() {
+				// A visible heading restored by undo should not recenter the
+				// page and unexpectedly scroll its cover/title out of view.
+				s.list.ScrollIntoView(i)
+			} else {
+				s.list.ScrollTo(i, ui.Center)
+			}
 			break
 		}
 	}

@@ -14,7 +14,7 @@ import struct
 import zlib
 
 from editor_e2e import exercise_editor
-from clipboard_e2e import exercise_clipboard
+from clipboard_e2e import exercise_clipboard, exercise_attachments
 from workspace_e2e import exercise_workspace
 from writing_e2e import exercise_writing
 from table_e2e import exercise_tables
@@ -176,6 +176,8 @@ def exercise(binary, root, suite="all"):
             exercise_editor(call, nodes, act, key, root, fixtures, native_space)
         if suite in {"all", "table"}:
             exercise_tables(call, nodes, act, key, root, fixtures)
+        if suite == "attachment":
+            exercise_attachments(call, nodes, act, key, root, fixtures)
         if suite != "all":
             call("menu", path=["Mory", "Quit Mory"])
             process.wait(timeout=10)
@@ -313,6 +315,7 @@ def exercise(binary, root, suite="all"):
         fenced_parts = code_note["source"].split("```")
         assert len(fenced_parts) == 3 and "package main" in fenced_parts[1] and "Mouse paragraph" in fenced_parts[2] and "Outside code" in fenced_parts[2], code_note["source"]
         exercise_clipboard(call, nodes, act, key, root, fixtures)
+        exercise_attachments(call, nodes, act, key, root, fixtures)
         exercise_editor(call, nodes, act, key, root, fixtures, native_space)
         act("All notes")
         act("Grid view")
@@ -369,12 +372,15 @@ def exercise(binary, root, suite="all"):
         act("Apply stylesheet")
         act("Document actions")
         act("Choose cover…")
+        act("Upload")
+        act("Choose local image…")
         deadline = time.monotonic() + 5
         while not any(n.get("label") == "Remove cover" for n in nodes()):
             if time.monotonic() > deadline:
                 raise AssertionError("Cover import did not finish")
             time.sleep(0.05)
         act("Remove cover")
+        act("Document actions")
         act("Rename")
         call("menu", path=["File", "Save"])
         call("menu", path=["File", "Open local file"])
@@ -497,7 +503,7 @@ def exercise(binary, root, suite="all"):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("binary", type=Path)
-    parser.add_argument("--suite", choices=["all", "workspace", "writing", "editor", "table"], default="all")
+    parser.add_argument("--suite", choices=["all", "workspace", "writing", "editor", "table", "attachment"], default="all")
     args = parser.parse_args()
     binary = args.binary.resolve()
     output = Path(".test-output")

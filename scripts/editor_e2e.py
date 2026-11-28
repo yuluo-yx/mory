@@ -183,13 +183,17 @@ def exercise_editor(call, nodes, act, key, root, fixtures, native_space):
                 pointer(control(mode))
             box = field("Open destination and preserve this text")["bounds"]
             text_x = box["x"] + (26 if not structured and mode == "Write" else 10)
-            call("input", events=[dict(type="pointerMove", x=text_x, y=box["y"]+12)])
+            text_y = box["y"] + 12
+            if not structured and mode == "Write":
+                title_area = control("Document title area")["bounds"]
+                text_y = title_area["y"] + title_area["height"] + 12
+            call("input", events=[dict(type="pointerMove", x=text_x, y=text_y)])
             assert control("Document title")["value"] == title, "Ordinary hover navigated"
             # Control over blank space must not use nearest-caret hit testing.
             call("input", events=[dict(type="pointerMove", x=box["x"]+box["width"]-5,
-                                        y=box["y"]+12, mods=["ctrl"])])
+                                        y=text_y, mods=["ctrl"])])
             assert control("Document title")["value"] == title, "Blank space opened nearest link"
-            call("input", events=[dict(type="pointerMove", x=text_x, y=box["y"]+12, mods=["ctrl"])])
+            call("input", events=[dict(type="pointerMove", x=text_x, y=text_y, mods=["ctrl"])])
             wait("Control-hover did not navigate", lambda tree: any(n.get("label") == "Document title"
                  and n.get("value") == target_title for n in tree))
             field("Destination body")
@@ -208,12 +212,16 @@ def exercise_editor(call, nodes, act, key, root, fixtures, native_space):
             pointer(control(mode))
         box = field("Open website and keep editing")["bounds"]
         text_x = box["x"] + (26 if mode == "Write" else 10)
+        text_y = box["y"] + 12
+        if mode == "Write":
+            title_area = control("Document title area")["bounds"]
+            text_y = title_area["y"] + title_area["height"] + 12
         before = opened_links.read_text().splitlines() if opened_links.exists() else []
-        call("input", events=[dict(type="pointerMove", x=text_x, y=box["y"]+12, mods=["ctrl"])])
+        call("input", events=[dict(type="pointerMove", x=text_x, y=text_y, mods=["ctrl"])])
         wait("External Ctrl hover did not open URL", lambda tree: opened_links.exists()
              and opened_links.read_text().splitlines() == before + [destination])
         for _ in range(3):
-            call("input", events=[dict(type="pointerMove", x=text_x+2, y=box["y"]+12, mods=["ctrl"])])
+            call("input", events=[dict(type="pointerMove", x=text_x+2, y=text_y, mods=["ctrl"])])
         assert opened_links.read_text().splitlines() == before + [destination], "Hover opened duplicate browser tabs"
         call("input", events=[dict(type="pointerMove", x=box["x"]+10, y=box["y"]+12)])
         assert saved(title)["source"] == original
@@ -959,6 +967,7 @@ def exercise_editor(call, nodes, act, key, root, fixtures, native_space):
             wait("Title Enter did not hand typing to the body", lambda tree: any(
                 n.get("label") != "Document title" and n.get("value", "").rstrip("\n") == expected
                 and focused(n) for n in tree))
+            assert control("Document title")["value"] == title, ("Rapid Enter changed title", title, control("Document title"))
             note = saved(title)
             assert note["title"] == title and expected in note["source"], note
             reopen(title)

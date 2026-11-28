@@ -41,10 +41,14 @@ func TestControlHoverOpensDocumentLinkWithoutEditing(t *testing.T) {
 					saveImage(t, tt, filepath.Join(dir, "hyperlink-color.png"))
 				}
 				x := r.X + 10
+				y := r.Y + 10
 				if !structured && mode == "Write" {
 					x += documentScrollGutter
+					// The native editor includes the scrolling title space above
+					// its first paragraph; hover the actual link's line box.
+					y = r.Y + a.doc.VisibleParagraphs()[0].Top + 10
 				}
-				tt.Move(x, r.Y+10)
+				tt.Move(x, y)
 				tt.Frame()
 				if a.current != original {
 					t.Fatal("ordinary hover opened a link")

@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
+	"image/png"
 	"math"
 	"os"
 	"path/filepath"
@@ -57,7 +60,7 @@ func TestDocumentPagePlacement(t *testing.T) {
 					} else if position == "Right" {
 						want = right - pageWidth/2
 					}
-					if !ok || !coverOK || math.Abs(float64(title.X+title.W/2-want)) > 1 || math.Abs(float64(banner.X+banner.W/2-want)) > 1 {
+					if !ok || !coverOK || math.Abs(float64(title.X+title.W/2-want)) > 1 || math.Abs(float64(banner.X-240)) > 1 || math.Abs(float64(banner.W-2320)) > 1 {
 						t.Fatalf("page alignment %s/%s/%s/%s: title=%+v cover=%+v expected center=%v", outline, mode, width, position, title, banner, want)
 					}
 					if title.X < left || title.X+title.W > right {
@@ -278,5 +281,127 @@ func TestOutlineRenderedTitlesAndWrapping(t *testing.T) {
 		if a.current.Source != source {
 			t.Fatal("list layout changed the source")
 		}
+	}
+}
+
+func TestCoverGalleryPersistenceAndPortability(t *testing.T) {
+	a := testApp(t)
+	a.createNote("Keep the authored content.", "Covers")
+	a.lib.Settings.Language = "zh-CN"
+	tt := ui.NewTester(a.view, 1280, 900)
+	click(t, tt, a.tr("Choose cover…"))
+	if !tt.HasText(a.tr("Built-in covers")) || !tt.HasText(a.tr("Mountains")) {
+		t.Fatal("cover gallery is missing its categories")
+	}
+	if dir := os.Getenv("MORY_TEST_IMAGES"); dir != "" {
+		saveImage(t, tt, filepath.Join(dir, "cover-gallery.png"))
+	}
+	click(t, tt, a.tr("Cover: ")+a.tr("Morning sky"))
+	if a.coverPickerOpen || a.current.Cover == "" || !a.save() {
+		t.Fatal("choosing a cover did not save it", a.problem)
+	}
+	first := a.current.Cover
+	data, err := os.ReadFile(filepath.Join(a.lib.Dir, first))
+	if err != nil {
+		t.Fatal(err)
+	}
+	config, err := png.DecodeConfig(bytes.NewReader(data))
+	if err != nil || config.Width != 1600 || config.Height != 480 {
+		t.Fatal("preset is not a portable full-size PNG", config, err)
+	}
+	stored, err := library.Open(a.lib.Dir)
+	if err != nil || stored.Get(a.current.ID).Cover != first {
+		t.Fatal("cover did not persist", err)
+	}
+	page, err := renderExport(a.current, a.lib.Dir)
+	if err != nil || !strings.Contains(page, "data:image/png;base64,") {
+		t.Fatal("export lost built-in artwork", err)
+	}
+	click(t, tt, a.tr("Choose cover…"))
+	click(t, tt, a.tr("Random cover"))
+	if a.current.Cover == "" || a.problem != "" {
+		t.Fatal("random cover failed")
+	}
+	click(t, tt, a.tr("Upload"))
+	if !tt.HasText(a.tr("Choose local image…")) {
+		t.Fatal("local upload is unavailable")
+	}
+	click(t, tt, a.tr("Remove cover"))
+	if a.current.Cover != "" || a.coverPickerOpen || a.current.Source != "Keep the authored content." {
+		t.Fatal("cover removal changed document content")
+	}
+	// Every built-in design must produce visible, nonuniform image content.
+	for _, preset := range coverPresets {
+		pixels := coverPixels(preset, 100, 32)
+		if pixels.RGBAAt(0, 0) == pixels.RGBAAt(99, 31) {
+			t.Fatal("flat or invalid preset", preset.name)
+		}
+	}
+}
+
+func TestCoverAndTitleScrollOutOfEditor(t *testing.T) {
+	for _, mode := range []string{"Write", "Blocks", "Read", "Source", "Split"} {
+		t.Run(mode, func(t *testing.T) {
+			a := testApp(t)
+			var source strings.Builder
+			for i := range 60 {
+				fmt.Fprintf(&source, "## Section %d\n\nParagraph %d, with enough text to keep a long document scrolling.\n\n", i, i)
+			}
+			a.createNote(source.String(), "A long document with a cover")
+			a.coverPickerID = a.current.ID
+			a.applyCoverPreset(15)
+			if mode == "Blocks" {
+				a.enableBlocks()
+			} else {
+				a.changeMode(mode)
+			}
+			tt := ui.NewTester(a.view, 1280, 900)
+			for range 4 {
+				tt.Frame()
+			}
+			cover, ok := tt.Find("Document cover")
+			if !ok || cover.X != 240 || cover.W != 1040 || cover.Y-a.pageViewport.Y > 1 {
+				t.Fatal("cover does not span the document area below the toolbar", cover, a.pageViewport)
+			}
+			label := "Document editor"
+			if mode == "Read" {
+				label = "Document preview"
+			} else if mode == "Blocks" {
+				label = "Document blocks"
+			} else if mode == "Source" || mode == "Split" {
+				label = "Source editor"
+			}
+			ed, ok := tt.Find(label)
+			if !ok {
+				t.Fatal("missing editor", label)
+			}
+			if dir := os.Getenv("MORY_TEST_IMAGES"); dir != "" {
+				saveImage(t, tt, filepath.Join(dir, "cover-top-"+mode+".png"))
+			}
+			tt.Scroll(ed.X+ed.W/2, min(ed.Y+ed.H-30, a.pageViewport.Y+a.pageHeaderSpace()+60), 0, 700)
+			for range 6 {
+				tt.Frame()
+			}
+			if a.pageHeaderOffset < a.pageHeaderSpace()-1 {
+				t.Fatal("cover and title stayed fixed while body scrolled", a.pageHeaderOffset, a.pageHeaderSpace())
+			}
+			ed, _ = tt.Find(label)
+			if ed.Y > a.pageViewport.Y+5 || ed.H < a.pageViewport.H-24 {
+				t.Fatal("editor did not reclaim header space", ed, a.pageViewport)
+			}
+			if dir := os.Getenv("MORY_TEST_IMAGES"); dir != "" {
+				saveImage(t, tt, filepath.Join(dir, "cover-scrolled-"+mode+".png"))
+			}
+			tt.Scroll(ed.X+ed.W/2, ed.Y+ed.H/2, 0, -100000)
+			for range 6 {
+				tt.Frame()
+			}
+			if a.pageHeaderOffset > 1 {
+				t.Fatal("scrolling to the start did not restore the cover", a.pageHeaderOffset)
+			}
+			if !a.save() || a.current.Source != source.String() {
+				t.Fatal("scrolling changed authored content", a.problem)
+			}
+		})
 	}
 }

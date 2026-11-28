@@ -218,19 +218,24 @@ func (a *app) overlays(c *ui.Context) {
 			}
 		})
 	})
+	a.coverGallery(c)
 	showError := a.problem != ""
 	ui.Modal(c, &showError, func() {
 		ui.Column(c).Width(440).Gap(16).Children(func() {
 			missing := a.current != nil && a.missingExternal == a.current.ID
+			attachment := a.attachmentProblemText()
 			if missing {
 				ui.Text(c, a.tr("Original file is missing")).FontSize(21).Bold()
 				ui.Text(c, a.tr("The file may have been moved or deleted. Mory still has its last loaded content. Retry after restoring the file, or close this document to continue.")).FillWidth()
 				ui.Text(c, a.current.External).FontSize(12).TextColor(c.Theme().TextMuted).FillWidth()
+			} else if attachment != "" {
+				ui.Text(c, a.tr("Could not add attachment")).FontSize(21).Bold()
+				ui.Text(c, attachment).FillWidth()
 			} else {
 				ui.Text(c, a.tr("Something needs your attention")).FontSize(21).Bold()
-				ui.Text(c, a.localizedProblem(a.problem))
+				ui.Text(c, a.localizedProblem(a.problem)).FillWidth()
 			}
-			if a.dirty {
+			if a.dirty && attachment == "" {
 				message := "Your edits are still in memory. Export a copy before closing."
 				if missing || a.saveFailed {
 					message = "Your edits are still in memory. Closing this document saves a recovery copy first."

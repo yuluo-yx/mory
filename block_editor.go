@@ -40,6 +40,7 @@ type blockSession struct {
 	emptyBody              *blocks.Node // View-only paragraph until the first edit.
 	fields                 map[string]*blockField
 	active, focus          string
+	attachmentFocus        bool
 	focusAt                int
 	list                   ui.ListState
 	split                  splitScrollState
@@ -514,6 +515,10 @@ func (a *app) blockView(c *ui.Context, readOnly bool) {
 func (a *app) blockListView(c *ui.Context, readOnly bool) {
 	s := a.blockEditor
 	a.captureBlocks()
+	// While the page header is visible, inserting a block above the first body
+	// row must grow the document downward instead of anchoring that row and
+	// scrolling the cover/title away. Deeper in the document keep row anchoring.
+	s.list.KeepOffset = a.mode != "Split" && a.pageScroll.Y < a.pageHeaderSpace()
 	s.fieldEpoch++
 	s.pruneFields(maxCachedBlockFields)
 	visible := s.visibleBlocks()
@@ -529,7 +534,7 @@ func (a *app) blockListView(c *ui.Context, readOnly bool) {
 			a.focusBlock(s.emptyBody.ID, 0)
 		}
 		s.chosen.Clear()
-		ui.Column(c.Key("empty-body")).Grow(1).FillWidth().Children(func() { a.blockText(c, s.emptyBody, false) })
+		ui.Scroll(c.Key("empty-body")).Grow(1).FillWidth().TrackScroll(&a.pageScroll).Padding(a.pageHeaderSpace(), 0, 0).Children(func() { a.blockText(c, s.emptyBody, false) })
 		return
 	}
 	s.list.Key = func(i int) any { return visible[i].ID }
@@ -589,6 +594,22 @@ func (a *app) blockListView(c *ui.Context, readOnly bool) {
 			a.blockNode(c, visible[i], readOnly, 0)
 		}
 	}).Grow(1).Gap(7).Label("Document blocks")
+	if !readOnly && s.attachmentFocus {
+		s.attachmentFocus = false
+		list.Focus()
+	}
+	if !readOnly && list.Focused() {
+		a.textFocused = true
+	}
+	if !readOnly {
+		list.HandleInput(func(event ui.InputEvent) bool {
+			if event.Kind == ui.InputCommand && (event.Text == "undo" || event.Text == "redo") {
+				a.blockUndo(event.Text == "redo")
+				return true
+			}
+			return false
+		})
+	}
 	if !readOnly && !s.foldPresentation && s.selectAllPending {
 		s.selectAllPending = false
 		a.selectAllBlocks()
@@ -634,7 +655,7 @@ func (a *app) blockListView(c *ui.Context, readOnly bool) {
 			}
 		})
 	} else {
-		list.Margin(0, -documentScrollGutter, 0, -headingGutterWidth).Padding(4, documentScrollGutter, 48, headingGutterWidth)
+		list.Margin(0, -documentScrollGutter, 0, -headingGutterWidth).Padding(a.pageHeaderSpace()+4, documentScrollGutter, 48, headingGutterWidth).TrackScroll(&a.pageScroll)
 	}
 	if !readOnly && !s.foldPresentation && s.chosen.Len() > 0 {
 		ui.Row(c).Gap(8).Padding(6).Children(func() {
