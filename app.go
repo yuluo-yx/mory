@@ -63,6 +63,8 @@ type app struct {
 	reminders                                                                       map[string][]reminder
 	notified                                                                        map[string]bool
 	filePreviews                                                                    map[string]*ui.Bitmap
+	homePreviews                                                                    map[string]*homePreview
+	homeImages                                                                      map[string]ui.ImageSource
 	lib                                                                             *library.Library
 	win                                                                             *mygo.Window
 	current                                                                         *library.Note

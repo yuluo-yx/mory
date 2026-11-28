@@ -531,4 +531,29 @@ def exercise_workspace(call, nodes, act, key, root, restart):
     assert not any(node.get("label") == "Open " + child for node in nodes())
     assert snapshot() == before, "Opening or relaunching changed document contents"
     check("native quit and restart / only last document folder expanded / nested child visible / other folders collapsed")
+
+    # Home contains folders and root documents; opening the paper preview is a
+    # navigation click, never an embedded link, checkbox or editable selection.
+    before = snapshot()
+    control("Open folder " + renamed)
+    assert not any(node.get("label") == "Note " + first for node in nodes())
+    pointer("Open folder " + renamed)
+    card = control("Note " + first)["bounds"]
+    assert card["height"] > card["width"] and card["width"] < 290, card
+    pointer("Note " + first)
+    opened(first)
+    pointer("Back to library")
+    home()
+    pointer("Open folder " + renamed)
+    pointer("List view")
+    control("Note " + first)
+    pointer("Parent folder")
+    control("Open folder " + renamed)
+    pointer("Grid view")
+    replace("Search notes", first)
+    control("Note " + first)
+    assert not any(node.get("label", "").startswith("Open folder ") for node in nodes())
+    replace("Search notes", "")
+    assert snapshot() == before, "Home previews or navigation modified document contents"
+    check("home folder cards / portrait paper preview / folder navigation / parent / grid-list / nested search / source preservation")
     return completed

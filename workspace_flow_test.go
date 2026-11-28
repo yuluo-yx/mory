@@ -43,6 +43,8 @@ func TestBatchFolderAndRecoveryUI(t *testing.T) {
 	if len(a.lib.Query("All notes", "", "Work", "")) != 4 {
 		t.Fatal("batch move")
 	}
+	click(t, tt, "Open folder Work")
+	click(t, tt, "Select notes")
 	click(t, tt, "Select all")
 	click(t, tt, "Trash selected")
 	if len(a.lib.Query("Trash", "", "", "")) != 4 {

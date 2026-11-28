@@ -110,7 +110,8 @@ func (a *app) quickNote() {
 
 func (a *app) selectedNotes() []*library.Note {
 	var out []*library.Note
-	for _, n := range a.lib.Query(a.section, a.query, a.folder, a.order) {
+	_, visible := a.homeContents()
+	for _, n := range visible {
 		if a.selected[n.ID] {
 			out = append(out, n)
 		}

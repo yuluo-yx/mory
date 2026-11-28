@@ -410,10 +410,7 @@ func (a *app) treeFolder(c *ui.Context, folder string, depth int, seen map[strin
 		}
 	}
 	if btnFolder.Clicked() {
-		a.home("All notes")
-		if a.current == nil {
-			a.folder = folder
-		}
+		a.openHomeFolder(folder)
 	}
 
 	// Notes belonging directly to this folder (nested with indentation)
@@ -528,7 +525,7 @@ func (a *app) treeNote(c *ui.Context, n *library.Note, depth int, seen map[strin
 
 func (a *app) homeView(c *ui.Context) {
 	t := c.Theme()
-	notes := a.lib.Query(a.section, a.query, a.folder, a.order)
+	folders, notes := a.homeContents()
 	bar := c.TitleBar()
 	headerHeight := float32(52)
 	if bar.Height > 0 {
@@ -562,7 +559,15 @@ func (a *app) homeView(c *ui.Context) {
 			if a.section == "Trash" {
 				heading = "Mory Trash"
 			}
-			ui.Text(c, a.tr(heading)).FontSize(17).Bold().LetterSpacing(-0.2).TextColor(t.Text)
+			if a.folder != "" {
+				if ghostButton(c, "").Label(a.tr("Parent folder")).Padding(5).Children(func() {
+					ui.Icon(c, iconChevronLeft()).Size(16, 16)
+				}).Clicked() {
+					a.openHomeFolder(parentHomeFolder(a.folder, a.lib.Folders()))
+				}
+				heading = library.FolderName(a.folder)
+			}
+			ui.Text(c, a.tr(heading)).FontSize(17).Bold().LetterSpacing(-0.2).TextColor(t.Text).SingleLine().MaxWidth(220)
 		})
 
 		ui.Row(c).Grow(1).Justify(ui.Center).Children(func() {
@@ -638,9 +643,9 @@ func (a *app) homeView(c *ui.Context) {
 			if a.folder != "" {
 				ui.Row(c).Padding(4, 10).Radius(6).Background(t.Accent.Alpha(0.1)).Gap(6).AlignItems(ui.Center).Children(func() {
 					ui.Icon(c, iconFolder()).Width(12).Height(12).TextColor(t.Accent)
-					ui.Text(c, a.folder).FontSize(12).TextColor(t.Accent).Bold()
+					ui.Text(c, library.FolderName(a.folder)).FontSize(12).TextColor(t.Accent).Bold().SingleLine().MaxWidth(150).Tooltip(a.folder)
 					if ghostButton(c, "×").Padding(0, 4).FontSize(11).Clicked() {
-						a.folder = ""
+						a.openHomeFolder("")
 					}
 				})
 			}
@@ -718,8 +723,8 @@ func (a *app) homeView(c *ui.Context) {
 		}
 		a.batchBar(c, notes)
 
-		ui.Scroll(c).Grow(1).Gap(14).Children(func() {
-			if len(notes) == 0 {
+		ui.Scroll(c.Key("home-"+a.section+"-"+a.folder)).Label(a.tr("Library contents")).Grow(1).MinHeight(0).Gap(14).Padding(4, 8, 12, 4).Children(func() {
+			if len(notes) == 0 && len(folders) == 0 {
 				ui.Column(c).Padding(80, 20).Gap(14).AlignItems(ui.Center).Children(func() {
 					if a.section == "Trash" {
 						ui.Icon(c, iconTrash()).Size(32, 32).TextColor(t.TextMuted)
@@ -739,11 +744,22 @@ func (a *app) homeView(c *ui.Context) {
 				return
 			}
 			if a.lib.Settings.List {
+				for _, folder := range folders {
+					a.folderCard(c, folder, true, 78)
+				}
 				for _, n := range notes {
 					a.noteCard(c, n, true)
 				}
 			} else {
-				ui.Grid(c).Columns(4).Gap(16).Children(func() {
+				width, _ := c.Size()
+				if !a.focus && !a.sidebarHidden {
+					width -= a.visibleSidebarWidth(width)
+				}
+				columns, height := homeGridGeometry(width - 76)
+				ui.Grid(c).Columns(columns).Gap(24).Children(func() {
+					for _, folder := range folders {
+						a.folderCard(c, folder, false, height)
+					}
 					for _, n := range notes {
 						a.noteCard(c, n, false)
 					}
@@ -752,7 +768,11 @@ func (a *app) homeView(c *ui.Context) {
 		})
 
 		ui.Row(c).AlignItems(ui.Center).Children(func() {
-			ui.Textf(c, a.tr("%d notes · On this Mac"), len(notes)).FontSize(11).TextColor(t.TextMuted).Grow(1)
+			if len(folders) > 0 {
+				ui.Textf(c, a.tr("%d folders · %d documents"), len(folders), len(notes)).FontSize(12).TextColor(t.TextMuted).Grow(1)
+			} else {
+				ui.Textf(c, a.tr("%d notes · On this Mac"), len(notes)).FontSize(12).TextColor(t.TextMuted).Grow(1)
+			}
 			if a.lib.Settings.ShowShortcuts {
 				ui.Text(c, a.shortcutHints("New note", "Import", "Search notes")).FontSize(11).TextColor(t.TextMuted)
 			}
@@ -761,6 +781,15 @@ func (a *app) homeView(c *ui.Context) {
 }
 
 func (a *app) noteCard(c *ui.Context, n *library.Note, list bool) {
+	if !list && !n.Deleted {
+		width, _ := c.Size()
+		if !a.focus && !a.sidebarHidden {
+			width -= a.visibleSidebarWidth(width)
+		}
+		_, height := homeGridGeometry(width - 76)
+		a.paperNoteCard(c, n, height)
+		return
+	}
 	t := c.Theme()
 	dark := t.Dark
 	height := float32(230)
